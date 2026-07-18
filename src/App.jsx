@@ -10,22 +10,11 @@ import { DataChargeProvider } from './context/DataChargeContext';
 
 function LoadingScreen() {
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#003366',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'Arial, sans-serif'
-    }}>
-      <div style={{
-        color: '#FFD700',
-        fontSize: 'clamp(1.2rem, 4vw, 1.8rem)',
-        fontWeight: 'bold',
-        textAlign: 'center',
-        letterSpacing: '1px'
-      }}>
-        NAMATL STUDENT E-VOTING
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#003366', color: 'white', fontFamily: 'Arial, sans-serif' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: '48px', height: '48px', border: '4px solid #ffd700', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+        <p style={{ fontSize: '18px', fontWeight: 'bold', margin: '0' }}>NAMATL STUDENT E-VOTING</p>
       </div>
     </div>
   );
@@ -33,18 +22,10 @@ function LoadingScreen() {
 
 function NotFound() {
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#003366',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'Arial, sans-serif'
-    }}>
-      <h1 style={{ color: '#FFD700', fontSize: '3rem', marginBottom: '10px' }}>ERROR 404</h1>
-      <p style={{ color: 'white' }}>Page not found</p>
-      <a href="#/" style={{ color: '#FFD700', marginTop: '20px' }}>Go Home</a>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#003366', color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'center', padding: '32px' }}>
+      <h1 style={{ color: '#ffd700' }}>ERROR 404</h1>
+      <p>Page not found</p>
+      <a href="#/" style={{ color: '#ffd700', marginTop: '16px', textDecoration: 'underline' }}>Go Home</a>
     </div>
   );
 }
@@ -63,9 +44,11 @@ function App() {
     <DataChargeProvider>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/landing" element={<Landing />} />
         <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/student" element={<StudentDashboard />} />
         <Route path="/admin" element={<AdminLogin />} />
+        <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/support" element={<Support />} />
         <Route path="*" element={<NotFound />} />

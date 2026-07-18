@@ -19,19 +19,20 @@ export default function Landing() {
       textAlign: 'center', padding: '32px', position: 'relative',
       opacity: visible ? 1 : 0, transition: 'opacity 0.8s ease-in-out'
     }}>
-      {/* 3 Dots Menu (⋮) */}
+      {/* 3 Dots Menu — TOP LEFT, BOLD */}
       <div
         onClick={() => setMenuOpen(!menuOpen)}
         style={{
-          position: 'absolute', top: '20px', right: '20px',
-          width: '42px', height: '42px', cursor: 'pointer',
+          position: 'absolute', top: '20px', left: '20px',
+          width: '44px', height: '44px', cursor: 'pointer',
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           borderRadius: '50%', zIndex: 20,
           background: menuOpen ? 'rgba(255,215,0,0.3)' : 'transparent',
-          transition: 'background 0.3s ease', gap: '6px',
-          fontSize: '24px', fontWeight: 'bold', color: '#FFD700',
-          lineHeight: '1', letterSpacing: '2px'
+          transition: 'background 0.3s ease',
+          fontSize: '28px', fontWeight: '900', color: '#FFD700',
+          lineHeight: '1', letterSpacing: '3px',
+          userSelect: 'none'
         }}
       >
         ⋮
@@ -39,7 +40,7 @@ export default function Landing() {
 
       {menuOpen && (
         <div style={{
-          position: 'absolute', top: '70px', right: '20px',
+          position: 'absolute', top: '70px', left: '20px',
           background: 'white', borderRadius: '8px',
           boxShadow: '0 8px 25px rgba(0,0,0,0.2)',
           zIndex: 20, minWidth: '220px', overflow: 'hidden'
@@ -73,7 +74,7 @@ export default function Landing() {
       )}
 
       <div style={{ maxWidth: '600px' }}>
-        {/* Logo */}
+        {/* Logo — CENTERED */}
         <img
           src="/LOGO.jpg"
           alt="NAMTLS Logo"
@@ -93,14 +94,6 @@ export default function Landing() {
         }}>
           NAMTLS STUDENT E-VOTING
         </h1>
-
-        {/* Welcome Tagline */}
-        <p style={{
-          fontSize: '16px', margin: '0 0 8px 0', opacity: '0.9',
-          fontWeight: '500'
-        }}>
-          Secure. Fast. Transparent Student Voting
-        </p>
 
         {/* Subtext */}
         <p style={{

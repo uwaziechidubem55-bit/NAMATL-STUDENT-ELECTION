@@ -34,7 +34,7 @@ export default function AdminLogin() {
         textAlign: 'center'
       }}>
         <img
-          src="/LOGO.jpg"
+          src="/logo.png"
           alt=""
           style={{
             width: '80px', height: '80px', borderRadius: '50%',
@@ -65,6 +65,7 @@ export default function AdminLogin() {
               width: '100%', padding: '12px', marginBottom: '12px',
               border: '1px solid #ddd', borderRadius: '6px',
               fontSize: '14px', boxSizing: 'border-box'
+               color: '#000',background: '#fff'
             }}
           />
           <input
@@ -74,6 +75,7 @@ export default function AdminLogin() {
               width: '100%', padding: '12px', marginBottom: '20px',
               border: '1px solid #ddd', borderRadius: '6px',
               fontSize: '14px', boxSizing: 'border-box'
+              color: '#000',background: '#fff'
             }}
           />
           <button type="submit" style={{

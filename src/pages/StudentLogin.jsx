@@ -102,7 +102,7 @@ export default function StudentLogin() {
             <input placeholder="Matric Number (CMOS/XXXXX/XXXX)" value={form.matric}
               onChange={(e) => setForm({ ...form, matric: e.target.value })}
               style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '12px', boxSizing: 'border-box', fontSize: '14px' }} />
-            <input placeholder="Level (e.g. ND1, HND2)" value={form.level}
+            <input placeholder="Level (e.g. 100,200,300)" value={form.level}
               onChange={(e) => setForm({ ...form, level: e.target.value })}
               style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '12px', boxSizing: 'border-box', fontSize: '14px' }} />
             <button onClick={handleSignup}

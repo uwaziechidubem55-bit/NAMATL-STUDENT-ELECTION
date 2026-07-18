@@ -4,7 +4,7 @@
   "version": "3.0.0",
   "type": "module",
   "engines": {
-    "node": "24.x"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vite",
@@ -17,7 +17,8 @@
     "react-router-dom": "^6.26.2",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
-    "firebase": "^10.14.1"
+    "firebase": "^10.14.1",
+    "flutterwave-react-v3": "^1.1.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.2",

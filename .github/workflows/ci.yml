@@ -1,0 +1,23 @@
+name: Project Build Check
+
+# 1. This pauses automatic checks on your code pushes so you can paste safely
+on:
+  workflow_dispatch: # This adds a manual "Run" button on your GitHub page
+
+jobs:
+  build-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Check Code and Highlight Errors
+        run: npm run build

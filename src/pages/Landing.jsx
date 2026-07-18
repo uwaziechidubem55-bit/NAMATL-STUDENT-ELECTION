@@ -76,7 +76,7 @@ export default function Landing() {
       <div style={{ maxWidth: '600px' }}>
         {/* Logo — CENTERED */}
         <img
-          src="/LOGO.jpg"
+          src="/logo.png?v=2"
           alt="NAMTLS Logo"
           style={{
             width: '120px', height: '120px', borderRadius: '50%',

@@ -65,7 +65,7 @@ export default function AdminDashboard() {
     setError('');
     try {
       const candSnap = await getDocs(collection(db, 'candidates'));
-      setCandidates(candSnap.docs.map(d => ({ id: d.id,...d.data() })));
+      setCandidates(candSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       const settingsSnap = await getDocs(collection(db, 'settings'));
       if (settingsSnap.docs.length > 0) setSettings(settingsSnap.docs[0].data());
     } catch (e) {
@@ -77,7 +77,7 @@ export default function AdminDashboard() {
   const loadSupportMessages = async () => {
     try {
       const msgSnap = await getDocs(collection(db, 'supportMessages'));
-      const msgs = msgSnap.docs.map(d => ({ id: d.id,...d.data() }));
+      const msgs = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setSupportMessages(msgs);
       setUnreadCount(msgs.filter(m => m.status === 'unread').length);
     } catch (e) {
@@ -111,8 +111,8 @@ export default function AdminDashboard() {
   const positionsList = [...new Set(candidates.map(c => c.position))];
 
   const saveCandidate = async () => {
-    if (!name ||!position) { alert('Name and Position required'); return; }
-    if (isPositionFull(position) &&!editingCandidate) { alert(`"${position}" is full (max ${MAX_PER_POSITION})`); return; }
+    if (!name || !position) { alert('Name and Position required'); return; }
+    if (isPositionFull(position) && !editingCandidate) { alert(`"${position}" is full (max ${MAX_PER_POSITION})`); return; }
     try {
       let photoURL = '';
       if (photo) {
@@ -132,7 +132,7 @@ export default function AdminDashboard() {
       }
       setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); setEditingCandidate(null);
       loadData();
-      alert(editingCandidate? 'Updated!' : 'Added!');
+      alert(editingCandidate ? 'Updated!' : 'Added!');
     } catch (e) { alert('FAILED: ' + e.message); }
   };
 
@@ -157,7 +157,7 @@ export default function AdminDashboard() {
 
   // Election settings
   const handleSaveSettings = async () => {
-    if (!settings.year ||!settings.startDate ||!settings.startTime ||!settings.endDate ||!settings.endTime) {
+    if (!settings.year || !settings.startDate || !settings.startTime || !settings.endDate || !settings.endTime) {
       alert('Fill all fields');
       return;
     }
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
     if (costCheck.free) {
       // Free activation for 2026/2027
       try {
-        await setDoc(doc(db, 'settings', 'main'), {...settings, isActive: true });
+        await setDoc(doc(db, 'settings', 'main'), { ...settings, isActive: true });
         alert('Election activated for FREE (2026/2027)!');
         loadData();
       } catch (e) { alert('FAILED: ' + e.message); }
@@ -177,7 +177,7 @@ export default function AdminDashboard() {
         const payment = await processActivationPayment(settings.year);
         if (payment.success) {
           try {
-            await setDoc(doc(db, 'settings', 'main'), {...settings, isActive: true });
+            await setDoc(doc(db, 'settings', 'main'), { ...settings, isActive: true });
             alert(`Election activated! ${payment.message}`);
             loadData();
           } catch (e) { alert('FAILED: ' + e.message); }
@@ -192,7 +192,7 @@ export default function AdminDashboard() {
 
   const toggleElection = async () => {
     try {
-      await setDoc(doc(db, 'settings', 'main'), {...settings, isActive:!settings.isActive });
+      await setDoc(doc(db, 'settings', 'main'), { ...settings, isActive: !settings.isActive });
       loadData();
     } catch (e) { alert('FAILED: ' + e.message); }
   };
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
   // Withdrawal
   const handleWithdraw = async () => {
     const result = await withdraw(withdrawAdminId, withdrawPin, parseInt(withdrawAmount));
-    setWithdrawMsg({ type: result.success? 'success' : 'error', text: result.message });
+    setWithdrawMsg({ type: result.success ? 'success' : 'error', text: result.message });
     if (result.success) {
       setWithdrawAdminId('');
       setWithdrawPin('');
@@ -237,11 +237,11 @@ export default function AdminDashboard() {
 
   // Computed values
   const totalVotes = candidates.reduce((s, c) => s + (c.votes || 0), 0);
-  const startDateTime = settings.startDate && settings.startTime? new Date(settings.startDate + 'T' + settings.startTime) : null;
-  const endDateTime = settings.endDate && settings.endTime? new Date(settings.endDate + 'T' + settings.endTime) : null;
+  const startDateTime = settings.startDate && settings.startTime ? new Date(settings.startDate + 'T' + settings.startTime) : null;
+  const endDateTime = settings.endDate && settings.endTime ? new Date(settings.endDate + 'T' + settings.endTime) : null;
   const now = new Date();
-  const isElectionStarted = startDateTime? now >= startDateTime : false;
-  const isElectionEnded = endDateTime? now >= endDateTime : false;
+  const isElectionStarted = startDateTime ? now >= startDateTime : false;
+  const isElectionEnded = endDateTime ? now >= endDateTime : false;
 
   const getElectionPhase = () => {
     if (!settings.isActive) return { label: 'INACTIVE', color: '#6b7280' };
@@ -335,7 +335,7 @@ export default function AdminDashboard() {
 
       {/* SIDEBAR */}
       <div style={{
-        width: sidebarOpen? '280px' : '0px',
+        width: sidebarOpen ? '280px' : '0px',
         overflow: 'hidden',
         background: '#003366',
         color: 'white',
@@ -345,7 +345,7 @@ export default function AdminDashboard() {
         left: 0,
         bottom: 0,
         zIndex: 50,
-        boxShadow: sidebarOpen? '4px 0 24px rgba(0,0,0,0.2)' : 'none'
+        boxShadow: sidebarOpen ? '4px 0 24px rgba(0,0,0,0.2)' : 'none'
       }}>
         <div style={{ padding: '20px', minWidth: '280px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -367,13 +367,13 @@ export default function AdminDashboard() {
                 marginBottom: '4px',
                 borderRadius: '8px',
                 cursor: 'pointer',
-                background: activeView === item.key? 'rgba(255, 215, 0, 0.15)' : 'transparent',
-                color: activeView === item.key? '#FFD700' : 'rgba(255,255,255,0.8)',
+                background: activeView === item.key ? 'rgba(255, 215, 0, 0.15)' : 'transparent',
+                color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.8)',
                 transition: 'all 0.2s',
-                fontWeight: activeView === item.key? 'bold' : 'normal'
+                fontWeight: activeView === item.key ? 'bold' : 'normal'
               }}
-              onMouseEnter={(e) => { if (activeView!== item.key) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-              onMouseLeave={(e) => { if (activeView!== item.key) e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+              onMouseLeave={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'transparent'; }}
             >
               <span style={{ fontSize: '18px', width: '28px' }}>{item.icon}</span>
               <span style={{ fontSize: '14px' }}>{item.label}</span>
@@ -509,13 +509,13 @@ export default function AdminDashboard() {
                 📈 Election Results
               </h2>
 
-              {!settings.isActive? (
+              {!settings.isActive ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#f59e0b' }}>
                   <span style={{ fontSize: '48px' }}>📊</span>
                   <h3 style={{ margin: '12px 0' }}>No Result Yet</h3>
                   <p style={{ color: '#666' }}>Election has not been configured or activated.</p>
                 </div>
-              ) : candidates.length === 0? (
+              ) : candidates.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
                   <span style={{ fontSize: '48px' }}>📭</span>
                   <h3 style={{ margin: '12px 0' }}>No Candidates</h3>
@@ -527,14 +527,14 @@ export default function AdminDashboard() {
                     <div key={c.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '16px', borderBottom: '1px solid #f0f0f0',
-                      background: idx === 0? 'rgba(255, 215, 0, 0.05)' : 'transparent'
+                      background: idx === 0 ? 'rgba(255, 215, 0, 0.05)' : 'transparent'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span style={{
                           width: '28px', height: '28px', borderRadius: '50%',
-                          background: idx === 0? '#FFD700' : idx === 1? '#C0C0C0' : idx === 2? '#CD7F32' : '#f0f0f0',
+                          background: idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : '#f0f0f0',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 'bold', fontSize: '13px', color: idx < 3? 'white' : '#666'
+                          fontWeight: 'bold', fontSize: '13px', color: idx < 3 ? 'white' : '#666'
                         }}>{idx + 1}</span>
                         <div>
                           <div style={{ fontWeight: 'bold', color: '#333' }}>{c.name}</div>
@@ -562,18 +562,18 @@ export default function AdminDashboard() {
               {/* Add/Edit form */}
               <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                 <h3 style={{ margin: '0 0 16px', color: '#333', fontSize: '16px' }}>
-                  {editingCandidate? 'Edit Candidate' : 'Add New Candidate'}
+                  {editingCandidate ? 'Edit Candidate' : 'Add New Candidate'}
                 </h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <input placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
                   <input placeholder="Position" value={position} onChange={(e) => setPosition(e.target.value)} style={inputStyle} />
                   <input placeholder="Department" value={dept} onChange={(e) => setDept(e.target.value)} style={inputStyle} />
                   <div>
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{...inputStyle, padding: '8px' }} />
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ ...inputStyle, padding: '8px' }} />
                   </div>
                 </div>
                 <textarea placeholder="Manifesto" value={manifesto} onChange={(e) => setManifesto(e.target.value)} rows="3"
-                  style={{...inputStyle, resize: 'vertical', fontFamily: 'Arial, sans-serif' }} />
+                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'Arial, sans-serif' }} />
                 {photoPreview && (
                   <img src={photoPreview} alt="Preview" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' }} />
                 )}
@@ -581,7 +581,7 @@ export default function AdminDashboard() {
                   <button onClick={saveCandidate} style={{
                     padding: '12px 24px', background: '#003366', color: 'white', border: 'none',
                     borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
-                  }}>{editingCandidate? 'Update Candidate' : 'Add Candidate'}</button>
+                  }}>{editingCandidate ? 'Update Candidate' : 'Add Candidate'}</button>
                   {editingCandidate && (
                     <button onClick={() => { setEditingCandidate(null); setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); }} style={{
                       padding: '12px 24px', background: '#6b7280', color: 'white', border: 'none',
@@ -596,7 +596,7 @@ export default function AdminDashboard() {
                 <p style={{ color: '#666', marginBottom: '12px', fontSize: '13px' }}>
                   Total: {candidates.length} candidates | Votes: {totalVotes}
                 </p>
-                {candidates.length === 0? (
+                {candidates.length === 0 ? (
                   <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>No candidates yet.</p>
                 ) : (
                   candidates.map(c => (
@@ -605,7 +605,7 @@ export default function AdminDashboard() {
                       padding: '14px', borderBottom: '1px solid #f0f0f0'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {c.photoURL? (
+                        {c.photoURL ? (
                           <img src={c.photoURL} alt={c.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
                             onError={(e) => { e.target.style.display = 'none'; }} />
                         ) : (
@@ -646,7 +646,7 @@ export default function AdminDashboard() {
                   <input
                     placeholder="e.g. 2026/2027"
                     value={settings.year}
-                    onChange={(e) => setSettings({...settings, year: e.target.value })}
+                    onChange={(e) => setSettings({ ...settings, year: e.target.value })}
                     style={inputStyle}
                   />
                 </div>
@@ -664,7 +664,7 @@ export default function AdminDashboard() {
                   <input
                     type="date"
                     value={settings.startDate}
-                    onChange={(e) => setSettings({...settings, startDate: e.target.value })}
+                    onChange={(e) => setSettings({ ...settings, startDate: e.target.value })}
                     style={inputStyle}
                   />
                 </div>
@@ -673,7 +673,7 @@ export default function AdminDashboard() {
                   <input
                     type="time"
                     value={settings.startTime}
-                    onChange={(e) => setSettings({...settings, startTime: e.target.value })}
+                    onChange={(e) => setSettings({ ...settings, startTime: e.target.value })}
                     style={inputStyle}
                   />
                 </div>
@@ -682,9 +682,245 @@ export default function AdminDashboard() {
                   <input
                     type="date"
                     value={settings.endDate}
-                    onChange={(e) => setSettings({...settings, endDate: e.target.value })}
+                    onChange={(e) => setSettings({ ...settings, endDate: e.target.value })}
                     style={inputStyle}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize:
+                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>End Time</label>
+                  <input
+                    type="time"
+                    value={settings.endTime}
+                    onChange={(e) => setSettings({ ...settings, endTime: e.target.value })}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* Activation cost info */}
+              <div style={{
+                padding: '16px',
+                background: settings.year === '2026/2027' ? '#f0fdf4' : '#fefce8',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                border: `1px solid ${settings.year === '2026/2027' ? '#bbf7d0' : '#fde68a'}`
+              }}>
+                <div style={{ fontSize: '14px', color: '#333' }}>
+                  <strong>Activation Cost:</strong>{' '}
+                  {settings.year === '2026/2027' ? (
+                    <span style={{ color: '#16a34a', fontWeight: 'bold' }}>FREE — First activation for 2026/2027</span>
+                  ) : settings.year ? (
+                    <span style={{ color: '#d97706', fontWeight: 'bold' }}>
+                      ₦25,000 — Will deduct from withdrawal balance (Balance: ₦{withdrawalBalance.toLocaleString()})
+                    </span>
+                  ) : (
+                    <span style={{ color: '#6b7280' }}>Enter academic year to see cost</span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button onClick={handleSaveSettings} style={{
+                  padding: '12px 24px', background: '#003366', color: 'white', border: 'none',
+                  borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
+                }}>Activate Election</button>
+                <button onClick={toggleElection} style={{
+                  padding: '12px 24px', background: settings.isActive ? '#dc2626' : '#16a34a', color: 'white',
+                  border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
+                }}>{settings.isActive ? 'Deactivate' : 'Activate (Toggle)'}</button>
+                <button onClick={deleteAllElectionData} style={{
+                  padding: '12px 24px', background: '#6b7280', color: 'white', border: 'none',
+                  borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
+                }}>Delete All</button>
+                <button onClick={clearAllVotes} style={{
+                  padding: '12px 24px', background: '#f59e0b', color: 'white', border: 'none',
+                  borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
+                }}>Clear Votes</button>
+              </div>
+
+              {settings.startDate && (
+                <div style={{ marginTop: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px', fontSize: '13px', color: '#666' }}>
+                  <div>Start: {settings.startDate} at {settings.startTime}</div>
+                  <div>End: {settings.endDate} at {settings.endTime}</div>
+                  <div>Year: {settings.year}</div>
+                  <div>Max candidates per position: {MAX_PER_POSITION}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* === WITHDRAWAL VIEW === */}
+          {activeView === 'withdrawal' && (
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
+                💰 Withdrawal
+              </h2>
+
+              {/* Balance card */}
+              <div style={{
+                background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                borderRadius: '12px',
+                padding: '24px',
+                color: 'white',
+                marginBottom: '24px',
+                textAlign: 'center',
+                boxShadow: '0 4px 16px rgba(22,163,74,0.3)'
+              }}>
+                <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Available Withdrawal Balance</div>
+                <div style={{ fontSize: '36px', fontWeight: 'bold' }}>₦{withdrawalBalance.toLocaleString()}</div>
+                <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '8px' }}>Opay Account: {OPAY_ACCOUNT}</div>
+              </div>
+
+              {withdrawMsg.text && (
+                <div style={{
+                  padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px',
+                  fontWeight: 'bold', textAlign: 'center',
+                  background: withdrawMsg.type === 'success' ? '#f0fdf4' : '#fee2e2',
+                  color: withdrawMsg.type === 'success' ? '#16a34a' : '#dc2626',
+                  border: `1px solid ${withdrawMsg.type === 'success' ? '#bbf7d0' : '#fecaca'}`
+                }}>
+                  {withdrawMsg.text}
+                </div>
+              )}
+
+              <div style={{ background: '#f8f9fa', padding: '24px', borderRadius: '12px' }}>
+                <h3 style={{ margin: '0 0 16px', color: '#333', fontSize: '16px' }}>Process Withdrawal</h3>
+                <input
+                  placeholder="Admin ID"
+                  value={withdrawAdminId}
+                  onChange={(e) => setWithdrawAdminId(e.target.value)}
+                  style={inputStyle}
+                />
+                <input
+                  type="password"
+                  placeholder="Withdrawal PIN"
+                  value={withdrawPin}
+                  onChange={(e) => setWithdrawPin(e.target.value)}
+                  style={inputStyle}
+                />
+                <input
+                  type="number"
+                  placeholder="Amount (₦)"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  style={inputStyle}
+                />
+                <button onClick={handleWithdraw} style={{
+                  width: '100%', padding: '14px', background: '#16a34a', color: 'white',
+                  border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px'
+                }}>
+                  Withdraw to {OPAY_ACCOUNT}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* === GENERAL SETTINGS VIEW === */}
+          {activeView === 'general' && (
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
+                🔧 General Settings
+              </h2>
+
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Site Name</label>
+                  <input value={siteName} onChange={(e) => setSiteName(e.target.value)} style={inputStyle} />
+                </div>
+
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Max Candidates Per Position</label>
+                  <input type="number" value={maxPerPosition} onChange={(e) => setMaxPerPosition(parseInt(e.target.value))} style={inputStyle} />
+                </div>
+
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontWeight: 'bold', color: '#333' }}>Enable Data Charging</div>
+                    <div style={{ fontSize: '13px', color: '#666' }}>Charge users ₦20 per 5 seconds</div>
+                  </div>
+                  <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
+                    <input type="checkbox" checked={enableDataCharge} onChange={(e) => setEnableDataCharge(e.target.checked)}
+                      style={{ opacity: 0, width: 0, height: 0 }} />
+                    <span style={{
+                      position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                      background: enableDataCharge ? '#16a34a' : '#ccc',
+                      borderRadius: '28px', transition: '0.3s'
+                    }}>
+                      <span style={{
+                        position: 'absolute', height: '22px', width: '22px', borderRadius: '50%',
+                        background: 'white', top: '3px',
+                        left: enableDataCharge ? '25px' : '3px',
+                        transition: '0.3s'
+                      }}></span>
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Admin ID (Read Only)</label>
+                  <input value={ADMIN_ID} readOnly style={{ ...inputStyle, background: '#e5e7eb', cursor: 'not-allowed' }} />
+                </div>
+
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Withdrawal PIN (Read Only)</label>
+                  <input value="••••" readOnly style={{ ...inputStyle, background: '#e5e7eb', cursor: 'not-allowed' }} />
+                </div>
+
+                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Opay Account (Read Only)</label>
+                  <input value={OPAY_ACCOUNT} readOnly style={{ ...inputStyle, background: '#e5e7eb', cursor: 'not-allowed' }} />
+                </div>
+              </div>
+
+              <button style={{
+                marginTop: '20px', padding: '12px 24px', background: '#003366', color: 'white',
+                border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
+              }}>Save General Settings</button>
+            </div>
+          )}
+
+          {/* === SUPPORT MESSAGES VIEW === */}
+          {activeView === 'messages' && (
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
+                ✉️ Support Messages ({unreadCount} unread)
+              </h2>
+
+              {supportMessages.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                  <span style={{ fontSize: '48px' }}>📭</span>
+                  <h3 style={{ margin: '12px 0 0' }}>No messages yet</h3>
+                </div>
+              ) : (
+                supportMessages.map(msg => (
+                  <div key={msg.id} style={{
+                    padding: '16px', borderBottom: '1px solid #f0f0f0',
+                    background: msg.status === 'unread' ? '#fefce8' : 'transparent',
+                    cursor: 'pointer'
+                  }} onClick={() => markAsRead(msg.id)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <strong style={{ color: '#333' }}>{msg.name}</strong>
+                      <span style={{ fontSize: '12px', color: '#888' }}>
+                        {msg.timestamp?.toDate?.()?.toLocaleString() || 'Just now'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#555', marginBottom: '4px' }}>
+                      {msg.email !== 'Not provided' && <div>Email: {msg.email}</div>}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#333' }}>{msg.message}</div>
+                    {msg.status === 'unread' && (
+                      <span style={{
+                        display: 'inline-block', marginTop: '8px', padding: '2px 8px',
+                        background: '#f59e0b', color: 'white', borderRadius: '4px', fontSize: '11px'
+                      }}>Unread</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

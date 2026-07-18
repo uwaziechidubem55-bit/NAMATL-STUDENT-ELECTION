@@ -25,14 +25,8 @@ export default function StudentLogin() {
       return;
     }
     
-    // Check if it starts with CMOS or CMO/MTL - STRICT CAPS
-    if (!form.matric.startsWith('CMOS') && !form.matric.startsWith('CMO/MTL')) {
-      showMessage('error', 'ERROR: Matric must start with CMOS or CMO/MTL');
-      return;
-    }
-    
     if (!isValidMatric(form.matric)) {
-      showMessage('error', 'ERROR: Matric must be format CMOS/XXXXX/XXXX or CMO/MTL/XXXXX/XXXX');
+      showMessage('error', 'Access Denied. Use Correct Format');
       return;
     }
     try {
@@ -58,14 +52,8 @@ export default function StudentLogin() {
       return;
     }
     
-    // Check if it starts with CMOS or CMO/MTL - STRICT CAPS
-    if (!loginForm.matric.startsWith('CMOS') && !loginForm.matric.startsWith('CMO/MTL')) {
-      showMessage('error', 'ERROR: Matric must start with CMOS or CMO/MTL');
-      return;
-    }
-    
     if (!isValidMatric(loginForm.matric)) {
-      showMessage('error', 'ERROR: Matric must be format CMOS/XXXXX/XXXX or CMO/MTL/XXXXX/XXXX');
+      showMessage('error', 'Access Denied. Use Correct Format');
       return;
     }
     try {
@@ -106,7 +94,7 @@ export default function StudentLogin() {
             <input placeholder="Full Name" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '12px', boxSizing: 'border-box', fontSize: '14px' }} />
-            <input placeholder="Matric Number (CMOS/XXXXX/XXXX)" value={form.matric}
+            <input placeholder="Matric Number" value={form.matric}
               onChange={(e) => setForm({ ...form, matric: e.target.value })}
               style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '12px', boxSizing: 'border-box', fontSize: '14px' }} />
             <input placeholder="Level (e.g. 100,200,300)" value={form.level}
@@ -126,7 +114,7 @@ export default function StudentLogin() {
           </>
         ) : (
           <>
-            <input placeholder="Matric Number (CMOS/XXXXX/XXXX)" value={loginForm.matric}
+            <input placeholder="Matric Number" value={loginForm.matric}
               onChange={(e) => setLoginForm({ ...loginForm, matric: e.target.value })}
               style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '16px', boxSizing: 'border-box', fontSize: '14px' }} />
             <button onClick={handleLogin}

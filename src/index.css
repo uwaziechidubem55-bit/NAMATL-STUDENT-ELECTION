@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+.animate-slideIn { animation: slideIn 0.3s ease-out; }
+.animate-pulse-slow { animation: pulse 2s ease-in-out infinite; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #003366; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #002244; }
+
+@media print {
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
+  .no-print { display: none !important; }
+  #result-print-area { display: block !important; position: relative; padding: 20px 40px !important; background: white !important; box-shadow: none !important; border-radius: 0 !important; }
+  #result-print-area h1, #result-print-area h2 { page-break-after: avoid; }
+  #result-print-area table { page-break-inside: auto; font-size: 12px !important; }
+  #result-print-area table tr { page-break-inside: avoid; page-break-after: auto; }
+  #result-print-area table th { background-color: #003366 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #result-print-area table td { border: 1px solid #999 !important; }
+  @page { margin: 15mm; }
+}

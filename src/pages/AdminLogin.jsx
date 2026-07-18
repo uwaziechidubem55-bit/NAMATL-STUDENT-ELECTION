@@ -1,26 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
+
+    if (username === 'Brouse' && password === 'Officialelectoralcommission123') {
       navigate('/admin-dashboard');
-    } catch (err) {
-      setError(err.message);
+    } else {
+      setError('ACCESS DENIED. Ask admin for password.');
     }
-    setLoading(false);
   };
 
   return (
@@ -35,7 +30,8 @@ export default function AdminLogin() {
       <div style={{
         background: 'white', borderRadius: '12px',
         padding: '40px 32px', maxWidth: '400px', width: '100%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+        textAlign: 'center'
       }}>
         <img
           src="/LOGO.jpg"
@@ -61,10 +57,10 @@ export default function AdminLogin() {
             {error}
           </p>
         )}
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleLogin} style={{ textAlign: 'left' }}>
           <input
-            type="email" placeholder="Email" value={email}
-            onChange={e => setEmail(e.target.value)} required
+            type="text" placeholder="Username" value={username}
+            onChange={e => setUsername(e.target.value)} required
             style={{
               width: '100%', padding: '12px', marginBottom: '12px',
               border: '1px solid #ddd', borderRadius: '6px',
@@ -80,13 +76,13 @@ export default function AdminLogin() {
               fontSize: '14px', boxSizing: 'border-box'
             }}
           />
-          <button type="submit" disabled={loading} style={{
+          <button type="submit" style={{
             width: '100%', padding: '12px',
-            background: loading ? '#ccc' : '#003366',
-            color: 'white', border: 'none', borderRadius: '6px',
-            fontSize: '16px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer'
+            background: '#003366', color: 'white', border: 'none',
+            borderRadius: '6px', fontSize: '16px', fontWeight: 'bold',
+            cursor: 'pointer'
           }}>
-            {loading ? 'Signing in...' : 'Sign In'}
+            Sign In
           </button>
         </form>
         <p style={{ marginTop: '20px', fontSize: '13px' }}>

@@ -34,14 +34,13 @@ export default function AdminLogin() {
         textAlign: 'center'
       }}>
         <img
-          src="/logo.png"
-          alt=""
+          src="/logo.png?v=2"
+          alt="NAMTLS Logo"
           style={{
             width: '80px', height: '80px', borderRadius: '50%',
             objectFit: 'cover', margin: '0 auto 16px', display: 'block',
             border: '2px solid #FFD700'
           }}
-          onError={e => e.target.style.display = 'none'}
         />
         <h2 style={{ color: '#003366', margin: '0 0 4px 0', fontSize: '22px' }}>
           Admin Login
@@ -59,31 +58,41 @@ export default function AdminLogin() {
         )}
         <form onSubmit={handleLogin} style={{ textAlign: 'left' }}>
           <input
-            type="text" placeholder="Username" value={username}
-            onChange={e => setUsername(e.target.value)} required
+            type="text" 
+            placeholder="Username" 
+            value={username}
+            onChange={e => setUsername(e.target.value)} 
+            required
             style={{
               width: '100%', padding: '12px', marginBottom: '12px',
               border: '1px solid #ddd', borderRadius: '6px',
-              fontSize: '14px', boxSizing: 'border-box'
-               color: '#000',background: '#fff'
+              fontSize: '14px', boxSizing: 'border-box',
+              color: '#000', background: '#fff'  // <-- VISIBLE TEXT
             }}
           />
           <input
-            type="password" placeholder="Password" value={password}
-            onChange={e => setPassword(e.target.value)} required
+            type="password" 
+            placeholder="Password" 
+            value={password}
+            onChange={e => setPassword(e.target.value)} 
+            required
             style={{
               width: '100%', padding: '12px', marginBottom: '20px',
               border: '1px solid #ddd', borderRadius: '6px',
-              fontSize: '14px', boxSizing: 'border-box'
-              color: '#000',background: '#fff'
+              fontSize: '14px', boxSizing: 'border-box',
+              color: '#000', background: '#fff'  // <-- VISIBLE TEXT
             }}
           />
           <button type="submit" style={{
             width: '100%', padding: '12px',
             background: '#003366', color: 'white', border: 'none',
             borderRadius: '6px', fontSize: '16px', fontWeight: 'bold',
-            cursor: 'pointer'
-          }}>
+            cursor: 'pointer',
+            transition: 'background 0.2s'
+          }}
+          onMouseEnter={e => e.target.style.background = '#002244'}
+          onMouseLeave={e => e.target.style.background = '#003366'}
+          >
             Sign In
           </button>
         </form>

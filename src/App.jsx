@@ -11,20 +11,46 @@ import { DataChargeProvider } from './context/DataChargeContext';
 function LoadingScreen() {
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      background: '#003366', color: 'white', fontFamily: 'Arial, sans-serif'
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#003366',
+      color: 'white',
+      fontFamily: 'Arial, sans-serif',
+      textAlign: 'center'
     }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{
-          width: '48px', height: '48px',
-          border: '4px solid #ffd700', borderTop: '4px solid transparent',
-          borderRadius: '50%', animation: 'spin 1s linear infinite',
-          margin: '0 auto 16px'
-        }}></div>
-        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-        <p style={{ fontSize: '18px', fontWeight: 'bold', margin: '0' }}>NAMTLS STUDENT E-VOTING</p>
-      </div>
+      {/* Logo during loading */}
+      <img
+        src="/LOGO.jpg"
+        alt="NAMTLS Logo"
+        style={{
+          width: '100px',
+          height: '100px',
+          borderRadius: '50%',
+          objectFit: 'cover',
+          marginBottom: '20px',
+          border: '3px solid #FFD700'
+        }}
+        onError={e => { e.target.style.display = 'none'; }}
+      />
+      <div style={{
+        width: '48px',
+        height: '48px',
+        border: '4px solid #ffd700',
+        borderTop: '4px solid transparent',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+        margin: '0 auto 16px'
+      }}></div>
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      <p style={{ fontSize: '18px', fontWeight: 'bold', margin: '0', color: '#ffd700' }}>
+        NAMTLS STUDENT E-VOTING
+      </p>
+      <p style={{ fontSize: '13px', opacity: '0.6', margin: '8px 0 0 0' }}>
+        Loading...
+      </p>
     </div>
   );
 }

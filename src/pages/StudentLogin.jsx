@@ -13,8 +13,9 @@ export default function StudentLogin() {
     setTimeout(() => setMessage({ type: '', text: '' }), 5000);
   };
 
+  // STRICT VALIDATION: Must be CAPITAL. Accepts CMOS or CMO/MTL
   const isValidMatric = (matric) => {
-    const regex = /^CMOS\/\d{5}\/\d{4}$/i;
+    const regex = /^(CMOS|CMO\/MTL)\/\d{5}\/\d{4}$/;
     return regex.test(matric.trim());
   };
 
@@ -23,12 +24,15 @@ export default function StudentLogin() {
       showMessage('error', 'Please fill all fields');
       return;
     }
-    if (!form.matric.toUpperCase().startsWith('CMOS')) {
-      showMessage('error', 'ERROR: Only CMOS matric numbers allowed');
+    
+    // Check if it starts with CMOS or CMO/MTL - STRICT CAPS
+    if (!form.matric.startsWith('CMOS') && !form.matric.startsWith('CMO/MTL')) {
+      showMessage('error', 'ERROR: Matric must start with CMOS or CMO/MTL');
       return;
     }
+    
     if (!isValidMatric(form.matric)) {
-      showMessage('error', 'ERROR: Matric must be format CMOS/XXXXX/XXXX (e.g. CMOS/13865/2024)');
+      showMessage('error', 'ERROR: Matric must be format CMOS/XXXXX/XXXX or CMO/MTL/XXXXX/XXXX');
       return;
     }
     try {
@@ -53,12 +57,15 @@ export default function StudentLogin() {
       showMessage('error', 'Please fill Matric Number');
       return;
     }
-    if (!loginForm.matric.toUpperCase().startsWith('CMOS')) {
-      showMessage('error', 'ERROR: Only CMOS matric numbers allowed');
+    
+    // Check if it starts with CMOS or CMO/MTL - STRICT CAPS
+    if (!loginForm.matric.startsWith('CMOS') && !loginForm.matric.startsWith('CMO/MTL')) {
+      showMessage('error', 'ERROR: Matric must start with CMOS or CMO/MTL');
       return;
     }
+    
     if (!isValidMatric(loginForm.matric)) {
-      showMessage('error', 'ERROR: Matric must be format CMOS/XXXXX/XXXX (e.g. CMOS/13865/2024)');
+      showMessage('error', 'ERROR: Matric must be format CMOS/XXXXX/XXXX or CMO/MTL/XXXXX/XXXX');
       return;
     }
     try {

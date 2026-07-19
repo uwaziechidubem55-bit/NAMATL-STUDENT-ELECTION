@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useDataCharge } from '../context/DataChargeContext';
+// REMOVED: import { useDataCharge } from '../context/DataChargeContext';
 
 export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
@@ -12,7 +12,7 @@ export default function StudentDashboard() {
   const [hasVoted, setHasVoted] = useState(false);
   const [student, setStudent] = useState(null);
   const navigate = useNavigate();
-  const { sessionSeconds, sessionCost } = useDataCharge();
+  // REMOVED: const { sessionSeconds, sessionCost } = useDataCharge();
 
   useEffect(() => {
     const loadData = async () => {
@@ -59,18 +59,18 @@ export default function StudentDashboard() {
     navigate('/student-login');
   };
 
-  const startDateTime = settings.startDate && settings.startTime ? new Date(settings.startDate + 'T' + settings.startTime) : null;
-  const endDateTime = settings.endDate && settings.endTime ? new Date(settings.endDate + 'T' + settings.endTime) : null;
+  const startDateTime = settings.startDate && settings.startTime? new Date(settings.startDate + 'T' + settings.startTime) : null;
+  const endDateTime = settings.endDate && settings.endTime? new Date(settings.endDate + 'T' + settings.endTime) : null;
   const now = new Date();
-  const isElectionStarted = startDateTime ? now >= startDateTime : false;
-  const isElectionEnded = endDateTime ? now >= endDateTime : false;
-  const isVotingOpen = settings.isActive && startDateTime && isElectionStarted && !isElectionEnded;
+  const isElectionStarted = startDateTime? now >= startDateTime : false;
+  const isElectionEnded = endDateTime? now >= endDateTime : false;
+  const isVotingOpen = settings.isActive && startDateTime && isElectionStarted &&!isElectionEnded;
 
   const handleVote = (id) => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
     if (!window.confirm('Vote for this candidate? This action cannot be undone.')) return;
 
-    const updated = candidates.map(c => c.id === id ? { ...c, votes: (c.votes || 0) + 1 } : c);
+    const updated = candidates.map(c => c.id === id? {...c, votes: (c.votes || 0) + 1 } : c);
     setCandidates(updated);
     localStorage.setItem('candidates', JSON.stringify(updated));
     localStorage.setItem('voted', 'true');
@@ -79,7 +79,7 @@ export default function StudentDashboard() {
   };
 
   const getStatusBadge = () => {
-    if (!settings.isActive || !settings.startDate) return { text: 'NOT CONFIGURED', color: '#6b7280' };
+    if (!settings.isActive ||!settings.startDate) return { text: 'NOT CONFIGURED', color: '#6b7280' };
     if (!isElectionStarted) return { text: 'COMING SOON', color: '#f59e0b' };
     if (isElectionEnded) return { text: 'ENDED', color: '#dc2626' };
     return { text: 'LIVE', color: '#16a34a' };
@@ -125,9 +125,8 @@ export default function StudentDashboard() {
       <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
         <div style={{ background: '#003366', color: 'white', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 'clamp(1rem, 3vw, 1.4rem)' }}>NAMATL E-VOTING</h2>
-          <div style={{ fontSize: '13px', color: '#FFD700' }}>
-            Session: {sessionSeconds}s | N{sessionCost} <button onClick={handleLogout} style={{ marginLeft: '12px', padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Logout</button>
-          </div>
+          {/* REMOVED: Session: {sessionSeconds}s | N{sessionCost} */}
+          <button onClick={handleLogout} style={{ marginLeft: '12px', padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Logout</button>
         </div>
         <div style={{ background: 'white', borderRadius: '8px', padding: '20px', margin: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', textAlign: 'center' }}>
           <hr style={{ border: 'none', borderTop: '3px solid #FFD700', width: '60px', margin: '10px auto' }} />
@@ -147,9 +146,8 @@ export default function StudentDashboard() {
     <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
       <div style={{ background: '#003366', color: 'white', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 'clamp(1rem, 3vw, 1.4rem)' }}>Student Voting Portal</h2>
-        <div style={{ fontSize: '13px', color: '#FFD700' }}>
-          Session: {sessionSeconds}s | N{sessionCost} <button onClick={handleLogout} style={{ marginLeft: '12px', padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Logout</button>
-        </div>
+        {/* REMOVED: Session: {sessionSeconds}s | N{sessionCost} */}
+        <button onClick={handleLogout} style={{ marginLeft: '12px', padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>Logout</button>
       </div>
       <div style={{ background: 'white', borderRadius: '8px', padding: '20px', margin: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
         <p style={{ color: '#333', marginBottom: '8px' }}>Welcome, <strong>{student.name}</strong> &mdash; {student.matric}</p>
@@ -160,11 +158,11 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {hasVoted ? (
+      {hasVoted? (
         <div style={{ background: 'white', borderRadius: '8px', padding: '20px', margin: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', textAlign: 'center' }}>
           <h2 style={{ color: '#16a34a' }}>You have voted. Thank you!</h2>
         </div>
-      ) : candidates.length === 0 ? (
+      ) : candidates.length === 0? (
         <div style={{ background: 'white', borderRadius: '8px', padding: '20px', margin: '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', textAlign: 'center' }}>
           <h3>No Candidates Available</h3>
         </div>

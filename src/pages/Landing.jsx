@@ -92,7 +92,7 @@ export default function Landing() {
           fontSize: 'clamp(24px, 5vw, 40px)', fontWeight: 'bold',
           margin: '0 0 8px 0', color: '#ffd700', lineHeight: '1.2'
         }}>
-          NAMTLS STUDENT E-VOTING
+          NAMATL STUDENT E-VOTING
         </h1>
 
         {/* Subtext */}

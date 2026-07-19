@@ -1,10 +1,8 @@
-// NAMTLS DataCharge v3.1 - Flutterwave Activation Payment
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+// NAMTLS DataCharge v3.2 - Flutterwave Activation + Withdrawal ONLY
+import { createContext, useContext, useEffect, useState } from 'react';
 import { doc, getDoc, setDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const CHARGE_RATE = 50;
-const CHARGE_INTERVAL = 5000;
 const ADMIN_ID = 'Admin@Namatls128756BC';
 const WITHDRAWAL_PIN = '1966';
 const OPAY_ACCOUNT = '9167557038';
@@ -62,9 +60,7 @@ export function DataChargeProvider({ children }) {
   const [sessionSeconds, setSessionSeconds] = useState(0);
   const [sessionCost, setSessionCost] = useState(0);
   const [withdrawalBalance, setWithdrawalBalance] = useState(0);
-  const [isCharging, setIsCharging] = useState(true);
-  const intervalRef = useRef(null);
-  const secondsRef = useRef(null);
+  const [isCharging, setIsCharging] = useState(false); // <-- Turned OFF by default
 
   const loadBalance = async () => {
     try {
@@ -78,40 +74,9 @@ export function DataChargeProvider({ children }) {
     }
   };
 
-  const saveCharge = async (amount) => {
-    try {
-      await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-        balance: increment(amount),
-        totalCharged: increment(amount),
-        lastCharge: new Date().toISOString()
-      }, { merge: true });
-    } catch (e) {
-      console.log('Could not save charge:', e.message);
-    }
-  };
-
   useEffect(() => {
     loadBalance();
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (secondsRef.current) clearInterval(secondsRef.current);
-
-    intervalRef.current = setInterval(() => {
-      if (!isCharging) return;
-      setTotalCharged(prev => prev + CHARGE_RATE);
-      setSessionCost(prev => prev + CHARGE_RATE);
-      setWithdrawalBalance(prev => prev + CHARGE_RATE);
-      saveCharge(CHARGE_RATE);
-    }, CHARGE_INTERVAL);
-
-    secondsRef.current = setInterval(() => {
-      setSessionSeconds(prev => prev + 5);
-    }, 5000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (secondsRef.current) clearInterval(secondsRef.current);
-    };
-  }, [isCharging]);
+  }, []);
 
   const withdraw = async (adminId, pin, amount) => {
     if (adminId !== ADMIN_ID) return { success: false, message: 'Invalid Admin ID' };

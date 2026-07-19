@@ -528,7 +528,7 @@ export default function AdminDashboard() {
         <h2 style={{ color: '#003366', margin: '0', fontSize: '16px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
           FEDERAL UNIVERSITY OF PETROLEUM RESOURCES 
         </h2>
-        <h3 style={{ color: '#003366', margin: '2px 0', fontSize: '15px' }}>NAMTLS STUDENT E-VOTING</h3>
+        <h3 style={{ color: '#003366', margin: '2px 0', fontSize: '15px' }}>NAMATL STUDENT E-VOTING</h3>
         <p style={{ color: '#666', margin: '0', fontSize: '13px' }}>{settings.year} OFFICIAL RESULT</p>
       </div>
 

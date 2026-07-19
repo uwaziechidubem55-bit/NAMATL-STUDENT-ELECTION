@@ -500,12 +500,51 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* === RESULTS VIEW === */}
-          {activeView === 'results' && (
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
-                📈 Election Results
-              </h2>
+         {/* === RESULTS VIEW === */}
+{activeView === 'results' && (
+  <div style={cardStyle}>
+    
+    {/* LOGO HEADER - SIDE BY SIDE */}
+    <div style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'space-between',
+      gap: '12px', 
+      marginBottom: '20px', 
+      borderBottom: '2px solid #FFD700', 
+      paddingBottom: '16px',
+      flexWrap: 'wrap'
+    }}>
+      {/* YOUR NORMAL LOGO - LEFT */}
+      <img 
+        src="/logo.png"  // <-- Put your own logo in public/logo.png
+        alt="My Logo"
+        style={{ width: '65px', height: '65px', objectFit: 'contain' }}
+        onError={(e) => { e.target.style.display = 'none'; }} // hides if no logo
+      />
+
+      {/* CENTER TEXT - FULL SCHOOL NAME */}
+      <div style={{ textAlign: 'center', flex: 1 }}>
+        <h2 style={{ color: '#003366', margin: '0', fontSize: '16px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+          FEDERAL UNIVERSITY OF PETROLEUM RESOURCES 
+        </h2>
+        <h3 style={{ color: '#003366', margin: '2px 0', fontSize: '15px' }}>NAMTLS STUDENT E-VOTING</h3>
+        <p style={{ color: '#666', margin: '0', fontSize: '13px' }}>{settings.year} OFFICIAL RESULT</p>
+      </div>
+
+      {/* SCHOOL LOGO - RIGHT - CHANGED TO .JPG */}
+      <img 
+        src="/school/20260719_133821.jpg"  // <-- CHANGED THIS TO YOUR JPG FILE
+        alt="School Logo"
+        style={{ width: '65px', height: '65px', objectFit: 'contain' }}
+        onError={(e) => { e.target.style.display = 'none'; }} // hides if no logo
+      />
+    </div>
+    {/* END LOGO HEADER */}
+
+    <h2 style={{ color: '#003366', margin: '0 0 20px', textAlign: 'center', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
+      📈 Election Results
+    </h2>
 
               {!settings.isActive ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#f59e0b' }}>

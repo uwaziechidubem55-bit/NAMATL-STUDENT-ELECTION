@@ -3,14 +3,14 @@ import { setDoc, doc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
+  if (req.method!== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
   const flutterwaveSignature = req.headers['verif-hash'];
-  const mySecretHash = process.env.Flutterwave_WEBHOOK_SECRET;
+  const mySecretHash = process.env.Flutterwave_WEBHOOK_SECRET; // KEEPING YOUR NAME
 
-  if (!flutterwaveSignature || flutterwaveSignature !== mySecretHash) {
+  if (!flutterwaveSignature || flutterwaveSignature!== mySecretHash) {
     console.log('Webhook verification failed');
     return res.status(401).json({ message: 'Unauthorized' });
   }
@@ -23,6 +23,12 @@ export default async function handler(req, res) {
       const tx_ref = payload.data.tx_ref;
       const transaction_id = payload.data.id;
       const academicYear = tx_ref.split('-')[2];
+
+      // ADDED: Prevent small payments
+      if (Number(amount) < 25000) {
+        console.log(`Payment rejected: Amount N${amount} is less than 25000`);
+        return res.status(400).json({ message: 'Amount less than 25000' });
+      }
 
       console.log(`Payment received for ${academicYear}: N${amount}`);
 

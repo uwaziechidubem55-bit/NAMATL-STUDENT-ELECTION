@@ -1,15 +1,10 @@
-// NAMTLS Withdrawal API v3.1 - Waits For Flutterwave Real Status
+// NAMTLS Withdrawal API v3.2 - Waits For Flutterwave Real Status + Deducts Balance
+import { doc, setDoc, increment } from 'firebase/firestore';
+import { db } from '../firebase';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
-  }
-
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
   }
 
   try {
@@ -22,21 +17,21 @@ export default async function handler(req, res) {
     const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY;
 
     if (!FLUTTERWAVE_SECRET) {
-      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel environment variables.' });
+      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in environment variables.' });
     }
 
-    if (Number(amount) < 100) {
+    const withdrawalAmount = Number(amount);
+    if (withdrawalAmount < 100) {
       return res.status(400).json({ success: false, message: 'Minimum withdrawal is 100' });
     }
-
-    if (Number(amount) > 1000000) {
+    if (withdrawalAmount > 1000000) {
       return res.status(400).json({ success: false, message: 'Maximum withdrawal is 1,000,000' });
     }
 
     const OPAY_BANK_CODE = '100004';
     const reference = `NAMTLS-WD-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
 
-    console.log(`[NAMTLS] Initiating transfer: $${amount} to ${accountNumber}`);
+    console.log(`[NAMTLS] Initiating transfer: N${withdrawalAmount} to ${accountNumber}`);
 
     // STEP 1: Submit transfer to Flutterwave
     const transferResponse = await fetch('https://api.flutterwave.com/v3/transfers', {
@@ -48,7 +43,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         account_bank: OPAY_BANK_CODE,
         account_number: accountNumber.toString(),
-        amount: Number(amount),
+        amount: withdrawalAmount,
         narration: narration || 'NAMTLS E-Voting Withdrawal',
         currency: 'NGN',
         reference: reference,
@@ -97,10 +92,18 @@ export default async function handler(req, res) {
         console.log(`[NAMTLS] Poll attempt ${attempts}/${maxAttempts}: status = ${finalStatus}`);
 
         if (finalStatus === 'successful') {
+          // CRITICAL: DEDUCT FROM BALANCE ONLY WHEN SUCCESSFUL
+          await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
+            balance: increment(-withdrawalAmount),
+            totalWithdrawn: increment(withdrawalAmount),
+            lastWithdrawalAt: new Date().toISOString(),
+            lastWithdrawalRef: reference
+          }, { merge: true });
+
           return res.status(200).json({
             success: true,
             verified: true,
-            message: `CONFIRMED: $${Number(amount).toLocaleString()} successfully sent to Opay ${accountNumber}! Ref: ${reference}`,
+            message: `CONFIRMED: N${withdrawalAmount.toLocaleString()} successfully sent to Opay ${accountNumber}! Ref: ${reference}`,
             reference: reference,
             flutterwaveId: transferId,
             status: 'successful'
@@ -143,7 +146,7 @@ export default async function handler(req, res) {
     console.error('[NAMTLS] Server error:', e.message);
     return res.status(500).json({
       success: false,
-      message: `Server Error: ${e.message}. Check Vercel function logs.`
+      message: `Server Error: ${e.message}. Check function logs.`
     });
   }
 }

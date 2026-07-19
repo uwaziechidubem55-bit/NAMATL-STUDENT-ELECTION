@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, storage } from '../firebase';
 import { collection, addDoc, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext'; // KEEP for withdraw + activation
 
 const MAX_PER_POSITION = 5;
@@ -48,7 +48,6 @@ export default function AdminDashboard() {
   // General settings
   const [siteName, setSiteName] = useState('NAMATL STUDENT E-VOTING');
   const [maxPerPosition, setMaxPerPosition] = useState(MAX_PER_POSITION);
-  const [enableDataCharge, setEnableDataCharge] = useState(true);
 
   // Support messages
   const [supportMessages, setSupportMessages] = useState([]);

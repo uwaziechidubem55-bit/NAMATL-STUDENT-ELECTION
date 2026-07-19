@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, storage } from '../firebase';
 import { collection, addDoc, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { useDataCharge } from '../context/DataChargeContext';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
+import { useDataCharge } from '../context/DataChargeContext'; // KEEP for withdraw + activation
 
 const MAX_PER_POSITION = 5;
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { withdrawalBalance, withdraw, checkActivationCost, processActivationPayment, loadBalance, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT } = useDataCharge();
+  const { withdrawalBalance, withdraw, checkActivationCost, processActivationPayment, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT } = useDataCharge();
 
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -56,7 +56,6 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     loadData();
-    loadBalance();
     loadSupportMessages();
   }, []);
 
@@ -831,29 +830,6 @@ export default function AdminDashboard() {
                 <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
                   <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Max Candidates Per Position</label>
                   <input type="number" value={maxPerPosition} onChange={(e) => setMaxPerPosition(parseInt(e.target.value))} style={inputStyle} />
-                </div>
-
-                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontWeight: 'bold', color: '#333' }}>Enable Data Charging</div>
-                    <div style={{ fontSize: '13px', color: '#666' }}>Charge users ₦20 per 5 seconds</div>
-                  </div>
-                  <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '28px' }}>
-                    <input type="checkbox" checked={enableDataCharge} onChange={(e) => setEnableDataCharge(e.target.checked)}
-                      style={{ opacity: 0, width: 0, height: 0 }} />
-                    <span style={{
-                      position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                      background: enableDataCharge ? '#16a34a' : '#ccc',
-                      borderRadius: '28px', transition: '0.3s'
-                    }}>
-                      <span style={{
-                        position: 'absolute', height: '22px', width: '22px', borderRadius: '50%',
-                        background: 'white', top: '3px',
-                        left: enableDataCharge ? '25px' : '3px',
-                        transition: '0.3s'
-                      }}></span>
-                    </span>
-                  </label>
                 </div>
 
                 <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>

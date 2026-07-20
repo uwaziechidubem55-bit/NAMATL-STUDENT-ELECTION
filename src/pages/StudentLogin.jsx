@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { db } from './firebase'; // Make sure this path is correct
+import { db } from '../firebase'; // Make sure this path is correct
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export default function StudentLogin() {

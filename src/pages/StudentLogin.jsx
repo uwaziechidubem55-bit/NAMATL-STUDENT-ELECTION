@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { db } from './firebase'; // <-- make sure you have this
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from './firebase'; // Make sure this path is correct
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export default function StudentLogin() {
   const [authMode, setAuthMode] = useState('signup');
@@ -9,7 +9,7 @@ export default function StudentLogin() {
   const [loginForm, setLoginForm] = useState({ matric: '' });
   const [message, setMessage] = useState({ type: '', text: '' });
   
-  // NEW STATES FOR VERIFICATION
+  // ADDED FOR VERIFICATION ONLY
   const [showVerifyPopup, setShowVerifyPopup] = useState(false);
   const [showKeyPopup, setShowKeyPopup] = useState(false);
   const [tempStudent, setTempStudent] = useState(null);
@@ -24,13 +24,13 @@ export default function StudentLogin() {
     setTimeout(() => setMessage({ type: '', text: '' }), 5000);
   };
 
-  // 1. Get first 5 digits from matric
+  // ADDED: Get first 5 digits from matric
   const getFirst5Digits = (matric) => {
     const numbers = matric.match(/\d+/g).join(''); 
     return numbers.substring(0, 5);
   }
 
-  // 2. Generate unique key once
+  // ADDED: Generate unique key once
   const generateUniqueKey = () => {
     const random = Math.random().toString(36).substring(2, 12).toUpperCase();
     return `${random}-NAMATLEC-uniquekey`;
@@ -42,7 +42,7 @@ export default function StudentLogin() {
     return regex.test(matric.trim());
   };
 
-  const handleSignup = async () => {
+  const handleSignup = async () => { // ADDED async
     if (!form.name || !form.matric || !form.level) {
       showMessage('error', 'Please fill all fields');
       return;
@@ -53,7 +53,7 @@ export default function StudentLogin() {
       return;
     }
     try {
-      // CHECK FIREBASE IF MATRIC EXISTS
+      // CHANGED: Check Firebase instead of localStorage
       const studentRef = doc(db, "students", form.matric);
       const studentSnap = await getDoc(studentRef);
       
@@ -63,7 +63,7 @@ export default function StudentLogin() {
         return;
       }
       
-      // Save temp and show 5 digit verification popup
+      // CHANGED: Don't save yet. Show 5 digit popup first
       setTempStudent({ ...form });
       setShowVerifyPopup(true);
       
@@ -72,16 +72,16 @@ export default function StudentLogin() {
     }
   };
 
-  // NEW: Handle 5 digit verification after signup
+  // ADDED: Handle 5 digit verification after signup
   const handleVerifyCode = async () => {
     const correctCode = getFirst5Digits(tempStudent.matric);
     if(fiveDigitCode === correctCode){
       const key = generateUniqueKey();
       const newStudent = { ...tempStudent, uniqueKey: key, hasVoted: false };
       
-      // SAVE TO FIREBASE
+      // CHANGED: Save to Firebase
       await setDoc(doc(db, "students", tempStudent.matric), newStudent);
-      localStorage.setItem('studentInfo', JSON.stringify(newStudent)); // keep for session
+      localStorage.setItem('studentInfo', JSON.stringify(newStudent)); // Only for session
       
       setGeneratedKey(key);
       setShowVerifyPopup(false);
@@ -92,7 +92,7 @@ export default function StudentLogin() {
     }
   }
 
-  const handleLogin = async () => {
+  const handleLogin = async () => { // ADDED async
     if (!loginForm.matric) {
       showMessage('error', 'Please fill Matric Number');
       return;
@@ -103,7 +103,7 @@ export default function StudentLogin() {
       return;
     }
     try {
-      // CHECK FIREBASE
+      // CHANGED: Check Firebase
       const studentRef = doc(db, "students", loginForm.matric);
       const studentSnap = await getDoc(studentRef);
       
@@ -113,7 +113,7 @@ export default function StudentLogin() {
       }
       
       const foundStudent = studentSnap.data();
-      // NEW: Don't go straight to portal. Ask for unique key first
+      // CHANGED: Don't go straight to portal. Ask for unique key first
       setTempStudent(foundStudent);
       setShowKeyPopup(true);
       
@@ -122,9 +122,9 @@ export default function StudentLogin() {
     }
   };
 
-  // NEW: Verify unique key before voting portal
+  // ADDED: Verify unique key before voting portal
   const handleKeyAccess = () => {
-    if(uniqueKeyInput === tempStudent.uniqueKey){
+    if(uniqueKeyInput.trim() === tempStudent.uniqueKey){
       localStorage.setItem('studentInfo', JSON.stringify(tempStudent));
       setShowKeyPopup(false);
       setUniqueKeyInput('');
@@ -200,7 +200,7 @@ export default function StudentLogin() {
         </div>
       </div>
 
-      {/* POPUP 1: 5 DIGIT CODE AFTER REGISTRATION */}
+      {/* ADDED POPUP 1: 5 DIGIT CODE AFTER REGISTRATION */}
       {showVerifyPopup && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '350px' }}>
@@ -220,7 +220,7 @@ export default function StudentLogin() {
         </div>
       )}
 
-      {/* POPUP 2: UNIQUE KEY FOR VOTING PORTAL */}
+      {/* ADDED POPUP 2: UNIQUE KEY FOR VOTING PORTAL */}
       {showKeyPopup && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '350px' }}>

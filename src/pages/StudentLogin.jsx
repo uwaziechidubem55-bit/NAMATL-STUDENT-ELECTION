@@ -9,7 +9,6 @@ export default function StudentLogin() {
   const [loginForm, setLoginForm] = useState({ matric: '' });
   const [message, setMessage] = useState({ type: '', text: '' });
   
-  // ADDED FOR VERIFICATION ONLY
   const [showVerifyPopup, setShowVerifyPopup] = useState(false);
   const [showKeyPopup, setShowKeyPopup] = useState(false);
   const [tempStudent, setTempStudent] = useState(null);
@@ -24,25 +23,27 @@ export default function StudentLogin() {
     setTimeout(() => setMessage({ type: '', text: '' }), 5000);
   };
 
-  // ADDED: Get first 5 digits from matric
+  // FIXED: Get first 5 digits from matric - won't crash now
   const getFirst5Digits = (matric) => {
-    const numbers = matric.match(/\d+/g).join(''); 
-    return numbers.substring(0, 5);
+    const numbers = matric.match(/\d+/g);
+    if (!numbers) return '';
+    return numbers.join('').substring(0, 5);
   }
 
-  // ADDED: Generate unique key once
+  // FIXED: Firestore can't use / in doc ID. We encode it
+  const getDocId = (matric) => matric.replace(/\//g, '_');
+
   const generateUniqueKey = () => {
     const random = Math.random().toString(36).substring(2, 12).toUpperCase();
     return `${random}-NAMATLEC-uniquekey`;
   }
 
-  // STRICT VALIDATION: Must be CAPITAL. Accepts CMOS or CMO/MTL
   const isValidMatric = (matric) => {
     const regex = /^(CMOS|CMO\/MTL)\/\d{5}\/\d{4}$/;
     return regex.test(matric.trim());
   };
 
-  const handleSignup = async () => { // ADDED async
+  const handleSignup = async () => {
     if (!form.name || !form.matric || !form.level) {
       showMessage('error', 'Please fill all fields');
       return;
@@ -53,8 +54,8 @@ export default function StudentLogin() {
       return;
     }
     try {
-      // CHANGED: Check Firebase instead of localStorage
-      const studentRef = doc(db, "students", form.matric);
+      const docId = getDocId(form.matric); // USE ENCODED ID
+      const studentRef = doc(db, "students", docId);
       const studentSnap = await getDoc(studentRef);
       
       if (studentSnap.exists()) {
@@ -63,7 +64,6 @@ export default function StudentLogin() {
         return;
       }
       
-      // CHANGED: Don't save yet. Show 5 digit popup first
       setTempStudent({ ...form });
       setShowVerifyPopup(true);
       
@@ -72,27 +72,26 @@ export default function StudentLogin() {
     }
   };
 
-  // ADDED: Handle 5 digit verification after signup
   const handleVerifyCode = async () => {
     const correctCode = getFirst5Digits(tempStudent.matric);
     if(fiveDigitCode === correctCode){
       const key = generateUniqueKey();
       const newStudent = { ...tempStudent, uniqueKey: key, hasVoted: false };
       
-      // CHANGED: Save to Firebase
-      await setDoc(doc(db, "students", tempStudent.matric), newStudent);
-      localStorage.setItem('studentInfo', JSON.stringify(newStudent)); // Only for session
+      const docId = getDocId(tempStudent.matric); // USE ENCODED ID
+      await setDoc(doc(db, "students", docId), newStudent);
+      localStorage.setItem('studentInfo', JSON.stringify(newStudent));
       
       setGeneratedKey(key);
       setShowVerifyPopup(false);
-      setShowKeyPopup(true); // Show them their key once
+      setShowKeyPopup(true);
       setFiveDigitCode('');
     } else {
       showMessage('error', 'Incorrect 5 digit code');
     }
   }
 
-  const handleLogin = async () => { // ADDED async
+  const handleLogin = async () => {
     if (!loginForm.matric) {
       showMessage('error', 'Please fill Matric Number');
       return;
@@ -103,8 +102,8 @@ export default function StudentLogin() {
       return;
     }
     try {
-      // CHANGED: Check Firebase
-      const studentRef = doc(db, "students", loginForm.matric);
+      const docId = getDocId(loginForm.matric); // USE ENCODED ID
+      const studentRef = doc(db, "students", docId);
       const studentSnap = await getDoc(studentRef);
       
       if (!studentSnap.exists()) {
@@ -113,7 +112,6 @@ export default function StudentLogin() {
       }
       
       const foundStudent = studentSnap.data();
-      // CHANGED: Don't go straight to portal. Ask for unique key first
       setTempStudent(foundStudent);
       setShowKeyPopup(true);
       
@@ -122,13 +120,12 @@ export default function StudentLogin() {
     }
   };
 
-  // ADDED: Verify unique key before voting portal
   const handleKeyAccess = () => {
     if(uniqueKeyInput.trim() === tempStudent.uniqueKey){
       localStorage.setItem('studentInfo', JSON.stringify(tempStudent));
       setShowKeyPopup(false);
       setUniqueKeyInput('');
-      navigate('/student'); // Only now go to voting portal
+      navigate('/student');
     } else {
       showMessage('error', 'Incorrect Unique Code. Access Denied');
     }
@@ -200,7 +197,6 @@ export default function StudentLogin() {
         </div>
       </div>
 
-      {/* ADDED POPUP 1: 5 DIGIT CODE AFTER REGISTRATION */}
       {showVerifyPopup && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '350px' }}>
@@ -220,7 +216,6 @@ export default function StudentLogin() {
         </div>
       )}
 
-      {/* ADDED POPUP 2: UNIQUE KEY FOR VOTING PORTAL */}
       {showKeyPopup && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '350px' }}>

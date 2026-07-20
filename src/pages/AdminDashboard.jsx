@@ -500,8 +500,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-      
-      
        {/* === RESULTS VIEW === */}
           {activeView === 'results' && (
             <div style={cardStyle}>

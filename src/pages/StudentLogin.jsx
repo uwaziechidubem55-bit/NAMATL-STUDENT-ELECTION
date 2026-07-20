@@ -1,11 +1,22 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { db } from './firebase'; // <-- make sure you have this
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function StudentLogin() {
   const [authMode, setAuthMode] = useState('signup');
   const [form, setForm] = useState({ name: '', matric: '', level: '' });
   const [loginForm, setLoginForm] = useState({ matric: '' });
   const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // NEW STATES FOR VERIFICATION
+  const [showVerifyPopup, setShowVerifyPopup] = useState(false);
+  const [showKeyPopup, setShowKeyPopup] = useState(false);
+  const [tempStudent, setTempStudent] = useState(null);
+  const [fiveDigitCode, setFiveDigitCode] = useState('');
+  const [uniqueKeyInput, setUniqueKeyInput] = useState('');
+  const [generatedKey, setGeneratedKey] = useState('');
+  
   const navigate = useNavigate();
 
   const showMessage = (type, text) => {
@@ -13,62 +24,115 @@ export default function StudentLogin() {
     setTimeout(() => setMessage({ type: '', text: '' }), 5000);
   };
 
+  // 1. Get first 5 digits from matric
+  const getFirst5Digits = (matric) => {
+    const numbers = matric.match(/\d+/g).join(''); 
+    return numbers.substring(0, 5);
+  }
+
+  // 2. Generate unique key once
+  const generateUniqueKey = () => {
+    const random = Math.random().toString(36).substring(2, 12).toUpperCase();
+    return `${random}-NAMATLEC-uniquekey`;
+  }
+
   // STRICT VALIDATION: Must be CAPITAL. Accepts CMOS or CMO/MTL
   const isValidMatric = (matric) => {
     const regex = /^(CMOS|CMO\/MTL)\/\d{5}\/\d{4}$/;
     return regex.test(matric.trim());
   };
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
     if (!form.name || !form.matric || !form.level) {
       showMessage('error', 'Please fill all fields');
       return;
     }
-    
+
     if (!isValidMatric(form.matric)) {
       showMessage('error', 'Access Denied. Use Correct Format');
       return;
     }
     try {
-      const students = JSON.parse(localStorage.getItem('students')) || [];
-      if (students.find(s => s.matric === form.matric)) {
+      // CHECK FIREBASE IF MATRIC EXISTS
+      const studentRef = doc(db, "students", form.matric);
+      const studentSnap = await getDoc(studentRef);
+      
+      if (studentSnap.exists()) {
         showMessage('error', 'Matric Number already registered. Please Login.');
         setAuthMode('login');
         return;
       }
-      const newStudent = { ...form, hasVoted: false };
-      localStorage.setItem('students', JSON.stringify([...students, newStudent]));
-      localStorage.setItem('studentInfo', JSON.stringify(newStudent));
-      localStorage.setItem('voted', 'false');
-      navigate('/student');
+      
+      // Save temp and show 5 digit verification popup
+      setTempStudent({ ...form });
+      setShowVerifyPopup(true);
+      
     } catch (e) {
-      showMessage('error', 'ERROR: Could not save to localStorage: ' + e.message);
+      showMessage('error', 'ERROR: ' + e.message);
     }
   };
 
-  const handleLogin = () => {
+  // NEW: Handle 5 digit verification after signup
+  const handleVerifyCode = async () => {
+    const correctCode = getFirst5Digits(tempStudent.matric);
+    if(fiveDigitCode === correctCode){
+      const key = generateUniqueKey();
+      const newStudent = { ...tempStudent, uniqueKey: key, hasVoted: false };
+      
+      // SAVE TO FIREBASE
+      await setDoc(doc(db, "students", tempStudent.matric), newStudent);
+      localStorage.setItem('studentInfo', JSON.stringify(newStudent)); // keep for session
+      
+      setGeneratedKey(key);
+      setShowVerifyPopup(false);
+      setShowKeyPopup(true); // Show them their key once
+      setFiveDigitCode('');
+    } else {
+      showMessage('error', 'Incorrect 5 digit code');
+    }
+  }
+
+  const handleLogin = async () => {
     if (!loginForm.matric) {
       showMessage('error', 'Please fill Matric Number');
       return;
     }
-    
+
     if (!isValidMatric(loginForm.matric)) {
       showMessage('error', 'Access Denied. Use Correct Format');
       return;
     }
     try {
-      const students = JSON.parse(localStorage.getItem('students')) || [];
-      const foundStudent = students.find(s => s.matric === loginForm.matric);
-      if (!foundStudent) {
+      // CHECK FIREBASE
+      const studentRef = doc(db, "students", loginForm.matric);
+      const studentSnap = await getDoc(studentRef);
+      
+      if (!studentSnap.exists()) {
         showMessage('error', 'Matric Number not found. Please Register.');
         return;
       }
-      localStorage.setItem('studentInfo', JSON.stringify(foundStudent));
-      navigate('/student');
+      
+      const foundStudent = studentSnap.data();
+      // NEW: Don't go straight to portal. Ask for unique key first
+      setTempStudent(foundStudent);
+      setShowKeyPopup(true);
+      
     } catch (e) {
-      showMessage('error', 'ERROR: Could not read localStorage: ' + e.message);
+      showMessage('error', 'ERROR: ' + e.message);
     }
   };
+
+  // NEW: Verify unique key before voting portal
+  const handleKeyAccess = () => {
+    if(uniqueKeyInput === tempStudent.uniqueKey){
+      localStorage.setItem('studentInfo', JSON.stringify(tempStudent));
+      setShowKeyPopup(false);
+      setUniqueKeyInput('');
+      navigate('/student'); // Only now go to voting portal
+    } else {
+      showMessage('error', 'Incorrect Unique Code. Access Denied');
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'Arial, sans-serif' }}>
@@ -135,6 +199,61 @@ export default function StudentLogin() {
           <Link to="/" style={{ color: '#2563eb', fontSize: '13px' }}>Back to Home</Link>
         </div>
       </div>
+
+      {/* POPUP 1: 5 DIGIT CODE AFTER REGISTRATION */}
+      {showVerifyPopup && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '350px' }}>
+            <h2 style={{ color: '#003366', marginBottom: '12px' }}>Verification</h2>
+            <p style={{ marginBottom: '16px', fontSize: '14px' }}>Enter your 5 digit code</p>
+            <input 
+              value={fiveDigitCode}
+              onChange={(e) => setFiveDigitCode(e.target.value)}
+              placeholder="Enter your 5 digit code"
+              maxLength={5}
+              style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '16px', boxSizing: 'border-box' }}
+            />
+            <button onClick={handleVerifyCode} style={{ width: '100%', padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+              Verify
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP 2: UNIQUE KEY FOR VOTING PORTAL */}
+      {showKeyPopup && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '350px' }}>
+            <h2 style={{ color: '#003366', marginBottom: '12px' }}>
+              {generatedKey ? 'Your Unique Code - Save This' : 'Access Voting Portal'}
+            </h2>
+            {generatedKey ? (
+              <>
+                <p style={{ marginBottom: '16px', fontSize: '14px', fontWeight: 'bold', background: '#f3f4f6', padding: '10px', borderRadius: '4px', wordBreak: 'break-all' }}>
+                  {generatedKey}
+                </p>
+                <button onClick={() => { setShowKeyPopup(false); navigate('/student'); }} style={{ width: '100%', padding: '12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+                  Continue to Portal
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ marginBottom: '16px', fontSize: '14px' }}>Paste your unique code</p>
+                <input 
+                  value={uniqueKeyInput}
+                  onChange={(e) => setUniqueKeyInput(e.target.value)}
+                  placeholder="Paste your unique code"
+                  style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', marginBottom: '16px', boxSizing: 'border-box' }}
+                />
+                <button onClick={handleKeyAccess} style={{ width: '100%', padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+                  Access Voting Portal
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

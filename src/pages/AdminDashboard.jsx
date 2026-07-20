@@ -500,12 +500,12 @@ export default function AdminDashboard() {
             </div>
           )}
 
-       {/* === RESULTS VIEW === */}
+     {/* === RESULTS VIEW === */}
           {activeView === 'results' && (
-            <div style={cardStyle}>
+            <div style={cardStyle} className="results-print-area">
               
               {/* LOGO HEADER - CENTERED */}
-              <div style={{ 
+              <div className="print-header" style={{ 
                 display: 'flex', 
                 flexDirection: 'column',
                 alignItems: 'center', 
@@ -534,8 +534,8 @@ export default function AdminDashboard() {
                 </div>
               </div>
               
-              {/* TITLE + PRINT BUTTON ROW */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              {/* TITLE + PRINT BUTTON ROW - HIDES ON PRINT */}
+              <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ color: '#003366', margin: '0' }}>📈 Election Results</h2>
                 <button 
                   onClick={() => window.print()}
@@ -595,12 +595,23 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* PRINT CSS - HIDES BUTTONS/SIDEBAR WHEN PRINTING */}
+              {/* PRINT CSS - ONLY SHOWS HEADER + RESULTS */}
               <style>{`
                 @media print {
-                  div[style*="background: #003366"] { display: none !important; }
-                  button { display: none !important; }
                   body { background: white !important; }
+                  /* HIDE EVERYTHING */
+                  .no-print, 
+                  div[style*="background: #003366"],
+                  nav, header, footer { display: none !important; }
+                  
+                  /* ONLY SHOW RESULTS AREA */
+                  .results-print-area { 
+                    box-shadow: none !important; 
+                    border: none !important; 
+                    padding: 0 !important;
+                    margin: 0 !important;
+                  }
+                  .print-header { border-bottom: 2px solid #FFD700 !important; }
                 }
                 @keyframes spin { from {transform: rotate(0deg)} to {transform: rotate(360deg)} }
                 @keyframes fadeIn { from {opacity: 0; transform: translateY(10px)} to {opacity: 1; transform: translateY(0)} }

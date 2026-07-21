@@ -17,7 +17,7 @@ export default function StudentDashboard() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const savedStudent = JSON.parse(localStorage.getItem('studentInfo'));
+        const savedStudent = JSON.parse(localStorage.getItem('studentSession'));
         if (!savedStudent) {
           setError('No student data. Please Login.');
           setLoading(false);

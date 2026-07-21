@@ -217,7 +217,7 @@ export default function StudentLogin() {
             <input
               value={fiveDigitCode}
               onChange={(e) => setFiveDigitCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
-              placeholder="e.g. 11639"
+              placeholder="e.g. XXXXX"
               maxLength={5}
               style={inputStyle}
               disabled={loading}

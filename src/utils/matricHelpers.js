@@ -43,7 +43,9 @@ export function getDocId(matric) {
  */
 export function isValidMatricFormat(matric) {
   const cleaned = matric.trim().toUpperCase();
-  // Prefix followed by /, then 4-5 digits, optional / and more digits
-  return /^[A-Z]+\/[A-Z]*\d{4,5}\/\d{4}$/.test(cleaned) ||
-         /^[A-Z]+\/\d{4,5}\/\d{4}$/.test(cleaned);
+  // Handles both formats:
+  //   CMOS/11639/2023       (no middle alphabetic segment)
+  //   CMO/MTL/00361/2025    (with middle alphabetic segment like /MTL/)
+  //   CMO/MTL/1709/2025     (4-digit middle → will be normalized later)
+  return /^[A-Z]+(\/[A-Z]+)?\/\d{4,5}\/\d{4}$/.test(cleaned);
 }

@@ -126,7 +126,7 @@ export default function StudentLogin() {
               disabled={loading}
             />
             <input
-              placeholder="Matric Number (e.g. CMOS/11639/2023)"
+              placeholder="Matric Number (e.g. CMOS/XXXXX/2023)"
               value={form.matric}
               onChange={(e) => setForm({ ...form, matric: e.target.value })}
               style={inputStyle}

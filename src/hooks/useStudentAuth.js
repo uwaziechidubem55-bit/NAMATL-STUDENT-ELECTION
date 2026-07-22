@@ -4,9 +4,6 @@ import { db } from '../firebase';
 import ALLOWED_MATRIC_NUMBER from '../config/students';
 import { normalizeMatric, getFirst5Digits, getDocId, isValidMatricFormat } from '../utils/matricHelpers';
 
-/**
- * Generates a cryptographically secure unique key.
- */
 function generateUniqueKey() {
   const randomPart = crypto.randomUUID().replace(/-/g, '').substring(0, 10).toUpperCase();
   return `${randomPart}-NAMATLEC`;
@@ -17,16 +14,24 @@ export default function useStudentAuth() {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   const showMessage = (type, text) => {
+    console.log(`[useStudentAuth] Message: ${type} — ${text}`);
     setMessage({ type, text });
     setTimeout(() => setMessage({ type: '', text: '' }), 5000);
   };
 
   const isAllowedMatric = (matric) => {
-    return ALLOWED_MATRIC_NUMBER.includes(matric);
+    console.log('[useStudentAuth] isAllowedMatric checking:', JSON.stringify(matric));
+    // Debug: log first few entries to confirm format
+    console.log('[useStudentAuth] First 5 allowed entries:', ALLOWED_MATRIC_NUMBER.slice(0, 5));
+    const found = ALLOWED_MATRIC_NUMBER.includes(matric);
+    console.log('[useStudentAuth] isAllowedMatric result:', found);
+    return found;
   };
 
   const handleSignup = async (formData) => {
     const { name, matric, level } = formData;
+    
+    console.log('[useStudentAuth] handleSignup called with matric:', JSON.stringify(matric));
     
     if (!name || !matric || !level) {
       showMessage('error', 'Please fill all fields');
@@ -34,14 +39,15 @@ export default function useStudentAuth() {
     }
 
     const rawMatric = matric.trim().toUpperCase();
+    console.log('[useStudentAuth] rawMatric:', JSON.stringify(rawMatric));
     
     if (!isValidMatricFormat(rawMatric)) {
       showMessage('error', 'Invalid matric number format');
       return { success: false };
     }
 
-    // Normalize: convert 4-digit middle to 5-digit with leading zero
     const normalizedMatric = normalizeMatric(rawMatric);
+    console.log('[useStudentAuth] normalizedMatric:', JSON.stringify(normalizedMatric));
 
     if (!isAllowedMatric(normalizedMatric)) {
       showMessage('error', 'Access Denied. Matric Number not on voter list');
@@ -51,6 +57,7 @@ export default function useStudentAuth() {
     setLoading(true);
     try {
       const docId = getDocId(normalizedMatric);
+      console.log('[useStudentAuth] Checking Firestore docId:', docId);
       const studentRef = doc(db, 'students', docId);
       const studentSnap = await getDoc(studentRef);
 
@@ -60,7 +67,6 @@ export default function useStudentAuth() {
         return { success: false, reason: 'already_registered' };
       }
 
-      // Return data needed for verification popup (no Firebase write yet)
       setLoading(false);
       return {
         success: true,
@@ -68,6 +74,7 @@ export default function useStudentAuth() {
         tempStudent: { name, matric: normalizedMatric, level },
       };
     } catch (e) {
+      console.error('[useStudentAuth] Signup Firestore error:', e);
       showMessage('error', 'ERROR: ' + e.message);
       setLoading(false);
       return { success: false };
@@ -75,7 +82,10 @@ export default function useStudentAuth() {
   };
 
   const completeSignup = async (tempStudent, fiveDigitCode) => {
+    console.log('[useStudentAuth] completeSignup — matric:', tempStudent.matric, 'code entered:', fiveDigitCode);
+    
     const correctCode = getFirst5Digits(tempStudent.matric);
+    console.log('[useStudentAuth] correct code from matric:', correctCode);
     
     if (fiveDigitCode !== correctCode) {
       showMessage('error', 'Incorrect verification code');
@@ -95,9 +105,10 @@ export default function useStudentAuth() {
       };
 
       const docId = getDocId(tempStudent.matric);
+      console.log('[useStudentAuth] Writing to Firestore docId:', docId);
       await setDoc(doc(db, 'students', docId), newStudent);
+      console.log('[useStudentAuth] Firestore write successful');
 
-      // Only store non-sensitive info in localStorage
       const sessionInfo = {
         name: newStudent.name,
         matric: newStudent.matric,
@@ -105,10 +116,12 @@ export default function useStudentAuth() {
         hasVoted: newStudent.hasVoted,
       };
       localStorage.setItem('studentSession', JSON.stringify(sessionInfo));
+      console.log('[useStudentAuth] Session saved to localStorage');
 
       setLoading(false);
       return { success: true, phase: 'key', generatedKey: key };
     } catch (e) {
+      console.error('[useStudentAuth] completeSignup error:', e);
       showMessage('error', 'ERROR: ' + e.message);
       setLoading(false);
       return { success: false };
@@ -116,12 +129,15 @@ export default function useStudentAuth() {
   };
 
   const handleLogin = async (matric) => {
+    console.log('[useStudentAuth] handleLogin called with matric:', JSON.stringify(matric));
+    
     if (!matric) {
       showMessage('error', 'Please enter your Matric Number');
       return { success: false };
     }
 
     const rawMatric = matric.trim().toUpperCase();
+    console.log('[useStudentAuth] rawMatric:', JSON.stringify(rawMatric));
 
     if (!isValidMatricFormat(rawMatric)) {
       showMessage('error', 'Invalid matric number format');
@@ -129,8 +145,8 @@ export default function useStudentAuth() {
     }
 
     const normalizedMatric = normalizeMatric(rawMatric);
+    console.log('[useStudentAuth] normalizedMatric:', JSON.stringify(normalizedMatric));
 
-    // Check if matric is even on the allowed list (quick reject)
     if (!isAllowedMatric(normalizedMatric)) {
       showMessage('error', 'Access Denied. Matric Number not on voter list');
       return { success: false };
@@ -139,6 +155,7 @@ export default function useStudentAuth() {
     setLoading(true);
     try {
       const docId = getDocId(normalizedMatric);
+      console.log('[useStudentAuth] Looking up Firestore docId:', docId);
       const studentRef = doc(db, 'students', docId);
       const studentSnap = await getDoc(studentRef);
 
@@ -149,9 +166,12 @@ export default function useStudentAuth() {
       }
 
       const foundStudent = studentSnap.data();
+      console.log('[useStudentAuth] Found student:', foundStudent.name);
+      
       setLoading(false);
       return { success: true, phase: 'key', tempStudent: foundStudent };
     } catch (e) {
+      console.error('[useStudentAuth] Login Firestore error:', e);
       showMessage('error', 'ERROR: ' + e.message);
       setLoading(false);
       return { success: false };
@@ -159,8 +179,9 @@ export default function useStudentAuth() {
   };
 
   const verifyKeyAccess = async (tempStudent, uniqueKeyInput) => {
+    console.log('[useStudentAuth] verifyKeyAccess for matric:', tempStudent.matric);
+    
     if (uniqueKeyInput.trim() === tempStudent.uniqueKey) {
-      // Store session (without key for security)
       const sessionInfo = {
         name: tempStudent.name,
         matric: tempStudent.matric,
@@ -168,6 +189,7 @@ export default function useStudentAuth() {
         hasVoted: tempStudent.hasVoted,
       };
       localStorage.setItem('studentSession', JSON.stringify(sessionInfo));
+      console.log('[useStudentAuth] Key verified, session saved');
       return { success: true };
     } else {
       showMessage('error', 'Incorrect Unique Code. Access Denied');

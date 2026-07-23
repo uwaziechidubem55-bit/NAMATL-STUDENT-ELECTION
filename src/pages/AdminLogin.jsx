@@ -21,24 +21,20 @@ export default function AdminLogin() {
   return (
     <div
       style={{
-        height: '100vh',
-        width: '100vw',
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #061D3A 0%, #0A2B52 40%, #0F3A6A 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0A2342',
-        fontFamily: 'system-ui, sans-serif',
-        overflow: 'hidden',
         padding: '20px',
-        boxSizing: 'border-box'
+        fontFamily: 'Arial, Helvetica, sans-serif',
       }}
     >
-      {/* ===== LOGO AT TOP ===== */}
+      {/* ===== YOUR LOGO — correct path to public/logo.png ===== */}
       <img
-        src=logo.png?v=2"
+        src="/logo.png"
         alt="NAMTLS Logo"
-        onError={e => { e.target.style.display = 'none'; }}
         style={{
           width: '100px',
           height: '100px',
@@ -47,7 +43,6 @@ export default function AdminLogin() {
           objectFit: 'cover',
           marginBottom: '16px',
           boxShadow: '0 0 25px rgba(255,193,7,0.25)',
-          display: 'block'
         }}
       />
 
@@ -55,21 +50,18 @@ export default function AdminLogin() {
       <h2
         style={{
           color: '#FFC107',
-          margin: '0 0 4px 0',
           fontSize: '24px',
-          fontWeight: '800',
-          textAlign: 'center',
-          letterSpacing: '1px'
+          fontWeight: 'bold',
+          margin: '0 0 4px 0',
         }}
       >
         Admin Login
       </h2>
       <p
         style={{
-          color: 'rgba(255,255,255,0.5)',
-          margin: '0 0 28px 0',
+          color: 'rgba(255,255,255,0.6)',
           fontSize: '13px',
-          textAlign: 'center'
+          margin: '0 0 24px 0',
         }}
       >
         Authorized personnel only
@@ -79,18 +71,16 @@ export default function AdminLogin() {
       {error && (
         <div
           style={{
-            background: 'rgba(239,68,68,0.15)',
-            color: '#ef4444',
-            padding: '12px 18px',
+            background: 'rgba(220, 38, 38, 0.15)',
+            border: '1px solid #dc2626',
+            color: '#fca5a5',
+            padding: '10px 16px',
             borderRadius: '8px',
             marginBottom: '16px',
             fontSize: '13px',
-            fontWeight: '500',
             textAlign: 'center',
             width: '100%',
-            maxWidth: '340px',
-            border: '1px solid rgba(239,68,68,0.3)',
-            boxSizing: 'border-box'
+            maxWidth: '360px',
           }}
         >
           {error}
@@ -102,16 +92,16 @@ export default function AdminLogin() {
         onSubmit={handleLogin}
         style={{
           width: '100%',
-          maxWidth: '340px',
+          maxWidth: '360px',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
         }}
       >
         <input
           type="text"
           placeholder="Username"
           value={username}
-          onChange={e => setUsername(e.target.value)}
+          onChange={(e) => setUsername(e.target.value)}
           required
           style={{
             width: '100%',
@@ -123,14 +113,14 @@ export default function AdminLogin() {
             boxSizing: 'border-box',
             color: '#fff',
             background: '#1e293b',
-            outline: 'none'
+            outline: 'none',
           }}
         />
         <input
           type="password"
           placeholder="Password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           required
           style={{
             width: '100%',
@@ -142,25 +132,25 @@ export default function AdminLogin() {
             boxSizing: 'border-box',
             color: '#fff',
             background: '#1e293b',
-            outline: 'none'
+            outline: 'none',
           }}
         />
         <button
           type="submit"
           style={{
             width: '100%',
-            padding: '14px',
+            padding: '14px 0',
             background: '#FFC107',
-            color: '#0A2342',
+            color: '#061D3A',
             border: 'none',
-            borderRadius: '8px',
-            fontWeight: 'bold',
+            borderRadius: '24px',
+            fontWeight: '700',
             fontSize: '16px',
             cursor: 'pointer',
-            transition: 'background 0.2s'
+            transition: 'background 0.2s',
           }}
-          onMouseEnter={e => e.target.style.background = '#e6a800'}
-          onMouseLeave={e => e.target.style.background = '#FFC107'}
+          onMouseEnter={(e) => (e.target.style.background = '#e6a800')}
+          onMouseLeave={(e) => (e.target.style.background = '#FFC107')}
         >
           Sign In
         </button>
@@ -170,14 +160,15 @@ export default function AdminLogin() {
       <Link
         to="/"
         style={{
-          color: '#FFC107',
+          color: 'rgba(255,255,255,0.7)',
           fontSize: '13px',
-          marginTop: '24px',
+          marginTop: '20px',
           textDecoration: 'none',
-          opacity: 0.7
+          opacity: '0.7',
+          transition: 'opacity 0.2s',
         }}
-        onMouseEnter={e => e.target.style.opacity = '1'}
-        onMouseLeave={e => e.target.style.opacity = '0.7'}
+        onMouseEnter={(e) => (e.target.style.opacity = '1')}
+        onMouseLeave={(e) => (e.target.style.opacity = '0.7')}
       >
         ← Back to Home
       </Link>

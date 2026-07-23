@@ -13,7 +13,7 @@ function LoadingScreen() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0f172a',
+      background: 'linear-gradient(135deg, #0a1628 0%, #061D3A 50%, #003366 100%)',
       color: 'white',
       display: 'flex',
       flexDirection: 'column',
@@ -22,9 +22,16 @@ function LoadingScreen() {
       gap: '16px',
       fontFamily: 'system-ui, sans-serif'
     }}>
-      <img src="/logo.png" alt="NAMATL" style={{ width: '60px', height: '60px', borderRadius: '12px' }}
+      <img src="/logo.png" alt="NAMATL" style={{
+        width: '70px', height: '70px',
+        borderRadius: '50%',
+        objectFit: 'cover',
+        boxShadow: '0 8px 30px rgba(255,215,0,0.2)',
+      }}
         onError={(e) => { e.target.style.display = 'none'; }} />
-      <h1 style={{ color: '#FFD700', fontSize: '20px', margin: 0 }}>NAMTLS STUDENT E-VOTING</h1>
+      <h1 style={{ color: '#FFD700', fontSize: '20px', margin: 0, fontWeight: 700 }}>
+        NAMTLS STUDENT E-VOTING
+      </h1>
       <div style={{
         width: '32px', height: '32px',
         border: '3px solid rgba(255,215,0,0.2)',
@@ -32,7 +39,9 @@ function LoadingScreen() {
         borderRadius: '50%',
         animation: 'spin 0.8s linear infinite'
       }} />
-      <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>Loading...</p>
+      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0 }}>
+        Loading...
+      </p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );

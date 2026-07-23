@@ -4,127 +4,50 @@ import { Link } from 'react-router-dom';
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    setTimeout(() => setVisible(true), 100);
-  }, []);
+  useEffect(() => { setTimeout(() => setVisible(true), 100); }, []);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #003366 0%, #001a33 100%)',
-      color: 'white', fontFamily: 'Arial, sans-serif',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      textAlign: 'center', padding: '32px', position: 'relative',
-      opacity: visible ? 1 : 0, transition: 'opacity 0.8s ease-in-out'
-    }}>
-      {/* 3 Dots Menu — TOP LEFT, BOLD */}
-      <div
-        onClick={() => setMenuOpen(!menuOpen)}
-        style={{
-          position: 'absolute', top: '20px', left: '20px',
-          width: '44px', height: '44px', cursor: 'pointer',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          borderRadius: '50%', zIndex: 20,
-          background: menuOpen ? 'rgba(255,215,0,0.3)' : 'transparent',
-          transition: 'background 0.3s ease',
-          fontSize: '28px', fontWeight: '900', color: '#FFD700',
-          lineHeight: '1', letterSpacing: '3px',
-          userSelect: 'none'
-        }}
-      >
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', fontFamily: 'system-ui, sans-serif', position: 'relative', overflow: 'hidden' }}>
+      {/* 3 Dots Menu */}
+      <div onClick={() => setMenuOpen(!menuOpen)} style={{ position: 'absolute', top: '20px', left: '20px', width: '44px', height: '44px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', zIndex: 20, background: menuOpen ? 'rgba(255,215,0,0.3)' : 'transparent', transition: 'background 0.3s ease', fontSize: '28px', fontWeight: '900', color: '#FFD700', lineHeight: '1', letterSpacing: '3px', userSelect: 'none' }}>
         ⋮
       </div>
 
       {menuOpen && (
-        <div style={{
-          position: 'absolute', top: '70px', left: '20px',
-          background: 'white', borderRadius: '8px',
-          boxShadow: '0 8px 25px rgba(0,0,0,0.2)',
-          zIndex: 20, minWidth: '220px', overflow: 'hidden'
-        }}>
-          <Link to="/admin" onClick={() => setMenuOpen(false)} style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            padding: '12px 18px', color: '#333', textDecoration: 'none',
-            fontSize: '14px', fontWeight: '500',
-            borderBottom: '1px solid #f0f0f0', cursor: 'pointer'
-          }} onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-             onMouseLeave={e => e.target.style.background = 'white'}>
+        <div style={{ position: 'absolute', top: '70px', left: '20px', background: 'white', borderRadius: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', zIndex: 100, minWidth: '220px', overflow: 'hidden' }}>
+          <Link to="/admin-dashboard" onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
+            onMouseEnter={e => e.target.style.background = '#f5f5f5'} onMouseLeave={e => e.target.style.background = 'white'}>
             🔒 Admin Dashboard
           </Link>
-          <Link to="/support" onClick={() => setMenuOpen(false)} style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            padding: '12px 18px', color: '#333', textDecoration: 'none',
-            fontSize: '14px', fontWeight: '500', cursor: 'pointer'
-          }} onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-             onMouseLeave={e => e.target.style.background = 'white'}>
+          <Link to="/purchase-form" onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
+            onMouseEnter={e => e.target.style.background = '#f5f5f5'} onMouseLeave={e => e.target.style.background = 'white'}>
+            📋 Purchase Form (Candidates)
+          </Link>
+          <Link to="/support" onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
+            onMouseEnter={e => e.target.style.background = '#f5f5f5'} onMouseLeave={e => e.target.style.background = 'white'}>
             💬 Chat / Support
           </Link>
-          <div onClick={() => setMenuOpen(false)} style={{
-            display: 'flex', alignItems: 'center', gap: '12px',
-            padding: '12px 18px', color: '#333', textDecoration: 'none',
-            fontSize: '14px', fontWeight: '500', cursor: 'pointer'
-          }} onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-             onMouseLeave={e => e.target.style.background = 'white'}>
+          <div onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', cursor: 'pointer', borderTop: '1px solid #f0f0f0' }}
+            onMouseEnter={e => e.target.style.background = '#f5f5f5'} onMouseLeave={e => e.target.style.background = 'white'}>
             ✖️ Close
           </div>
         </div>
       )}
 
-      <div style={{ maxWidth: '600px' }}>
-        {/* Logo — CENTERED */}
-        <img
-          src="/logo.png?v=2"
-          alt="NAMTLS Logo"
-          style={{
-            width: '120px', height: '120px', borderRadius: '50%',
-            objectFit: 'cover', marginBottom: '16px',
-            border: '3px solid #FFD700', display: 'block',
-            marginLeft: 'auto', marginRight: 'auto'
-          }}
-          onError={e => { e.target.style.display = 'none'; }}
-        />
-
-        {/* Title */}
-        <h1 style={{
-          fontSize: 'clamp(24px, 5vw, 40px)', fontWeight: 'bold',
-          margin: '0 0 8px 0', color: '#ffd700', lineHeight: '1.2'
-        }}>
-          NAMATL STUDENT E-VOTING
-        </h1>
-
-        {/* Subtext */}
-        <p style={{
-          fontSize: '13px', margin: '0 0 32px 0', opacity: '0.6'
-        }}>
-          National Association of Maritime Transport and Logistics Students
-        </p>
-
-        {/* Student Login Button */}
-        <Link to="/student-login" style={{
-          display: 'inline-block', padding: '14px 40px',
-          background: 'linear-gradient(135deg, #FFD700 0%, #F0C000 100%)',
-          color: '#003366', textDecoration: 'none',
-          borderRadius: '50px', fontWeight: 'bold', fontSize: '16px',
-          boxShadow: '0 4px 15px rgba(255,215,0,0.3)',
-          transition: 'transform 0.2s, box-shadow 0.2s'
-        }} onMouseEnter={e => {
-          e.target.style.transform = 'translateY(-2px)';
-          e.target.style.boxShadow = '0 6px 20px rgba(255,215,0,0.5)';
-        }} onMouseLeave={e => {
-          e.target.style.transform = 'translateY(0)';
-          e.target.style.boxShadow = '0 4px 15px rgba(255,215,0,0.3)';
-        }}>
-          Student Login
-        </Link>
-
-        {/* Footer */}
-        <p style={{ fontSize: '12px', opacity: '0.4', marginTop: '60px' }}>
-          © NAMTLS {new Date().getFullYear()}. All rights reserved.
-        </p>
-      </div>
+      <h1 style={{ fontSize: '32px', fontWeight: '800', margin: '8px 0', color: 'white', textShadow: '0 2px 10px rgba(0,0,0,0.3)', letterSpacing: '1px' }}>
+        NAMATL STUDENT E-VOTING
+      </h1>
+      <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', margin: '0 0 32px 0' }}>
+        National Association of Maritime Transport and Logistics Students
+      </p>
+      <Link to="/student-login" style={{ display: 'inline-block', padding: '16px 48px', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#1e293b', textDecoration: 'none', borderRadius: '50px', fontWeight: 'bold', fontSize: '18px', boxShadow: '0 4px 15px rgba(255,215,0,0.3)', transition: 'all 0.3s ease' }}
+        onMouseEnter={e => { e.target.style.transform = 'translateY(-2px)'; e.target.style.boxShadow = '0 6px 20px rgba(255,215,0,0.5)'; }}
+        onMouseLeave={e => { e.target.style.transform = 'translateY(0)'; e.target.style.boxShadow = '0 4px 15px rgba(255,215,0,0.3)'; }}>
+        🗳️ Student Login
+      </Link>
+      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', position: 'absolute', bottom: '20px' }}>
+        © NAMATL {new Date().getFullYear()}. All rights reserved.
+      </p>
     </div>
   );
 }

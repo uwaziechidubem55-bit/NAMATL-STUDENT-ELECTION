@@ -520,7 +520,7 @@ export default function AdminDashboard() {
                 {/* ONLY YOUR LOGO - CENTER */}
                 <img 
                   src="/logo.png" 
-                  alt="My Logo"
+                  alt="NAMTLS Logo"
                   style={{ width: '80px', height: '80px', objectFit: 'contain', marginBottom: '4px' }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />

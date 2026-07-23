@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export default function AdminLogin() {
   const [username, setUsername] = useState('');
@@ -39,18 +39,35 @@ export default function AdminLogin() {
         boxShadow: '0 25px 60px rgba(0,0,0,0.4)',
         textAlign: 'center',
       }}>
-        {/* ===== YOUR LOGO — correct path to public/logo.png ===== */}
-        <img src="/logo.png" alt="NAMTLS Logo"
-          onError={(e) => { e.target.style.display = 'none'; }}
-          style={{
-            width: '90px',
-            height: '90px',
+        {/* ===== LOGO — CENTERED WITH GOLD RING ===== */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginBottom: '16px',
+        }}>
+          <div style={{
+            width: '100px',
+            height: '100px',
             borderRadius: '50%',
-            objectFit: 'cover',
-            marginBottom: '16px',
-            border: '3px solid rgba(255,215,0,0.3)',
-            boxShadow: '0 0 30px rgba(255,215,0,0.15)',
-          }} />
+            padding: '5px',
+            background: 'linear-gradient(135deg, #FFD700 0%, #e6a800 50%, #FFD700 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 30px rgba(255,215,0,0.25), 0 0 60px rgba(255,215,0,0.1)',
+          }}>
+            <img src="/logo.png" alt="NAMTLS Logo"
+              onError={(e) => { e.target.style.display = 'none'; }}
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                background: '#0a1628',
+              }} />
+          </div>
+        </div>
 
         {/* ===== TITLE ===== */}
         <h2 style={{ margin: '0 0 4px', color: '#FFD700', fontSize: '22px', fontWeight: 700 }}>
@@ -60,7 +77,7 @@ export default function AdminLogin() {
           Authorized personnel only
         </p>
 
-        {/* ===== ERROR MESSAGE ===== */}
+        {/* ===== ERROR ===== */}
         {error && (
           <div style={{
             background: 'rgba(220,38,38,0.15)',
@@ -75,7 +92,7 @@ export default function AdminLogin() {
           </div>
         )}
 
-        {/* ===== LOGIN FORM ===== */}
+        {/* ===== FORM ===== */}
         <form onSubmit={handleLogin}>
           <input
             type="text"
@@ -135,7 +152,7 @@ export default function AdminLogin() {
           </button>
         </form>
 
-        {/* ===== BACK LINK — REPLACED WITH SHARP BLOCK ===== */}
+        {/* ===== BACK LINK — SHARP BLOCK ===== */}
         <div onClick={() => navigate('/')}
           style={{
             color: '#FFD700',

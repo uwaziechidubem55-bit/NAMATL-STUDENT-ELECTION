@@ -18,13 +18,13 @@ export default function Landing() {
       fontFamily: 'system-ui, sans-serif',
       position: 'relative',
     }}>
-      {/* ===== 3 DOTS - TOP RIGHT WITH CIRCLE ===== */}
+      {/* ===== 3 DOTS - TOP LEFT WITH CIRCLE ===== */}
       <button
         onClick={() => setMenuOpen(!menuOpen)}
         style={{
           position: 'absolute',
           top: '24px',
-          right: '24px',
+          left: '24px',
           width: '44px',
           height: '44px',
           borderRadius: '50%',
@@ -155,7 +155,7 @@ export default function Landing() {
 
       {/* ===== CENTRAL CONTENT ===== */}
       <div style={{ textAlign: 'center' }}>
-        {/* Logo with border/line around it */}
+        {/* Logo with gold border */}
         <div style={{
           width: '100px',
           height: '100px',
@@ -174,21 +174,7 @@ export default function Landing() {
           />
         </div>
 
-        {/* Association name in WHITE */}
-        <h2 style={{
-          color: '#ffffff',
-          fontSize: '13px',
-          fontWeight: 500,
-          margin: '0 0 8px',
-          letterSpacing: '1px',
-          textTransform: 'uppercase',
-        }}>
-          NATIONAL ASSOCIATION OF MARITIME TRANSPORT
-          <br />
-          AND LOGISTIC STUDENTS
-        </h2>
-
-        {/* Main title in YELLOW */}
+        {/* NAMATL STUDENT E-VOTING in YELLOW (FIRST) */}
         <h1 style={{
           color: '#FFD700',
           fontSize: '30px',
@@ -203,11 +189,25 @@ export default function Landing() {
           color: '#FFD700',
           fontSize: '30px',
           fontWeight: 700,
-          margin: '0 0 32px',
+          margin: '0 0 12px',
           letterSpacing: '2px',
         }}>
           E-VOTING
         </h1>
+
+        {/* Association name in WHITE (SECOND - BELOW) */}
+        <h2 style={{
+          color: '#ffffff',
+          fontSize: '13px',
+          fontWeight: 500,
+          margin: '0 0 32px',
+          letterSpacing: '1px',
+          textTransform: 'uppercase',
+        }}>
+          NATIONAL ASSOCIATION OF MARITIME TRANSPORT
+          <br />
+          AND LOGISTIC STUDENTS
+        </h2>
 
         {/* Student Login Button */}
         <button
@@ -235,7 +235,7 @@ export default function Landing() {
             e.target.style.boxShadow = '0 6px 25px rgba(255,215,0,0.2)';
           }}
         >
-          🗳️ Student Login
+           Student Login
         </button>
 
         {/* Footer */}

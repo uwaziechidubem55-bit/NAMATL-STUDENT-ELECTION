@@ -1,13 +1,23 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export default function Landing() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+export default function AdminLogin() {
+  const navigate = useNavigate();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => {
-    requestAnimationFrame(() => setLoaded(true));
-  }, []);
+  const handleAdminSubmit = (e) => {
+    e.preventDefault();
+    
+    // Replace with your actual validation or API request logic
+    if (username === 'admin' && password === 'password123') {
+      setErrorMsg('');
+      navigate('/admin-dashboard');
+    } else {
+      setErrorMsg('Invalid username or password');
+    }
+  };
 
   return (
     <div style={{
@@ -17,186 +27,117 @@ export default function Landing() {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#0A2342',
-      fontFamily: 'system-ui, sans-serif',
-      position: 'relative',
-      overflow: 'hidden',
-      opacity: loaded ? 1 : 0,
-      transition: 'opacity 0.5s ease'
+      background: '#0D3A6F',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      boxSizing: 'border-box'
     }}>
-      {/* ===== 3 DOTS MENU — TOP LEFT ===== */}
-      <div
-        onClick={() => setMenuOpen(!menuOpen)}
-        style={{
-          position: 'absolute',
-          top: '24px',
-          left: '24px',
-          width: '44px',
-          height: '44px',
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '50%',
-          zIndex: 20,
-          background: menuOpen ? 'rgba(255,193,7,0.2)' : 'transparent',
-          transition: 'background 0.3s ease',
-          fontSize: '28px',
-          fontWeight: '900',
-          color: '#FFC107',
-          lineHeight: '1',
-          letterSpacing: '3px',
-          userSelect: 'none'
-        }}
-      >
-        ⋮
+      
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '90%', maxWidth: '360px', textAlign: 'center' }}>
+        
+        <h2 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 4px 0', color: '#FFC107' }}>
+          ADMIN ACCESS
+        </h2>
+        <p style={{ color: '#FFFFFF', fontSize: '13px', margin: '0 0 32px 0', opacity: 0.8 }}>
+          Please enter your management credentials
+        </p>
+
+        <form onSubmit={handleAdminSubmit} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          <div style={{ textAlign: 'left' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#FFC107', marginBottom: '6px', fontWeight: '600', letterSpacing: '0.5px' }}>
+              USERNAME
+            </label>
+            <input 
+              type="text" 
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              placeholder="Enter username"
+              style={{ 
+                width: '100%', 
+                padding: '14px', 
+                borderRadius: '24px', 
+                border: '1.5px solid #FFC107', 
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#ffffff',
+                boxSizing: 'border-box', 
+                fontSize: '14px',
+                outline: 'none'
+              }}
+            />
+          </div>
+          
+          <div style={{ textAlign: 'left' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#FFC107', marginBottom: '6px', fontWeight: '600', letterSpacing: '0.5px' }}>
+              PASSWORD
+            </label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="Enter password"
+              style={{ 
+                width: '100%', 
+                padding: '14px', 
+                borderRadius: '24px', 
+                border: '1.5px solid #FFC107', 
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#ffffff',
+                boxSizing: 'border-box', 
+                fontSize: '14px',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          {errorMsg && (
+            <div style={{ color: '#FF8888', fontSize: '13px', fontWeight: '500' }}>
+              {errorMsg}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+            <button 
+              type="submit"
+              style={{ 
+                width: '100%', 
+                padding: '14px 0', 
+                background: '#FFC107', 
+                color: '#061D3A', 
+                border: 'none', 
+                borderRadius: '24px', 
+                cursor: 'pointer', 
+                fontSize: '16px', 
+                fontWeight: '700' 
+              }}
+            >
+              Sign In
+            </button>
+            
+            <button 
+              type="button"
+              onClick={() => navigate('/')} // Take the user cleanly back to the base landing page route
+              style={{ 
+                width: '100%', 
+                padding: '12px 0', 
+                background: 'transparent', 
+                color: '#ffffff', 
+                border: 'none', 
+                borderRadius: '24px', 
+                cursor: 'pointer', 
+                fontSize: '14px', 
+                fontWeight: '500',
+                opacity: 0.7
+              }}
+            >
+              Go Back
+            </button>
+          </div>
+
+        </form>
       </div>
 
-      {/* ===== DROPDOWN MENU ===== */}
-      {menuOpen && (
-        <>
-          <div
-            onClick={() => setMenuOpen(false)}
-            style={{
-              position: 'fixed',
-              top: 0, left: 0, right: 0, bottom: 0,
-              zIndex: 19,
-              background: 'transparent'
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              top: '76px',
-              left: '20px',
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
-              zIndex: 100,
-              minWidth: '230px',
-              overflow: 'hidden'
-            }}
-          >
-            <Link to="/admin-dashboard" onClick={() => setMenuOpen(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}>
-              🔒 Admin Dashboard
-            </Link>
-            <Link to="/purchase-form" onClick={() => setMenuOpen(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}>
-              📋 Purchase Form (Candidates)
-            </Link>
-            <Link to="/support" onClick={() => setMenuOpen(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}>
-              💬 Chat / Support
-            </Link>
-            <div onClick={() => setMenuOpen(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', cursor: 'pointer', borderTop: '1px solid #f0f0f0' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}>
-              ✖️ Close
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ===== LOGO ===== */}
-      <img
-        src="https://raw.githubusercontent.com/logo.png?v=2"
-        alt="NAMTLS Logo"
-        onError={e => { e.target.style.display = 'none'; }}
-        style={{
-          width: '120px',
-          height: '120px',
-          borderRadius: '50%',
-          border: '3px solid #FFC107',
-          objectFit: 'cover',
-          marginBottom: '16px',
-          boxShadow: '0 0 30px rgba(255,193,7,0.3)',
-          display: 'block'
-        }}
-      />
-
-      {/* ===== MAIN TITLE ===== */}
-      <h1
-        style={{
-          fontSize: '32px',
-          fontWeight: '900',
-          margin: '0',
-          color: '#FFC107',
-          textAlign: 'center',
-          lineHeight: '1.2',
-          letterSpacing: '2px',
-          textShadow: '0 2px 15px rgba(255,193,7,0.3)'
-        }}
-      >
-        NAMATL STUDENT
-        <br />
-        E-VOTING
-      </h1>
-
-      {/* ===== SUBTITLE ===== */}
-      <p
-        style={{
-          color: '#FFFFFF',
-          fontSize: '14px',
-          margin: '10px 0 30px 0',
-          textAlign: 'center',
-          lineHeight: '1.4',
-          opacity: 0.85,
-          maxWidth: '280px'
-        }}
-      >
-        National Association of Maritime Transport and Logistics Students
-      </p>
-
-      {/* ===== STUDENT LOGIN BUTTON ===== */}
-      <Link
-        to="/student-login"
-        style={{
-          display: 'inline-block',
-          padding: '15px 50px',
-          background: '#FFC107',
-          color: '#0A2342',
-          textDecoration: 'none',
-          borderRadius: '50px',
-          fontWeight: 'bold',
-          fontSize: '18px',
-          letterSpacing: '0.5px',
-          boxShadow: '0 4px 20px rgba(255,193,7,0.35)',
-          transition: 'all 0.3s ease'
-        }}
-        onMouseEnter={e => {
-          e.target.style.transform = 'translateY(-3px)';
-          e.target.style.boxShadow = '0 8px 30px rgba(255,193,7,0.5)';
-        }}
-        onMouseLeave={e => {
-          e.target.style.transform = 'translateY(0)';
-          e.target.style.boxShadow = '0 4px 20px rgba(255,193,7,0.35)';
-        }}
-      >
-        🗳️ Student Login
-      </Link>
-
-      {/* ===== FOOTER ===== */}
-      <p
-        style={{
-          color: 'rgba(255,255,255,0.25)',
-          fontSize: '11px',
-          position: 'absolute',
-          bottom: '18px',
-          margin: 0,
-          letterSpacing: '0.5px'
-        }}
-      >
-        © NAMATL {new Date().getFullYear()}. All rights reserved.
-      </p>
     </div>
   );
 }

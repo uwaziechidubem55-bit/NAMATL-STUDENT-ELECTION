@@ -10,26 +10,20 @@ export default function Landing() {
     requestAnimationFrame(() => setLoaded(true));
   }, []);
 
-  // Authentic NAMTLS circular vector insignia badge data
-  const namtlsLogoBase64 = "data:image/svg+xml;utf8,<svg xmlns='http://w3.org' viewBox='0 0 160 160'><circle cx='80' cy='80' r='75' fill='%230b2c56' stroke='%23ffc107' stroke-width='4'/><circle cx='80' cy='80' r='64' fill='none' stroke='%23ffc107' stroke-width='1' stroke-dasharray='3,3'/><path d='M80 30 L80 120 M55 55 L105 55 M50 90 Q80 125 110 90' fill='none' stroke='%23ffc107' stroke-width='5' stroke-linecap='round'/><polygon points='80,22 88,38 72,38' fill='%23ffc107'/><circle cx='80' cy='68' r='14' fill='none' stroke='%23ffc107' stroke-width='4'/><path d='M68 68 L92 68' stroke='%23ffc107' stroke-width='4'/><text x='80' y='142' font-family='sans-serif' font-size='8' font-weight='bold' fill='%23ffc107' text-anchor='middle' letter-spacing='1'>ELECTORAL COMMISSION</text></svg>";
-
   return (
-    <div style={{
-      height: '100vh',
-      width: '100vw',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#0D3A6F', 
-      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      position: 'relative',
-      overflow: 'hidden',
-      opacity: loaded ? 1 : 0,
-      transition: 'opacity 0.5s ease',
-      boxSizing: 'border-box'
-    }}>
-      
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #061D3A 0%, #0A2B52 40%, #0F3A6A 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        overflow: 'hidden',
+      }}
+    >
       {/* ===== 3 DOTS MENU BUTTON ===== */}
       <div
         onClick={() => setMenuOpen(!menuOpen)}
@@ -45,11 +39,11 @@ export default function Landing() {
           justifyContent: 'center',
           borderRadius: '50%',
           zIndex: 20,
-          background: 'rgba(255, 255, 255, 0.08)', 
+          background: 'rgba(255, 255, 255, 0.08)',
           fontSize: '24px',
           fontWeight: 'bold',
           color: '#FFC107',
-          userSelect: 'none'
+          userSelect: 'none',
         }}
       >
         ⋮
@@ -62,50 +56,99 @@ export default function Landing() {
             onClick={() => setMenuOpen(false)}
             style={{
               position: 'fixed',
-              top: 0, left: 0, right: 0, bottom: 0,
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
               zIndex: 19,
-              background: 'transparent'
+              background: 'transparent',
             }}
           />
           <div
             style={{
               position: 'absolute',
-              top: '74px',
+              top: '72px',
               left: '20px',
-              background: '#ffffff',
-              borderRadius: '16px', 
-              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-              zIndex: 100,
-              width: '270px', 
+              width: '220px',
+              background: '#FFFFFF',
+              borderRadius: '12px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+              zIndex: 20,
               overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column'
             }}
           >
-            <div 
-              onClick={() => { setMenuOpen(false); navigate('/admin-login'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '18px 20px', color: '#1A202C', fontSize: '15px', fontWeight: '500', borderBottom: '1px solid #EDF2F7', cursor: 'pointer' }}
+            <div
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/admin-login');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '18px 20px',
+                color: '#1A202C',
+                fontSize: '15px',
+                fontWeight: '500',
+                borderBottom: '1px solid #EDF2F7',
+                cursor: 'pointer',
+              }}
             >
-              🔒 Admin Dashboard
+              🔒 Admin Login
             </div>
-            
-            <div 
-              onClick={() => { setMenuOpen(false); navigate('/purchase-form'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '18px 20px', color: '#1A202C', fontSize: '15px', fontWeight: '500', borderBottom: '1px solid #EDF2F7', cursor: 'pointer' }}
+
+            <div
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/purchase-form');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '18px 20px',
+                color: '#1A202C',
+                fontSize: '15px',
+                fontWeight: '500',
+                borderBottom: '1px solid #EDF2F7',
+                cursor: 'pointer',
+              }}
             >
               📋 Purchase Form (Candidates)
             </div>
 
-            <div 
-              onClick={() => { setMenuOpen(false); navigate('/support'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '18px 20px', color: '#1A202C', fontSize: '15px', fontWeight: '500', borderBottom: '1px solid #EDF2F7', cursor: 'pointer' }}
+            <div
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/support');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '18px 20px',
+                color: '#1A202C',
+                fontSize: '15px',
+                fontWeight: '500',
+                borderBottom: '1px solid #EDF2F7',
+                cursor: 'pointer',
+              }}
             >
               💬 Chat / Support
             </div>
 
-            <div 
+            <div
               onClick={() => setMenuOpen(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '18px 20px', color: '#1A202C', fontSize: '15px', fontWeight: '500', cursor: 'pointer' }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '18px 20px',
+                color: '#1A202C',
+                fontSize: '15px',
+                fontWeight: '500',
+                cursor: 'pointer',
+              }}
             >
               ❌ Close
             </div>
@@ -114,44 +157,74 @@ export default function Landing() {
       )}
 
       {/* ===== CENTRAL CONTENT WRAPPER ===== */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '90%', maxWidth: '450px' }}>
-        
-        {/* ===== EMBEDDED LOGO EMBLEM ===== */}
-        <div style={{
-          width: '135px',
-          height: '135px',
-          borderRadius: '50%',
-          border: '2.5px solid #FFC107',
-          padding: '4px',
-          boxSizing: 'border-box',
-          marginBottom: '24px',
+      <div
+        style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(255, 255, 255, 0.02)',
-          boxShadow: '0 0 20px rgba(255, 193, 7, 0.15)'
-        }}>
-          <img
-            src=“logo.png?v=2”
-            alt="NAMTAL Student official Logo"
-            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'contain' }}
-          />
-        </div>
+          textAlign: 'center',
+          padding: '20px',
+          opacity: loaded ? 1 : 0,
+          transform: loaded ? 'translateY(0)' : 'translateY(20px)',
+          transition: 'opacity 0.8s ease, transform 0.8s ease',
+        }}
+      >
+        {/* ===== YOUR LOGO — from public/logo.png via Vite root ===== */}
+        <img
+          src="/logo.png"
+          alt="NAMTLS Official Logo"
+          style={{
+            width: '120px',
+            height: '120px',
+            borderRadius: '50%',
+            border: '3px solid #FFC107',
+            objectFit: 'cover',
+            marginBottom: '20px',
+            boxShadow: '0 0 25px rgba(255,193,7,0.25)',
+          }}
+        />
 
-        <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 8px 0', color: '#FFC107', letterSpacing: '0.5px', lineHeight: '1.3' }}>
+        {/* ===== TITLE ===== */}
+        <h1
+          style={{
+            color: '#FFC107',
+            fontSize: '28px',
+            fontWeight: 'bold',
+            margin: '0 0 4px 0',
+            letterSpacing: '1px',
+          }}
+        >
           NAMTLS STUDENT
-          <br />
-          E-VOTING
         </h1>
+        <h2
+          style={{
+            color: '#FFFFFF',
+            fontSize: '22px',
+            fontWeight: 'bold',
+            margin: '0 0 12px 0',
+            letterSpacing: '2px',
+          }}
+        >
+          E-VOTING
+        </h2>
 
-        <p style={{ color: '#FFFFFF', fontSize: '13px', margin: '0 0 40px 0', lineHeight: '1.5', opacity: 0.85, fontWeight: '400', padding: '0 10px' }}>
+        <p
+          style={{
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: '13px',
+            lineHeight: '1.6',
+            margin: '0 0 32px 0',
+            maxWidth: '280px',
+          }}
+        >
           National Association of Maritime Transport and
-          <br />
           Logistics Students
         </p>
 
+        {/* ===== STUDENT LOGIN BUTTON ===== */}
         <button
-          onClick={() => navigate('/student-login')} 
+          onClick={() => navigate('/student-login')}
           style={{
             width: '100%',
             maxWidth: '260px',
@@ -163,13 +236,21 @@ export default function Landing() {
             fontWeight: '700',
             fontSize: '16px',
             cursor: 'pointer',
-            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)'
+            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
+            transition: 'transform 0.2s, box-shadow 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = 'scale(1.03)';
+            e.target.style.boxShadow = '0 6px 20px rgba(0,0,0,0.25)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = 'scale(1)';
+            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.15)';
           }}
         >
           Student Login
         </button>
       </div>
-
     </div>
   );
 }

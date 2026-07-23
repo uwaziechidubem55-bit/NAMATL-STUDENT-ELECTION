@@ -5,14 +5,14 @@ export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  // Fade-in after mount — fixes view transition flash
   useEffect(() => {
     requestAnimationFrame(() => setLoaded(true));
   }, []);
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100vh',
+      width: '100vw',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -24,7 +24,7 @@ export default function Landing() {
       opacity: loaded ? 1 : 0,
       transition: 'opacity 0.5s ease'
     }}>
-      {/* ===== MENU ICON (3 DOTS) TOP-LEFT ===== */}
+      {/* ===== 3 DOTS MENU — TOP LEFT ===== */}
       <div
         onClick={() => setMenuOpen(!menuOpen)}
         style={{
@@ -56,15 +56,11 @@ export default function Landing() {
       {/* ===== DROPDOWN MENU ===== */}
       {menuOpen && (
         <>
-          {/* Overlay to close on tap */}
           <div
             onClick={() => setMenuOpen(false)}
             style={{
               position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
+              top: 0, left: 0, right: 0, bottom: 0,
               zIndex: 19,
               background: 'transparent'
             }}
@@ -82,162 +78,55 @@ export default function Landing() {
               overflow: 'hidden'
             }}
           >
-            <Link
-              to="/admin-dashboard"
-              onClick={() => setMenuOpen(false)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '14px 18px',
-                color: '#333',
-                textDecoration: 'none',
-                fontSize: '14px',
-                fontWeight: '500',
-                borderBottom: '1px solid #f0f0f0',
-                cursor: 'pointer'
-              }}
+            <Link to="/admin-dashboard" onClick={() => setMenuOpen(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
               onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}
-            >
+              onMouseLeave={e => e.target.style.background = 'white'}>
               🔒 Admin Dashboard
             </Link>
-            <Link
-              to="/purchase-form"
-              onClick={() => setMenuOpen(false)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '14px 18px',
-                color: '#333',
-                textDecoration: 'none',
-                fontSize: '14px',
-                fontWeight: '500',
-                borderBottom: '1px solid #f0f0f0',
-                cursor: 'pointer'
-              }}
+            <Link to="/purchase-form" onClick={() => setMenuOpen(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
               onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}
-            >
+              onMouseLeave={e => e.target.style.background = 'white'}>
               📋 Purchase Form (Candidates)
             </Link>
-            <Link
-              to="/support"
-              onClick={() => setMenuOpen(false)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '14px 18px',
-                color: '#333',
-                textDecoration: 'none',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}
+            <Link to="/support" onClick={() => setMenuOpen(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
               onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}
-            >
+              onMouseLeave={e => e.target.style.background = 'white'}>
               💬 Chat / Support
             </Link>
-            <div
-              onClick={() => setMenuOpen(false)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '14px 18px',
-                color: '#333',
-                textDecoration: 'none',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                borderTop: '1px solid #f0f0f0'
-              }}
+            <div onClick={() => setMenuOpen(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', color: '#333', textDecoration: 'none', fontSize: '14px', fontWeight: '500', cursor: 'pointer', borderTop: '1px solid #f0f0f0' }}
               onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = 'white'}
-            >
+              onMouseLeave={e => e.target.style.background = 'white'}>
               ✖️ Close
             </div>
           </div>
         </>
       )}
 
-      {/* ===== SEAL / EMBLEM ===== */}
-      <div
+      {/* ===== LOGO ===== */}
+      <img
+        src="https://raw.githubusercontent.com/logo.png?v=2"
+        alt="NAMTLS Logo"
+        onError={e => { e.target.style.display = 'none'; }}
         style={{
-          width: '130px',
-          height: '130px',
+          width: '120px',
+          height: '120px',
           borderRadius: '50%',
           border: '3px solid #FFC107',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: '20px',
-          background: '#0A2342',
-          boxShadow: '0 0 30px rgba(255,193,7,0.3), 0 0 60px rgba(255,193,7,0.1)',
-          position: 'relative',
-          overflow: 'hidden'
+          objectFit: 'cover',
+          marginBottom: '16px',
+          boxShadow: '0 0 30px rgba(255,193,7,0.3)',
+          display: 'block'
         }}
-      >
-        {/* Inner shield design */}
-        <div
-          style={{
-            width: '90px',
-            height: '90px',
-            borderRadius: '50%',
-            border: '2px solid #FFC107',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: '#0D2B52'
-          }}
-        >
-          {/* Crown */}
-          <span style={{ fontSize: '22px', lineHeight: '1', marginBottom: '2px' }}>👑</span>
-          {/* Anchor */}
-          <span style={{ fontSize: '28px', lineHeight: '1', color: '#FFC107' }}>⚓</span>
-          {/* Small text inside */}
-          <span style={{ fontSize: '6px', color: '#FFC107', marginTop: '2px', lineHeight: '1.2', textAlign: 'center', fontWeight: 'bold' }}>
-            NAMTLS
-          </span>
-        </div>
-
-        {/* Circular border text — using a pseudo approach */}
-        <div
-          style={{
-            position: 'absolute',
-            width: '100%',
-            height: '100%',
-            top: 0,
-            left: 0,
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'none'
-          }}
-        >
-          {/* We use a simple decorative ring */}
-          <svg viewBox="0 0 130 130" style={{ position: 'absolute', width: '130px', height: '130px' }}>
-            <defs>
-              <path id="circlePath" d="M 65 5 A 60 60 0 1 1 64.99 5" fill="none" />
-            </defs>
-            <text fontSize="5.5" fill="#FFC107" fontWeight="bold" letterSpacing="2">
-              <textPath href="#circlePath" startOffset="5%">
-                NATIONAL ASSOCIATION OF MARITIME TRANSPORT AND LOGISTICS
-              </textPath>
-            </text>
-          </svg>
-        </div>
-      </div>
+      />
 
       {/* ===== MAIN TITLE ===== */}
       <h1
         style={{
-          fontSize: '34px',
+          fontSize: '32px',
           fontWeight: '900',
           margin: '0',
           color: '#FFC107',
@@ -247,7 +136,7 @@ export default function Landing() {
           textShadow: '0 2px 15px rgba(255,193,7,0.3)'
         }}
       >
-        NAMTLS STUDENT
+        NAMATL STUDENT
         <br />
         E-VOTING
       </h1>
@@ -257,12 +146,11 @@ export default function Landing() {
         style={{
           color: '#FFFFFF',
           fontSize: '14px',
-          margin: '12px 0 36px 0',
+          margin: '10px 0 30px 0',
           textAlign: 'center',
-          lineHeight: '1.5',
+          lineHeight: '1.4',
           opacity: 0.85,
-          maxWidth: '280px',
-          fontWeight: '400'
+          maxWidth: '280px'
         }}
       >
         National Association of Maritime Transport and Logistics Students
@@ -273,7 +161,7 @@ export default function Landing() {
         to="/student-login"
         style={{
           display: 'inline-block',
-          padding: '16px 56px',
+          padding: '15px 50px',
           background: '#FFC107',
           color: '#0A2342',
           textDecoration: 'none',
@@ -299,10 +187,10 @@ export default function Landing() {
       {/* ===== FOOTER ===== */}
       <p
         style={{
-          color: 'rgba(255,255,255,0.3)',
+          color: 'rgba(255,255,255,0.25)',
           fontSize: '11px',
           position: 'absolute',
-          bottom: '20px',
+          bottom: '18px',
           margin: 0,
           letterSpacing: '0.5px'
         }}

@@ -11,7 +11,7 @@ export default function AdminLogin() {
     e.preventDefault();
     
     // Replace with your actual validation or API request logic
-    if (username === 'admin' && password === 'password123') {
+    if (username === 'Brouse' && password === 'Officialelectoralcommission123') {
       setErrorMsg('');
       navigate('/admin-dashboard');
     } else {

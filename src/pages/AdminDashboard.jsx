@@ -173,6 +173,7 @@ export default function AdminDashboard() {
   const [fpMsg, setFpMsg] = useState('');
 
   // Withdrawal
+  const [withdrawAdminId, setWithdrawAdminId] = useState('');
   const [withdrawPin, setWithdrawPin] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
@@ -297,17 +298,18 @@ export default function AdminDashboard() {
   const handleSaveFormPurchase = async () => { const valid = fpRows.filter(r => r.position.trim() && r.amount); if (!valid.length) { setFpMsg('Add at least one row'); return; } try { await setDoc(doc(db, 'settings', 'formPurchase'), { positions: valid.map(r => ({ position: r.position.trim(), amount: Number(r.amount) })), updatedAt: new Date().toISOString(), isActive: formPurchaseToggle }); setFpSaved(true); setFpMsg('Saved!'); if (saveFormPurchaseSettings) await saveFormPurchaseSettings(valid); } catch (e) { setFpMsg('Error: ' + e.message); } };
 
   // ─── Withdrawal ───
-   const handleWithdraw = async () => {
-    if (!withdrawPin || !withdrawAmount) { setWithdrawMsg('Fill all fields'); return; }
-    const correctPin = WITHDRAWAL_PIN || '1966';
+  const handleWithdraw = async () => {
+    if (!withdrawAdminId || !withdrawPin || !withdrawAmount) { setWithdrawMsg('Fill all fields'); return; }
+    const correctId = ADMIN_ID || 'Admin@Namatls128756BC'; const correctPin = WITHDRAWAL_PIN || '1966';
+    if (withdrawAdminId !== correctId) { setWithdrawMsg('Error: wrong admin ID'); return; }
     if (withdrawPin !== correctPin) { setWithdrawMsg('Error: wrong admin pin'); return; }
     const amount = Number(withdrawAmount);
     if (isNaN(amount) || amount < 1000) { setWithdrawMsg('Min: ₦1,000'); return; }
     if (amount > (withdrawalBalance || 0)) { setWithdrawMsg('Insufficient balance'); return; }
     setWithdrawing(true); setWithdrawMsg('');
-    try { const result = await withdraw(ADMIN_ID, withdrawPin.trim(), amount); setWithdrawMsg(result.message); if (result.success) { setWithdrawAmount(''); setWithdrawPin(''); } } catch (e) { setWithdrawMsg('Error: ' + e.message); }
+    try { const result = await withdraw(amount, OPAY_ACCOUNT); setWithdrawMsg(result.message); if (result.success) { setWithdrawAmount(''); setWithdrawPin(''); } } catch (e) { setWithdrawMsg('Error: ' + e.message); }
     setWithdrawing(false);
-};
+  };
 
   // ─── General ───
   const handleSaveGeneral = async () => { try { await setDoc(doc(db, 'settings', 'general'), generalSettings, { merge: true }); setGeneralMsg('Saved!'); } catch (e) { setGeneralMsg('Error: ' + e.message); } };

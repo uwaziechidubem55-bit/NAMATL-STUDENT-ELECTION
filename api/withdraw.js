@@ -1,6 +1,6 @@
-// NAMTLS Withdrawal API v3.2 - Waits For Flutterwave Real Status + Deducts Balance
+// NAMTLS Withdrawal API v3.2 - FIXED import path
 import { doc, setDoc, increment } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../src/firebase';  // FIXED PATH
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -15,9 +15,8 @@ export default async function handler(req, res) {
     }
 
     const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY;
-
     if (!FLUTTERWAVE_SECRET) {
-      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in environment variables.' });
+      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel env vars' });
     }
 
     const withdrawalAmount = Number(amount);
@@ -33,7 +32,6 @@ export default async function handler(req, res) {
 
     console.log(`[NAMTLS] Initiating transfer: N${withdrawalAmount} to ${accountNumber}`);
 
-    // STEP 1: Submit transfer to Flutterwave
     const transferResponse = await fetch('https://api.flutterwave.com/v3/transfers', {
       method: 'POST',
       headers: {
@@ -58,7 +56,11 @@ export default async function handler(req, res) {
       let errorMsg = transferData.message || 'Unknown Flutterwave error';
       if (transferData.data?.complete_message) errorMsg = transferData.data.complete_message;
       if (transferData.data?.note) errorMsg = transferData.data.note;
-      return res.status(400).json({ success: false, message: `Flutterwave rejected the transfer: ${errorMsg}`, flutterwaveFullResponse: transferData });
+      return res.status(400).json({
+        success: false,
+        message: `Flutterwave rejected: ${errorMsg}`,
+        flutterwaveFullResponse: transferData
+      });
     }
 
     const transferId = transferData.data?.id;
@@ -71,7 +73,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // STEP 2: Poll for final status (up to 30 seconds)
     let finalStatus = '';
     let finalData = null;
     let attempts = 0;
@@ -92,7 +93,6 @@ export default async function handler(req, res) {
         console.log(`[NAMTLS] Poll attempt ${attempts}/${maxAttempts}: status = ${finalStatus}`);
 
         if (finalStatus === 'successful') {
-          // CRITICAL: DEDUCT FROM BALANCE ONLY WHEN SUCCESSFUL
           await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
             balance: increment(-withdrawalAmount),
             totalWithdrawn: increment(withdrawalAmount),
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
           return res.status(200).json({
             success: true,
             verified: true,
-            message: `CONFIRMED: N${withdrawalAmount.toLocaleString()} successfully sent to Opay ${accountNumber}! Ref: ${reference}`,
+            message: `CONFIRMED: N${withdrawalAmount.toLocaleString()} sent to Opay ${accountNumber}! Ref: ${reference}`,
             reference: reference,
             flutterwaveId: transferId,
             status: 'successful'
@@ -123,7 +123,6 @@ export default async function handler(req, res) {
         if (finalStatus === 'pending' || finalStatus === 'processing' || finalStatus === 'queued') {
           continue;
         }
-
         break;
       } catch (pollError) {
         console.log(`[NAMTLS] Poll error on attempt ${attempts}: ${pollError.message}`);
@@ -135,7 +134,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       unverified: true,
-      message: `Flutterwave ACCEPTED the transfer (Ref: ${reference}) but after ${maxAttempts * 3}s the status is still "${finalStatus || 'unknown'}". Check: ${flutterwaveStatusUrl}`,
+      message: `Flutterwave ACCEPTED (Ref: ${reference}) but after ${maxAttempts * 3}s status is "${finalStatus || 'unknown'}". Check: ${flutterwaveStatusUrl}`,
       reference: reference,
       flutterwaveId: transferId,
       status: finalStatus || 'unknown',

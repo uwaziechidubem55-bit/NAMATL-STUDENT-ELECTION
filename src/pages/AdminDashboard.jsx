@@ -5,10 +5,6 @@ import { collection, addDoc, getDocs, getDoc, doc, setDoc, deleteDoc, updateDoc 
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext';
 
-const ADMIN_ID = "Admin123@";  
-const WITHDRAWAL_PIN = "1966"; 
-const OPAY_ACCOUNT = "9167557038"; 
-
 const MAX_PER_POSITION = 5;
 
 export default function AdminDashboard() {

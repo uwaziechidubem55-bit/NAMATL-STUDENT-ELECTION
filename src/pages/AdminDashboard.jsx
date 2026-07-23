@@ -299,17 +299,57 @@ export default function AdminDashboard() {
 
   // ─── Withdrawal ───
   const handleWithdraw = async () => {
-    if (!withdrawAdminId || !withdrawPin || !withdrawAmount) { setWithdrawMsg('Fill all fields'); return; }
-    const correctId = ADMIN_ID || 'Admin@Namatls128756BC'; const correctPin = WITHDRAWAL_PIN || '1966';
-    if (withdrawAdminId !== correctId) { setWithdrawMsg('Error: wrong admin ID'); return; }
-    if (withdrawPin !== correctPin) { setWithdrawMsg('Error: wrong admin pin'); return; }
-    const amount = Number(withdrawAmount);
-    if (isNaN(amount) || amount < 1000) { setWithdrawMsg('Min: ₦1,000'); return; }
-    if (amount > (withdrawalBalance || 0)) { setWithdrawMsg('Insufficient balance'); return; }
-    setWithdrawing(true); setWithdrawMsg('');
-    try { const result = await withdraw(amount, OPAY_ACCOUNT); setWithdrawMsg(result.message); if (result.success) { setWithdrawAmount(''); setWithdrawPin(''); } } catch (e) { setWithdrawMsg('Error: ' + e.message); }
-    setWithdrawing(false);
-  };
+  // 1. Trim whitespace from inputs
+  const cleanAdminId = withdrawAdminId ? withdrawAdminId.trim() : '';
+  const cleanPin = withdrawPin ? withdrawPin.trim() : '';
+
+  if (!cleanAdminId || !cleanPin || !withdrawAmount) { 
+    setWithdrawMsg('Fill all fields'); 
+    return; 
+  }
+
+  const correctId = ADMIN_ID || 'Admin@Namatls128756BC'; 
+  const correctPin = WITHDRAWAL_PIN || '1966';
+
+  // 2. Exact match check after trimming
+  if (cleanAdminId !== correctId) { 
+    setWithdrawMsg('Error: wrong admin ID'); 
+    return; 
+  }
+  
+  if (cleanPin !== correctPin) { 
+    setWithdrawMsg('Error: wrong admin pin'); 
+    return; 
+  }
+
+  const amount = Number(withdrawAmount);
+  if (isNaN(amount) || amount < 1000) { 
+    setWithdrawMsg('Min: ₦1,000'); 
+    return; 
+  }
+  
+  if (amount > (withdrawalBalance || 0)) { 
+    setWithdrawMsg('Insufficient balance'); 
+    return; 
+  }
+
+  setWithdrawing(true); 
+  setWithdrawMsg('');
+  
+  try { 
+    const result = await withdraw(amount, OPAY_ACCOUNT); 
+    setWithdrawMsg(result.message); 
+    if (result.success) { 
+      setWithdrawAmount(''); 
+      setWithdrawPin(''); 
+    } 
+  } catch (e) { 
+    setWithdrawMsg('Error: ' + e.message); 
+  }
+  
+  setWithdrawing(false);
+};
+
 
   // ─── General ───
   const handleSaveGeneral = async () => { try { await setDoc(doc(db, 'settings', 'general'), generalSettings, { merge: true }); setGeneralMsg('Saved!'); } catch (e) { setGeneralMsg('Error: ' + e.message); } };

@@ -7,9 +7,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: {
-      external: ['flutterwave-react-v3']
-    }
   },
   define: {
     'process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY': JSON.stringify(process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY || '')

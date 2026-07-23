@@ -11,7 +11,7 @@ export default function AdminLogin() {
     e.preventDefault();
     setError('');
 
-    if (username === 'Brouse' && password === 'Officialelectoralcommission123') {
+    if (username === 'BROUTE' && password === 'Officialelectoralcommission123') {
       navigate('/admin-dashboard');
     } else {
       setError('ACCESS DENIED. Ask admin for password.');
@@ -25,74 +25,58 @@ export default function AdminLogin() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontFamily: "'Segoe UI', system-ui, sans-serif",
       padding: '20px',
+      fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{
-        background: 'rgba(15,23,42,0.9)',
-        backdropFilter: 'blur(20px)',
+        background: 'rgba(15, 23, 42, 0.95)',
+        border: '1px solid rgba(255, 215, 0, 0.2)',
         borderRadius: '16px',
         padding: '40px 32px',
         width: '100%',
         maxWidth: '400px',
-        border: '1px solid rgba(255,255,255,0.06)',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.4)',
         textAlign: 'center',
+        boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
       }}>
-        {/* ===== LOGO — CENTERED WITH GOLD RING ===== */}
+        {/* Logo */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          marginBottom: '16px',
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          border: '3px solid #FFD700',
+          margin: '0 auto 16px',
+          overflow: 'hidden',
+          background: '#0a1628',
         }}>
-          <div style={{
-            width: '100px',
-            height: '100px',
-            borderRadius: '50%',
-            padding: '5px',
-            background: 'linear-gradient(135deg, #FFD700 0%, #e6a800 50%, #FFD700 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 30px rgba(255,215,0,0.25), 0 0 60px rgba(255,215,0,0.1)',
-          }}>
-            <img src="/logo.png" alt="NAMTLS Logo"
-              onError={(e) => { e.target.style.display = 'none'; }}
-              style={{
-                width: '100%',
-                height: '100%',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                background: '#0a1628',
-              }} />
-          </div>
+          <img
+            src="/logo.png"
+            alt="NAMTEL Logo"
+            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
         </div>
 
-        {/* ===== TITLE ===== */}
-        <h2 style={{ margin: '0 0 4px', color: '#FFD700', fontSize: '22px', fontWeight: 700 }}>
+        <h2 style={{ color: '#FFD700', margin: '0 0 4px', fontSize: '22px', fontWeight: 700 }}>
           Admin Login
         </h2>
-        <p style={{ margin: '0 0 28px', color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+        <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 24px' }}>
           Authorized personnel only
         </p>
 
-        {/* ===== ERROR ===== */}
         {error && (
           <div style={{
-            background: 'rgba(220,38,38,0.15)',
-            border: '1px solid rgba(220,38,38,0.3)',
+            background: 'rgba(220, 38, 38, 0.15)',
+            border: '1px solid #dc2626',
+            color: '#fca5a5',
+            padding: '12px',
             borderRadius: '8px',
-            padding: '12px 16px',
-            color: '#ef4444',
-            fontSize: '13px',
-            marginBottom: '20px',
+            marginBottom: '16px',
+            fontSize: '14px',
           }}>
             {error}
           </div>
         )}
 
-        {/* ===== FORM ===== */}
         <form onSubmit={handleLogin}>
           <input
             type="text"
@@ -132,54 +116,52 @@ export default function AdminLogin() {
               outline: 'none',
             }}
           />
-          <button type="submit"
+          <button
+            type="submit"
             style={{
               width: '100%',
-              padding: '14px 0',
-              background: '#FFC107',
+              padding: '14px',
+              background: '#FFD700',
               color: '#061D3A',
               border: 'none',
               borderRadius: '8px',
               fontWeight: 700,
-              fontSize: '15px',
+              fontSize: '16px',
               cursor: 'pointer',
-              transition: 'background 0.2s',
+              transition: 'all 0.3s',
             }}
             onMouseEnter={(e) => (e.target.style.background = '#e6a800')}
-            onMouseLeave={(e) => (e.target.style.background = '#FFC107')}
+            onMouseLeave={(e) => (e.target.style.background = '#FFD700')}
           >
             Sign In
           </button>
         </form>
 
-        {/* ===== BACK LINK — SHARP BLOCK ===== */}
-        <div onClick={() => navigate('/')}
+        <button
+          onClick={() => navigate('/')}
           style={{
             color: '#FFD700',
-            textDecoration: 'none',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer',
-            display: 'inline-block',
-            padding: '8px 16px',
+            background: 'transparent',
             border: '1px solid rgba(255,215,0,0.2)',
             borderRadius: '0px',
-            transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)',
-            background: 'transparent',
+            padding: '8px 16px',
             marginTop: '20px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 500,
+            transition: 'all 0.3s',
           }}
           onMouseEnter={(e) => {
             e.target.style.background = 'rgba(255,215,0,0.1)';
             e.target.style.borderColor = '#FFD700';
-            e.target.style.transform = 'translateX(4px)';
           }}
           onMouseLeave={(e) => {
             e.target.style.background = 'transparent';
             e.target.style.borderColor = 'rgba(255,215,0,0.2)';
-            e.target.style.transform = 'translateX(0)';
-          }}>
+          }}
+        >
           ← Back to Home
-        </div>
+        </button>
       </div>
     </div>
   );

@@ -115,11 +115,12 @@ export default function AdminDashboard() {
       } catch (e) { console.error('Support load error:', e); }
 
       // Load form purchase settings
-      if (loadFormPurchases) await loadFormPurchases();
-    } catch (e) {
-      setError(e.message);
-    }
-    setLoading(false);
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'formPurchase'));
+        if (snap.exists()) {
+          setFormPurchaseCfg(prev => ({ ...prev, ...snap.data() }));
+        }
+      } catch (e) { console.error('Form purchase load error:', e); }
   };
 
   // ─── Computed ───
@@ -254,6 +255,20 @@ export default function AdminDashboard() {
       setSupportMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'read' } : m));
     } catch (e) { console.error(e); }
   };
+// ─── Form Purchase Settings ───
+const [formPurchaseCfg, setFormPurchaseCfg] = useState({
+  isActive: false,
+  openingDate: '',
+  openingTime: '',
+  closingDate: '',
+  closingTime: '',
+  maxPerPosition: 5,
+  positions: []
+});
+const [newPosName, setNewPosName] = useState('');
+const [newPosAmount, setNewPosAmount] = useState('');
+const [fpSaved, setFpSaved] = useState(false);
+const [fpMsg, setFpMsg] = useState({ type: '', text: '' });
 
   // ─── Withdrawal ───
   const handleWithdraw = async () => {
@@ -276,7 +291,36 @@ export default function AdminDashboard() {
     if (result.success) {
       setWithdrawAdminId(''); setWithdrawPin(''); setWithdrawAmount('');
     }
-  };
+// ─── Form Purchase Handlers ───
+const addPositionToForm = () => {
+  if (!newPosName.trim() || !newPosAmount) return;
+  setFormPurchaseCfg(prev => ({
+    ...prev,
+    positions: [...prev.positions, { position: newPosName.trim(), amount: parseInt(newPosAmount) }]
+  }));
+  setNewPosName('');
+  setNewPosAmount('');
+};
+
+const removeFormPosition = (index) => {
+  setFormPurchaseCfg(prev => ({
+    ...prev,
+    positions: prev.positions.filter((_, i) => i !== index)
+  }));
+};
+
+const saveFormPurchaseCfg = async () => {
+  setFpMsg({ type: '', text: '' });
+  try {
+    await setDoc(doc(db, 'settings', 'formPurchase'), formPurchaseCfg, { merge: true });
+    setFpSaved(true);
+    setFpMsg({ type: 'success', text: 'Form purchase settings saved!' });
+    setTimeout(() => setFpSaved(false), 3000);
+  } catch (e) {
+    setFpMsg({ type: 'error', text: 'Save failed: ' + e.message });
+  }
+};
+  
 
   // ─── Styles ───
   const layout = {
@@ -363,15 +407,16 @@ export default function AdminDashboard() {
   });
 
   const sidebarItems = [
-    { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { key: 'settings', label: 'Election Settings', icon: '⚙️' },
-    { key: 'generalSettings', label: 'General Settings', icon: '🔧' },
-    { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
-    { key: 'results', label: 'Results', icon: '📈' },
-    { key: 'activation', label: 'Activation', icon: '🔑' },
-    { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
-    { key: 'support', label: 'Support Messages', icon: '💬' },
-  ];
+  { key: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { key: 'settings', label: 'Election Settings', icon: '⚙️' },
+  { key: 'generalSettings', label: 'General Settings', icon: '🔧' },
+  { key: 'formPurchase', label: 'Form Purchase', icon: '📋' },  // ← ADD THIS
+  { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
+  { key: 'results', label: 'Results', icon: '📈' },
+  { key: 'activation', label: 'Activation', icon: '🔑' },
+  { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
+  { key: 'support', label: 'Support Messages', icon: '💬' },
+];
 
   // ─── LOADING ───
   if (loading) {
@@ -840,6 +885,127 @@ export default function AdminDashboard() {
             <button onClick={handleWithdraw} style={{ ...btnWarning, marginTop: '16px', padding: '14px 32px', fontSize: '15px' }}>
               💸 Withdraw Funds
             </button>
+          </div>
+        )}
+{/* ==================== FORM PURCHASE SETTINGS VIEW ==================== */}
+        {activeView === 'formPurchase' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>
+              📋 Form Purchase Settings
+            </h2>
+
+            {fpMsg.text && (
+              <div style={{
+                padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', fontWeight: 500,
+                background: fpMsg.type === 'success' ? 'rgba(22,163,74,0.15)' : 'rgba(220,38,38,0.15)',
+                color: fpMsg.type === 'success' ? '#16a34a' : '#dc2626',
+                border: `1px solid ${fpMsg.type === 'success' ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)'}`,
+              }}>{fpMsg.text}</div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#94a3b8' }}>Status</label>
+                <select value={formPurchaseCfg.isActive ? 'true' : 'false'}
+                  onChange={e => setFormPurchaseCfg({...formPurchaseCfg, isActive: e.target.value === 'true'})}
+                  style={inputStyle}>
+                  <option value="false">🔴 Disabled</option>
+                  <option value="true">🟢 Active</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#94a3b8' }}>Max Per Position</label>
+                <input type="number" value={formPurchaseCfg.maxPerPosition} min="1" max="20"
+                  onChange={e => setFormPurchaseCfg({...formPurchaseCfg, maxPerPosition: parseInt(e.target.value) || 5})}
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#94a3b8' }}>Opening Date</label>
+                <input type="date" value={formPurchaseCfg.openingDate}
+                  onChange={e => setFormPurchaseCfg({...formPurchaseCfg, openingDate: e.target.value})}
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#94a3b8' }}>Opening Time</label>
+                <input type="time" value={formPurchaseCfg.openingTime}
+                  onChange={e => setFormPurchaseCfg({...formPurchaseCfg, openingTime: e.target.value})}
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#94a3b8' }}>Closing Date</label>
+                <input type="date" value={formPurchaseCfg.closingDate}
+                  onChange={e => setFormPurchaseCfg({...formPurchaseCfg, closingDate: e.target.value})}
+                  style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#94a3b8' }}>Closing Time</label>
+                <input type="time" value={formPurchaseCfg.closingTime}
+                  onChange={e => setFormPurchaseCfg({...formPurchaseCfg, closingTime: e.target.value})}
+                  style={inputStyle} />
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: '15px', margin: '0 0 12px', color: '#cbd5e1' }}>Positions &amp; Pricing</h3>
+            
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <input type="text" placeholder="Position name (e.g. President)" value={newPosName}
+                onChange={e => setNewPosName(e.target.value)}
+                style={{ ...inputStyle, maxWidth: '280px', marginBottom: 0 }} />
+              <input type="number" placeholder="Amount (₦)" value={newPosAmount}
+                onChange={e => setNewPosAmount(e.target.value)}
+                style={{ ...inputStyle, maxWidth: '160px', marginBottom: 0 }} />
+              <button onClick={addPositionToForm}
+                style={{ padding: '12px 24px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                ➕ Add Position
+              </button>
+            </div>
+
+            {formPurchaseCfg.positions.length === 0 ? (
+              <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+                No positions added yet.
+              </p>
+            ) : (
+              <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ background: '#0a1628' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid #334155' }}>#</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Position</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Amount (₦)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formPurchaseCfg.positions.map((pos, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #1e293b' }}>
+                        <td style={{ padding: '10px 12px', color: '#64748b' }}>{i + 1}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 500 }}>{pos.position}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#FFD700', fontWeight: 600 }}>
+                          ₦{Number(pos.amount).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <button onClick={() => removeFormPosition(i)}
+                            style={{ padding: '5px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <button onClick={saveFormPurchaseCfg}
+              style={{ padding: '14px 32px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '15px', cursor: 'pointer' }}>
+              {fpSaved ? '✅ Saved!' : '💾 Save Form Purchase Settings'}
+            </button>
+
+            <div style={{ marginTop: '16px', padding: '14px', background: 'rgba(255,215,0,0.04)', borderRadius: '8px', border: '1px solid rgba(255,215,0,0.1)', fontSize: '12px', color: '#94a3b8', lineHeight: 1.6 }}>
+              <strong style={{ color: '#FFD700' }}>📌 How it works:</strong><br />
+              Students visit <strong>/purchase-form</strong> → select a position → fill details → pay via Flutterwave.
+              Make sure <code style={{ background: '#0a1628', padding: '2px 6px', borderRadius: '4px' }}>VITE_FLW_PUBLIC_KEY</code> is set in Vercel.
+            </div>
           </div>
         )}
 

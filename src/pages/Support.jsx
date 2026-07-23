@@ -33,144 +33,299 @@ export default function Support() {
     <div style={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #0a1628 0%, #061D3A 50%, #003366 100%)',
+      fontFamily: 'system-ui, sans-serif',
+      color: '#f1f5f9',
+      padding: '40px 20px',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: "'Segoe UI', system-ui, sans-serif",
-      padding: '20px',
     }}>
-      <div style={{
-        background: 'rgba(255,255,255,0.98)',
-        borderRadius: '16px',
-        padding: '40px 32px',
-        width: '100%',
-        maxWidth: '480px',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <span style={{ fontSize: '40px' }}>💬</span>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0a1628', margin: '8px 0 4px' }}>Chat / Support</h1>
-          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Submit your complaints or request help</p>
+      <div style={{ maxWidth: '500px', width: '100%' }}>
+        {/* Header with Logo & Branding */}
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <img
+            src="/logo.png"
+            alt="NAMATL Logo"
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              objectFit: 'cover',
+              marginBottom: '12px',
+              border: '2px solid #FFD700',
+            }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+          <h1 style={{
+            color: '#FFD700',
+            margin: '0 0 4px',
+            fontSize: '22px',
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+          }}>
+            NAMATL STUDENT E-VOTING
+          </h1>
+          <p style={{
+            color: '#94a3b8',
+            fontSize: '13px',
+            margin: 0,
+          }}>
+            💬 Chat / Support — Submit your complaints or request help
+          </p>
         </div>
 
         {submitted ? (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <span style={{ fontSize: '48px', display: 'block', marginBottom: '12px' }}>✓</span>
-            <h2 style={{ color: '#0a1628', fontSize: '20px', fontWeight: 600 }}>Message Sent!</h2>
-            <p style={{ color: '#64748b', fontSize: '14px' }}>Your message has been received. We'll get back to you.</p>
-
-            {/* ===== SHARP BLOCK BACK LINK ===== */}
-            <Link to="/"
+          <div style={{
+            background: '#0f172a',
+            borderRadius: '12px',
+            padding: '40px 24px',
+            textAlign: 'center',
+            border: '1px solid #1e293b',
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(34,197,94,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              fontSize: '32px',
+            }}>
+              ✓
+            </div>
+            <h2 style={{
+              color: '#22c55e',
+              margin: '0 0 8px',
+              fontSize: '20px',
+            }}>
+              Message Sent!
+            </h2>
+            <p style={{
+              color: '#94a3b8',
+              fontSize: '14px',
+              margin: '0 0 24px',
+              lineHeight: 1.5,
+            }}>
+              Your message has been received.<br />
+              We'll get back to you as soon as possible.
+            </p>
+            <Link
+              to="/"
               style={{
-                color: '#2563eb',
-                textDecoration: 'none',
                 display: 'inline-block',
-                padding: '8px 16px',
-                border: '1px solid rgba(37,99,235,0.3)',
-                borderRadius: '0px',
-                transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)',
-                fontWeight: 500,
-                fontSize: '13px',
-                marginTop: '12px',
+                padding: '12px 28px',
+                background: '#FFD700',
+                color: '#061D3A',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '14px',
                 cursor: 'pointer',
+                textDecoration: 'none',
+                transition: 'all 0.3s',
               }}
-              onMouseEnter={(e) => {
-                e.target.style.background = 'rgba(37,99,235,0.1)';
-                e.target.style.borderColor = '#2563eb';
-                e.target.style.transform = 'translateX(4px)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = 'transparent';
-                e.target.style.borderColor = 'rgba(37,99,235,0.3)';
-                e.target.style.transform = 'translateX(0)';
-              }}>
+              onMouseEnter={(e) => { e.target.style.background = '#e6a800'; }}
+              onMouseLeave={(e) => { e.target.style.background = '#FFD700'; }}
+            >
               ← Back to Home
             </Link>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              background: '#0f172a',
+              borderRadius: '12px',
+              padding: '28px 24px',
+              border: '1px solid #1e293b',
+            }}
+          >
             {error && (
               <div style={{
-                background: '#fef2f2', color: '#dc2626',
-                padding: '12px 16px', borderRadius: '8px',
-                marginBottom: '16px', fontSize: '13px',
-                border: '1px solid #fecaca'
+                background: 'rgba(239,68,68,0.1)',
+                border: '1px solid #ef4444',
+                color: '#fca5a5',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}>
-                {error}
+                <span>⚠️</span>
+                <span>{error}</span>
               </div>
             )}
 
-            <input
-              type="text"
-              placeholder="Your Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: '100%', padding: '14px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '12px', fontSize: '14px', boxSizing: 'border-box' }}
-              required
-            />
-            <input
-              type="email"
-              placeholder="Your Email (optional)"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: '100%', padding: '14px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '12px', fontSize: '14px', boxSizing: 'border-box' }}
-            />
-            <textarea
-              placeholder="Your message..."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              style={{ width: '100%', padding: '14px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '16px', fontSize: '14px', minHeight: '120px', boxSizing: 'border-box', fontFamily: 'inherit' }}
-              required
-            />
-            <button type="submit"
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{
+                display: 'block',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 600,
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                Your Name *
+              </label>
+              <input
+                placeholder="e.g. John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  background: '#0a1628',
+                  color: '#f1f5f9',
+                  outline: 'none',
+                  transition: 'border-color 0.2s',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
+                onBlur={(e) => { e.target.style.borderColor = '#334155'; }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{
+                display: 'block',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 600,
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                Email (optional)
+              </label>
+              <input
+                placeholder="e.g. you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  background: '#0a1628',
+                  color: '#f1f5f9',
+                  outline: 'none',
+                  transition: 'border-color 0.2s',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
+                onBlur={(e) => { e.target.style.borderColor = '#334155'; }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{
+                display: 'block',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 600,
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}>
+                Your Message *
+              </label>
+              <textarea
+                placeholder="Type your message, complaint, or request here..."
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                required
+                rows="5"
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                  background: '#0a1628',
+                  color: '#f1f5f9',
+                  outline: 'none',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  transition: 'border-color 0.2s',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
+                onBlur={(e) => { e.target.style.borderColor = '#334155'; }}
+              />
+            </div>
+
+            <button
+              type="submit"
               style={{
                 width: '100%',
-                padding: '14px 0',
-                background: '#2563eb',
-                color: 'white',
+                padding: '14px',
+                background: '#FFD700',
+                color: '#061D3A',
                 border: 'none',
                 borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '15px',
+                fontWeight: 700,
+                fontSize: '16px',
                 cursor: 'pointer',
-                transition: 'background 0.2s',
+                transition: 'all 0.3s',
               }}
-              onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
-              onMouseLeave={(e) => (e.target.style.background = '#2563eb')}>
+              onMouseEnter={(e) => { e.target.style.background = '#e6a800'; e.target.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={(e) => { e.target.style.background = '#FFD700'; e.target.style.transform = 'translateY(0)'; }}
+            >
               Send Message
             </button>
 
-            {/* ===== ERROR STATE BACK LINK — SHARP BLOCK ===== */}
-            <div style={{ textAlign: 'center', marginTop: '16px' }}>
-              <Link to="/"
+            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+              <Link
+                to="/"
                 style={{
                   color: '#94a3b8',
+                  background: 'transparent',
+                  border: '1px solid rgba(148,163,184,0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 18px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500,
                   textDecoration: 'none',
                   display: 'inline-block',
-                  padding: '6px 14px',
-                  border: '1px solid rgba(148,163,184,0.2)',
-                  borderRadius: '0px',
-                  transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  marginTop: '8px',
-                  cursor: 'pointer',
+                  transition: 'all 0.3s',
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(148,163,184,0.08)';
-                  e.target.style.borderColor = '#94a3b8';
-                  e.target.style.transform = 'translateX(4px)';
+                  e.target.style.color = '#FFD700';
+                  e.target.style.borderColor = '#FFD700';
+                  e.target.style.background = 'rgba(255,215,0,0.08)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'transparent';
+                  e.target.style.color = '#94a3b8';
                   e.target.style.borderColor = 'rgba(148,163,184,0.2)';
-                  e.target.style.transform = 'translateX(0)';
-                }}>
+                  e.target.style.background = 'transparent';
+                }}
+              >
                 ← Back to Home
               </Link>
             </div>
           </form>
         )}
+
+        {/* Footer */}
+        <p style={{
+          textAlign: 'center',
+          color: '#475569',
+          fontSize: '11px',
+          marginTop: '32px',
+        }}>
+          NAMATL STUDENT E-VOTING © {new Date().getFullYear()}
+        </p>
       </div>
     </div>
   );

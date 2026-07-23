@@ -9,6 +9,6 @@ export default defineConfig({
     emptyOutDir: true,
   },
   define: {
-    'process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY': JSON.stringify(process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY || '')
+    'process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY': JSON.stringify(process.env.VITE_FLW_PUBLIC_KEY || '')
   }
 })

@@ -36,7 +36,7 @@ export default function AdminLogin() {
     >
       {/* ===== LOGO AT TOP ===== */}
       <img
-        src="https://raw.githubusercontent.com/logo.png?v=2"
+        src=logo.png?v=2"
         alt="NAMTLS Logo"
         onError={e => { e.target.style.display = 'none'; }}
         style={{

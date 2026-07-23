@@ -4,11 +4,10 @@ import { useNavigate } from 'react-router-dom';
 export default function Landing() {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const year = new Date().getFullYear();
 
   useEffect(() => {
-    requestAnimationFrame(() => setLoaded(true));
+    requestAnimationFrame(() => {});
   }, []);
 
   return (
@@ -23,6 +22,8 @@ export default function Landing() {
       justifyContent: 'center',
       position: 'relative',
       overflow: 'hidden',
+      padding: '20px',
+      boxSizing: 'border-box',
     }}>
       {/* Background glow */}
       <div style={{
@@ -40,24 +41,25 @@ export default function Landing() {
         pointerEvents: 'none',
       }} />
 
-      {/* ===== 3 DOTS MENU ===== */}
+      {/* ===== 3 DOTS MENU WITH SHARP BLOCK EFFECT ===== */}
       <button onClick={() => setMenuOpen(!menuOpen)}
         style={{
           position: 'absolute', top: '24px', left: '24px',
           width: '44px', height: '44px', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          borderRadius: '12px', zIndex: 20,
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: menuOpen ? '0px' : '12px',
+          zIndex: 20, transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)',
+          background: menuOpen ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.06)',
+          border: menuOpen ? '2px solid #FFD700' : '1px solid rgba(255,255,255,0.08)',
           fontSize: '22px', fontWeight: 'bold',
-          color: '#FFD700', transition: 'all 0.2s',
+          color: '#FFD700',
         }}
-        onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.12)'; }}
-        onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}>
-        ⋮
+        onMouseEnter={(e) => { if (!menuOpen) e.target.style.background = 'rgba(255,255,255,0.12)'; }}
+        onMouseLeave={(e) => { if (!menuOpen) e.target.style.background = 'rgba(255,255,255,0.06)'; }}>
+        <span style={{ transform: menuOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', transition: 'transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)' }}>⋮</span>
       </button>
 
-      {/* ===== DROPDOWN ===== */}
+      {/* ===== DROPDOWN WITH SHARP BLOCK EFFECT ===== */}
       {menuOpen && (
         <>
           <div onClick={() => setMenuOpen(false)}
@@ -66,34 +68,34 @@ export default function Landing() {
             position: 'fixed', top: '80px', left: '24px', zIndex: 20,
             background: 'rgba(15,23,42,0.98)',
             backdropFilter: 'blur(20px)',
-            borderRadius: '14px',
-            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '0px',
+            border: '2px solid #FFD700',
             boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
             minWidth: '220px', overflow: 'hidden',
-            animation: 'fadeIn 0.2s ease-out',
+            animation: 'sharpDrop 0.25s cubic-bezier(0.25, 0.1, 0.25, 1) forwards',
           }}>
             <div onClick={() => { setMenuOpen(false); navigate('/admin-login'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', transition: 'all 0.2s' }}
-              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.08)'; }}
-              onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}>
-              🔒 Admin Login
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 500, borderBottom: '1px solid rgba(255,215,0,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}
+              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.12)'; e.target.style.paddingLeft = '28px'; }}
+              onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.paddingLeft = '20px'; }}>
+              <span style={{ fontSize: '16px' }}>🔒</span> Admin Login
             </div>
             <div onClick={() => { setMenuOpen(false); navigate('/purchase-form'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', transition: 'all 0.2s' }}
-              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.08)'; }}
-              onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}>
-              📋 Purchase Form
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 500, borderBottom: '1px solid rgba(255,215,0,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}
+              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.12)'; e.target.style.paddingLeft = '28px'; }}
+              onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.paddingLeft = '20px'; }}>
+              <span style={{ fontSize: '16px' }}>📋</span> Purchase Form
             </div>
             <div onClick={() => { setMenuOpen(false); navigate('/support'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', transition: 'all 0.2s' }}
-              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.08)'; }}
-              onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}>
-              💬 Support
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 500, borderBottom: '1px solid rgba(255,215,0,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}
+              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.12)'; e.target.style.paddingLeft = '28px'; }}
+              onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.paddingLeft = '20px'; }}>
+              <span style={{ fontSize: '16px' }}>💬</span> Support
             </div>
             <div onClick={() => setMenuOpen(false)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 20px', color: 'rgba(255,255,255,0.4)', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}
-              onMouseEnter={(e) => { e.target.style.color = 'rgba(255,255,255,0.7)'; }}
-              onMouseLeave={(e) => { e.target.style.color = 'rgba(255,255,255,0.4)'; }}>
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 20px', color: 'rgba(255,255,255,0.4)', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', borderTop: '1px solid rgba(255,215,0,0.1)' }}
+              onMouseEnter={(e) => { e.target.style.color = 'rgba(255,255,255,0.7)'; e.target.style.background = 'rgba(255,215,0,0.05)'; }}
+              onMouseLeave={(e) => { e.target.style.color = 'rgba(255,255,255,0.4)'; e.target.style.background = 'transparent'; }}>
               ✕ Close
             </div>
           </div>
@@ -101,55 +103,84 @@ export default function Landing() {
       )}
 
       {/* ===== CENTRAL CONTENT ===== */}
-      <div style={{ textAlign: 'center', zIndex: 1, padding: '20px' }}>
-        {/* ROUND LOGO — CENTERED */}
-        <img src="/logo.png" alt="NAMATL Official Logo"
-          onError={(e) => { e.target.style.display = 'none'; }}
-          style={{
-            width: '110px', height: '110px',
+      <div style={{ textAlign: 'center', zIndex: 1, padding: '20px', width: '100%', maxWidth: '500px', margin: '0 auto' }}>
+        {/* ROUND LOGO WITH GOLD BORDER RING */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginBottom: '24px',
+        }}>
+          <div style={{
+            width: '130px',
+            height: '130px',
             borderRadius: '50%',
-            objectFit: 'cover',
-            boxShadow: '0 12px 40px rgba(255,215,0,0.15)',
-            marginBottom: '20px',
-            background: 'rgba(255,255,255,0.05)',
-            padding: '6px',
-          }} />
+            padding: '5px',
+            background: 'linear-gradient(135deg, #FFD700 0%, #e6a800 50%, #FFD700 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 30px rgba(255,215,0,0.25), 0 0 60px rgba(255,215,0,0.1)',
+          }}>
+            <img src="/logo.png" alt="NAMATL Official Logo"
+              onError={(e) => { e.target.style.display = 'none'; }}
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                background: '#0a1628',
+              }} />
+          </div>
+        </div>
 
-        {/* TITLE — E-VOTING TOGETHER */}
+        {/* TITLE — ALL GOLD TOGETHER */}
         <h1 style={{
-          fontSize: 'clamp(30px, 6vw, 52px)',
-          fontWeight: 800, margin: '0 0 4px',
+          fontSize: 'clamp(26px, 7vw, 48px)',
+          fontWeight: 800,
+          margin: '0 0 6px',
           letterSpacing: '-0.5px',
           color: '#FFD700',
+          lineHeight: 1.1,
+          wordBreak: 'break-word',
         }}>
           NAMATL STUDENT E-VOTING
         </h1>
 
         {/* SUBTITLE */}
         <p style={{
-          fontSize: 'clamp(13px, 2vw, 16px)',
-          fontWeight: 300, color: 'rgba(255,255,255,0.6)',
-          margin: '0 0 30px', lineHeight: 1.5,
+          fontSize: 'clamp(12px, 2.5vw, 15px)',
+          fontWeight: 300,
+          color: 'rgba(255,255,255,0.55)',
+          margin: '0 0 32px',
+          lineHeight: 1.6,
+          maxWidth: '400px',
+          marginLeft: 'auto',
+          marginRight: 'auto',
         }}>
           National Association of Maritime Transport<br />and Logistics Students, FUPRE
         </p>
 
-        {/* STUDENT LOGIN BUTTON ONLY */}
+        {/* STUDENT LOGIN BUTTON */}
         <button onClick={() => navigate('/student-login')}
           style={{
-            width: '100%', maxWidth: '260px',
-            padding: '15px 0',
+            width: '100%',
+            maxWidth: '280px',
+            padding: '16px 0',
             background: 'linear-gradient(135deg, #FFD700 0%, #e6a800 100%)',
             color: '#061D3A',
-            border: 'none', borderRadius: '14px',
-            fontWeight: 700, fontSize: '16px',
+            border: 'none',
+            borderRadius: '0px',
+            fontWeight: 700,
+            fontSize: '16px',
             cursor: 'pointer',
             boxShadow: '0 8px 30px rgba(255,215,0,0.2)',
-            transition: 'all 0.25s',
+            transition: 'all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)',
+            letterSpacing: '0.5px',
           }}
           onMouseEnter={(e) => {
-            e.target.style.transform = 'translateY(-2px)';
-            e.target.style.boxShadow = '0 12px 40px rgba(255,215,0,0.35)';
+            e.target.style.transform = 'translateY(-3px)';
+            e.target.style.boxShadow = '0 14px 40px rgba(255,215,0,0.4)';
           }}
           onMouseLeave={(e) => {
             e.target.style.transform = 'translateY(0)';
@@ -160,9 +191,9 @@ export default function Landing() {
 
         {/* ALL RIGHTS RESERVED */}
         <p style={{
-          marginTop: '28px',
+          marginTop: '32px',
           fontSize: '11px',
-          color: 'rgba(255,255,255,0.25)',
+          color: 'rgba(255,255,255,0.2)',
           letterSpacing: '0.3px',
         }}>
           &copy; {year} NAMATL FUPRE. All rights reserved.
@@ -171,9 +202,9 @@ export default function Landing() {
 
       {/* Keyframes */}
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-8px) scale(0.96); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+        @keyframes sharpDrop {
+          0% { opacity: 0; transform: translateY(-12px) scale(0.95) rotateX(5deg); }
+          100% { opacity: 1; transform: translateY(0) scale(1) rotateX(0deg); }
         }
       `}</style>
     </div>

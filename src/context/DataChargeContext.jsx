@@ -162,7 +162,7 @@ export function DataChargeProvider({ children }) {
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: 'admin@namtls.edu.ng', name: 'NAMTLS Admin' },
-          customizations: { title: 'NAMTLS Activation Payment', description: `Activation fee for ${academicYear}`, logo: 'https://namtls-election.vercel.app/logo.png' },
+          customizations: { title: 'NAMTLS Activation Payment', description: `Activation fee for ${academicYear}`, logo: '/logo.png' },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
               try {

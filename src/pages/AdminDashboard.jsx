@@ -9,7 +9,7 @@ const MAX_PER_POSITION = 5;
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { withdrawalBalance, withdraw, checkActivationCost, processActivationPayment, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT } = useDataCharge();
+  const { withdrawalBalance, withdraw, checkActivationCost, processActivationPayment, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT, formPurchaseSettings, saveFormPurchaseSettings, formPurchases, loadFormPurchases } = useDataCharge();
 
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -253,14 +253,15 @@ export default function AdminDashboard() {
   const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
 
   const sidebarItems = [
-    { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { key: 'results', label: 'View Results', icon: '📈' },
-    { key: 'candidates', label: 'Edit Candidates', icon: '👥' },
-    { key: 'settings', label: 'Election Settings', icon: '⚙️' },
-    { key: 'withdrawal', label: 'Withdrawal', icon: '💰' },
-    { key: 'general', label: 'General Settings', icon: '🔧' },
-    { key: 'messages', label: `Messages (${unreadCount})`, icon: '✉️' }
-  ];
+  { icon: '📊', label: 'Dashboard', key: 'dashboard' },
+  { icon: '⚙️', label: 'Settings', key: 'settings' },
+  { icon: '👥', label: 'Candidates', key: 'candidates' },
+  { icon: '📈', label: 'Results', key: 'results' },
+  { icon: '💰', label: 'Withdrawal', key: 'withdrawal' },
+  { icon: '🔑', label: 'Activation', key: 'activation' },
+  { icon: '📋', label: 'Form Purchase', key: 'formPurchase' },
+  { icon: '📩', label: 'Support', key: 'support' },
+];
 
   const inputStyle = {
     width: '100%',
@@ -923,6 +924,65 @@ export default function AdminDashboard() {
             </div>
           )}
 
+         {/* === FORM PURCHASE VIEW === */}
+        {activeView === 'formPurchase' && (
+  <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <h2 style={{ color: '#003366', marginBottom: '12px', borderBottom: '2px solid #FFD700', paddingBottom: '8px' }}>
+      📋 Candidates Form Purchase Settings
+    </h2>
+    <div style={cardStyle}>
+      <h3 style={{ margin: '0 0 16px 0', color: '#FFD700' }}>📅 Payment Deadline</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Opening Date</label>
+          <input type="date" value={formPurchaseSettings.openingDate || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, openingDate: e.target.value})} style={inputStyle} /></div>
+        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Opening Time</label>
+          <input type="time" value={formPurchaseSettings.openingTime || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, openingTime: e.target.value})} style={inputStyle} /></div>
+        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Closing Date</label>
+          <input type="date" value={formPurchaseSettings.closingDate || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, closingDate: e.target.value})} style={inputStyle} /></div>
+        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Closing Time</label>
+          <input type="time" value={formPurchaseSettings.closingTime || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, closingTime: e.target.value})} style={inputStyle} /></div>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }}>
+        <input type="checkbox" checked={formPurchaseSettings.isActive || false} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, isActive: e.target.checked})} /> Enable Form Purchase
+      </label>
+    </div>
+    <div style={cardStyle}>
+      <h3 style={{ margin: '0 0 16px 0', color: '#FFD700' }}>🏛️ Positions & Prices</h3>
+      {(formPurchaseSettings.positions || []).map((pos, i) => (
+        <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center' }}>
+          <input value={pos.position} onChange={e => { const u = [...formPurchaseSettings.positions]; u[i] = {...u[i], position: e.target.value}; setFormPurchaseSettings({...formPurchaseSettings, positions: u}); }} placeholder="Position" style={{...inputStyle, marginBottom: 0, flex: 1}} />
+          <input type="number" value={pos.amount} onChange={e => { const u = [...formPurchaseSettings.positions]; u[i] = {...u[i], amount: Number(e.target.value)}; setFormPurchaseSettings({...formPurchaseSettings, positions: u}); }} style={{...inputStyle, marginBottom: 0, width: '120px'}} />
+          <button onClick={() => setFormPurchaseSettings({...formPurchaseSettings, positions: formPurchaseSettings.positions.filter((_, idx) => idx !== i)})} style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer' }}>✕</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+        <input id="npn" placeholder="New position" style={{...inputStyle, marginBottom: 0, flex: 1}} />
+        <input id="npa" type="number" placeholder="Amount" style={{...inputStyle, marginBottom: 0, width: '120px'}} />
+        <button onClick={() => { const n = document.getElementById('npn').value.trim(); const a = Number(document.getElementById('npa').value); if (!n || a <= 0) { alert('Enter name and amount'); return; } setFormPurchaseSettings({...formPurchaseSettings, positions: [...(formPurchaseSettings.positions || []), { position: n, amount: a }]}); document.getElementById('npn').value = ''; document.getElementById('npa').value = ''; }} style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', fontWeight: 'bold' }}>+ Add</button>
+      </div>
+    </div>
+    <button onClick={async () => { const r = await saveFormPurchaseSettings(formPurchaseSettings); if (r.success) { alert('✅ Saved!'); loadFormPurchases(); } else { alert('❌ ' + r.message); } }} style={{ padding: '14px 24px', background: '#003366', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', width: '100%' }}>💾 Save Form Purchase Settings</button>
+    <div style={{...cardStyle, marginTop: '24px'}}>
+      <h3 style={{ margin: '0 0 12px 0', color: '#FFD700' }}>📊 Purchase History</h3>
+      {formPurchases.length === 0 ? <p style={{ textAlign: 'center', opacity: 0.5, padding: '20px' }}>No purchases yet.</p> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead><tr style={{ borderBottom: '1px solid #475569' }}><th style={{ padding: '8px', textAlign: 'left' }}>Name</th><th style={{ padding: '8px', textAlign: 'left' }}>Position</th><th style={{ padding: '8px', textAlign: 'right' }}>Amount</th><th style={{ padding: '8px', textAlign: 'left' }}>Date</th><th style={{ padding: '8px', textAlign: 'center' }}>Status</th></tr></thead>
+            <tbody>{formPurchases.slice().reverse().map((p, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid #334155' }}>
+                <td style={{ padding: '8px' }}>{p.fullName}</td>
+                <td style={{ padding: '8px' }}>{p.position}</td>
+                <td style={{ padding: '8px', textAlign: 'right', color: '#22c55e' }}>₦{Number(p.amount).toLocaleString()}</td>
+                <td style={{ padding: '8px', fontSize: '12px', opacity: 0.7 }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString() : '-'}</td>
+                <td style={{ padding: '8px', textAlign: 'center' }}><span style={{ background: '#16a34a', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '11px' }}>{p.status || 'paid'}</span></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </div>
+)}
           {/* === SUPPORT MESSAGES VIEW === */}
           {activeView === 'messages' && (
             <div style={cardStyle}>

@@ -24,7 +24,7 @@ export default function Landing() {
         overflow: 'hidden',
       }}
     >
-      {/* ===== 3 DOTS MENU BUTTON ===== */}
+      {/* 3 DOTS MENU BUTTON */}
       <div
         onClick={() => setMenuOpen(!menuOpen)}
         style={{
@@ -49,7 +49,7 @@ export default function Landing() {
         ⋮
       </div>
 
-      {/* ===== DROPDOWN NAV MENU ===== */}
+      {/* DROPDOWN NAV MENU */}
       {menuOpen && (
         <>
           <div
@@ -96,7 +96,6 @@ export default function Landing() {
             >
               🔒 Admin Login
             </div>
-
             <div
               onClick={() => {
                 setMenuOpen(false);
@@ -116,7 +115,6 @@ export default function Landing() {
             >
               📋 Purchase Form (Candidates)
             </div>
-
             <div
               onClick={() => {
                 setMenuOpen(false);
@@ -136,7 +134,6 @@ export default function Landing() {
             >
               💬 Chat / Support
             </div>
-
             <div
               onClick={() => setMenuOpen(false)}
               style={{
@@ -156,7 +153,7 @@ export default function Landing() {
         </>
       )}
 
-      {/* ===== CENTRAL CONTENT WRAPPER ===== */}
+      {/* CENTRAL CONTENT WRAPPER */}
       <div
         style={{
           display: 'flex',
@@ -170,7 +167,7 @@ export default function Landing() {
           transition: 'opacity 0.8s ease, transform 0.8s ease',
         }}
       >
-        {/* ===== YOUR LOGO — from public/logo.png via Vite root ===== */}
+        {/* LOGO — uses JSX img tag with correct public path */}
         <img
           src="/logo.png"
           alt="NAMTLS Official Logo"
@@ -185,7 +182,7 @@ export default function Landing() {
           }}
         />
 
-        {/* ===== TITLE ===== */}
+        {/* TITLE */}
         <h1
           style={{
             color: '#FFC107',
@@ -208,7 +205,6 @@ export default function Landing() {
         >
           E-VOTING
         </h2>
-
         <p
           style={{
             color: 'rgba(255,255,255,0.7)',
@@ -222,7 +218,7 @@ export default function Landing() {
           Logistics Students
         </p>
 
-        {/* ===== STUDENT LOGIN BUTTON ===== */}
+        {/* STUDENT LOGIN BUTTON */}
         <button
           onClick={() => navigate('/student-login')}
           style={{
@@ -237,7 +233,6 @@ export default function Landing() {
             fontSize: '16px',
             cursor: 'pointer',
             boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
-            transition: 'transform 0.2s, box-shadow 0.2s',
           }}
           onMouseEnter={(e) => {
             e.target.style.transform = 'scale(1.03)';

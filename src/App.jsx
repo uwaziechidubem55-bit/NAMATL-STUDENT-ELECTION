@@ -6,66 +6,24 @@ import StudentDashboard from './pages/StudentDashboard';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import Support from './pages/Support';
+import PurchaseForm from './pages/PurchaseForm';
 import { DataChargeProvider } from './context/DataChargeContext';
 
 function LoadingScreen() {
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#003366',
-      color: 'white',
-      fontFamily: 'Arial, sans-serif',
-      textAlign: 'center'
-    }}>
-      {/* Logo during loading */}
-      <img
-        src="/LOGO.jpg"
-        alt="NAMTLS Logo"
-        style={{
-          width: '100px',
-          height: '100px',
-          borderRadius: '50%',
-          objectFit: 'cover',
-          marginBottom: '20px',
-          border: '3px solid #FFD700'
-        }}
-        onError={e => { e.target.style.display = 'none'; }}
-      />
-      <div style={{
-        width: '48px',
-        height: '48px',
-        border: '4px solid #ffd700',
-        borderTop: '4px solid transparent',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 16px'
-      }}></div>
-      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-      <p style={{ fontSize: '18px', fontWeight: 'bold', margin: '0', color: '#ffd700' }}>
-        NAMTLS STUDENT E-VOTING
-      </p>
-      <p style={{ fontSize: '13px', opacity: '0.6', margin: '8px 0 0 0' }}>
-        Loading...
-      </p>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', fontFamily: 'system-ui, sans-serif' }}>
+      <h1>NAMTLS STUDENT E-VOTING</h1>
+      <p style={{ opacity: 0.7 }}>Loading...</p>
     </div>
   );
 }
 
 function NotFound() {
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      background: '#003366', color: 'white', fontFamily: 'Arial, sans-serif',
-      textAlign: 'center', padding: '32px'
-    }}>
-      <h1 style={{ color: '#ffd700' }}>ERROR 404</h1>
-      <p>Page not found</p>
-      <a href="#/" style={{ color: '#ffd700', marginTop: '16px', textDecoration: 'underline' }}>Go Home</a>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#1e293b', color: 'white', fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ fontSize: '64px', margin: '0', color: '#ef4444' }}>ERROR 404</h1>
+      <p style={{ opacity: 0.5 }}>Page not found</p>
+      <a href="/" style={{ color: '#3b82f6', marginTop: '16px' }}>Go Home</a>
     </div>
   );
 }
@@ -76,20 +34,17 @@ function App() {
     const timer = setTimeout(() => setLoading(false), 800);
     return () => clearTimeout(timer);
   }, []);
-
   if (loading) return <LoadingScreen />;
-
   return (
     <DataChargeProvider>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/landing" element={<Landing />} />
         <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/student" element={<StudentDashboard />} />
         <Route path="/admin" element={<AdminLogin />} />
-        <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/support" element={<Support />} />
+        <Route path="/purchase-form" element={<PurchaseForm />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </DataChargeProvider>

@@ -106,7 +106,7 @@ export function DataChargeProvider({ children }) {
   }, []);
 
   const withdraw = async (adminId, pin, amount) => {
-    if (adminId.trim() !== ADMIN_ID) return { success: false, message: 'Invalid Admin ID' };
+    if (adminId !== ADMIN_ID) return { success: false, message: 'Invalid Admin ID' };
     if (pin !== WITHDRAWAL_PIN) return { success: false, message: 'Invalid PIN' };
     if (amount <= 0) return { success: false, message: 'Invalid amount' };
     if (amount > withdrawalBalance) return { success: false, message: `Insufficient balance. Available: N${withdrawalBalance.toLocaleString()}` };

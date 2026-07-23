@@ -46,7 +46,7 @@ export default function Landing() {
         ⋮
       </button>
 
-      {/* ===== DROPDOWN - NO BOX/CONTAINER, ITEMS DROP DIRECTLY ===== */}
+      {/* ===== DROPDOWN ===== */}
       {menuOpen && (
         <>
           <div
@@ -56,7 +56,7 @@ export default function Landing() {
           <div style={{
             position: 'absolute',
             top: '76px',
-            right: '24px',
+            left: '24px',
             zIndex: 20,
             background: '#0f172a',
             border: '1px solid #334155',
@@ -68,18 +68,11 @@ export default function Landing() {
             <button
               onClick={() => { setMenuOpen(false); navigate('/admin-login'); }}
               style={{
-                display: 'block',
-                width: '100%',
-                padding: '14px 20px',
-                background: 'transparent',
-                border: 'none',
+                display: 'block', width: '100%', padding: '14px 20px',
+                background: 'transparent', border: 'none',
                 borderBottom: '1px solid rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                color: '#f1f5f9',
-                fontSize: '14px',
-                fontWeight: 500,
-                textAlign: 'left',
-                transition: 'all 0.2s',
+                cursor: 'pointer', color: '#f1f5f9', fontSize: '14px', fontWeight: 500,
+                textAlign: 'left', transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.1)'; e.target.style.paddingLeft = '26px'; }}
               onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.paddingLeft = '20px'; }}
@@ -89,18 +82,11 @@ export default function Landing() {
             <button
               onClick={() => { setMenuOpen(false); navigate('/support'); }}
               style={{
-                display: 'block',
-                width: '100%',
-                padding: '14px 20px',
-                background: 'transparent',
-                border: 'none',
+                display: 'block', width: '100%', padding: '14px 20px',
+                background: 'transparent', border: 'none',
                 borderBottom: '1px solid rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                color: '#f1f5f9',
-                fontSize: '14px',
-                fontWeight: 500,
-                textAlign: 'left',
-                transition: 'all 0.2s',
+                cursor: 'pointer', color: '#f1f5f9', fontSize: '14px', fontWeight: 500,
+                textAlign: 'left', transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.1)'; e.target.style.paddingLeft = '26px'; }}
               onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.paddingLeft = '20px'; }}
@@ -110,18 +96,11 @@ export default function Landing() {
             <button
               onClick={() => { setMenuOpen(false); navigate('/purchase-form'); }}
               style={{
-                display: 'block',
-                width: '100%',
-                padding: '14px 20px',
-                background: 'transparent',
-                border: 'none',
+                display: 'block', width: '100%', padding: '14px 20px',
+                background: 'transparent', border: 'none',
                 borderBottom: '1px solid rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                color: '#f1f5f9',
-                fontSize: '14px',
-                fontWeight: 500,
-                textAlign: 'left',
-                transition: 'all 0.2s',
+                cursor: 'pointer', color: '#f1f5f9', fontSize: '14px', fontWeight: 500,
+                textAlign: 'left', transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => { e.target.style.background = 'rgba(255,215,0,0.1)'; e.target.style.paddingLeft = '26px'; }}
               onMouseLeave={(e) => { e.target.style.background = 'transparent'; e.target.style.paddingLeft = '20px'; }}
@@ -131,17 +110,10 @@ export default function Landing() {
             <button
               onClick={() => setMenuOpen(false)}
               style={{
-                display: 'block',
-                width: '100%',
-                padding: '14px 20px',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#94a3b8',
-                fontSize: '13px',
-                fontWeight: 500,
-                textAlign: 'center',
-                borderTop: '1px solid rgba(255,255,255,0.05)',
+                display: 'block', width: '100%', padding: '14px 20px',
+                background: 'transparent', border: 'none',
+                cursor: 'pointer', color: '#94a3b8', fontSize: '13px', fontWeight: 500,
+                textAlign: 'center', borderTop: '1px solid rgba(255,255,255,0.05)',
                 transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => { e.target.style.color = '#f1f5f9'; e.target.style.background = 'rgba(255,255,255,0.04)'; }}
@@ -155,15 +127,10 @@ export default function Landing() {
 
       {/* ===== CENTRAL CONTENT ===== */}
       <div style={{ textAlign: 'center' }}>
-        {/* Logo with gold border */}
         <div style={{
-          width: '100px',
-          height: '100px',
-          borderRadius: '50%',
-          border: '3px solid #FFD700',
-          margin: '0 auto 20px',
-          overflow: 'hidden',
-          background: '#0a1628',
+          width: '100px', height: '100px', borderRadius: '50%',
+          border: '3px solid #FFD700', margin: '0 auto 20px',
+          overflow: 'hidden', background: '#0a1628',
           boxShadow: '0 0 25px rgba(255,215,0,0.15)',
         }}>
           <img
@@ -174,57 +141,36 @@ export default function Landing() {
           />
         </div>
 
-        {/* NAMATL STUDENT E-VOTING in YELLOW (FIRST) */}
         <h1 style={{
-          color: '#FFD700',
-          fontSize: '30px',
-          fontWeight: 700,
-          margin: '0 0 4px',
-          letterSpacing: '2px',
-          lineHeight: 1.1,
+          color: '#FFD700', fontSize: '30px', fontWeight: 700,
+          margin: '0 0 4px', letterSpacing: '2px', lineHeight: 1.1,
         }}>
           NAMATL STUDENT
         </h1>
         <h1 style={{
-          color: '#FFD700',
-          fontSize: '30px',
-          fontWeight: 700,
-          margin: '0 0 12px',
-          letterSpacing: '2px',
+          color: '#FFD700', fontSize: '30px', fontWeight: 700,
+          margin: '0 0 12px', letterSpacing: '2px',
         }}>
           E-VOTING
         </h1>
 
-        {/* Association name in WHITE (SECOND - BELOW) */}
         <h2 style={{
-          color: '#ffffff',
-          fontSize: '13px',
-          fontWeight: 500,
-          margin: '0 0 32px',
-          letterSpacing: '1px',
-          textTransform: 'uppercase',
+          color: '#ffffff', fontSize: '13px', fontWeight: 500,
+          margin: '0 0 32px', letterSpacing: '1px', textTransform: 'uppercase',
         }}>
           NATIONAL ASSOCIATION OF MARITIME TRANSPORT
           <br />
           AND LOGISTIC STUDENTS
         </h2>
 
-        {/* Student Login Button */}
         <button
           onClick={() => navigate('/student-login')}
           style={{
-            width: '100%',
-            maxWidth: '260px',
-            padding: '14px 0',
+            width: '100%', maxWidth: '260px', padding: '14px 0',
             background: 'linear-gradient(135deg, #FFD700 0%, #e6a800 100%)',
-            color: '#061D3A',
-            border: 'none',
-            fontWeight: 700,
-            fontSize: '16px',
-            cursor: 'pointer',
-            boxShadow: '0 6px 25px rgba(255,215,0,0.2)',
-            transition: 'all 0.3s',
-            letterSpacing: '0.5px',
+            color: '#061D3A', border: 'none', fontWeight: 700, fontSize: '16px',
+            cursor: 'pointer', boxShadow: '0 6px 25px rgba(255,215,0,0.2)',
+            transition: 'all 0.3s', letterSpacing: '0.5px',
           }}
           onMouseEnter={(e) => {
             e.target.style.transform = 'translateY(-2px)';
@@ -235,10 +181,9 @@ export default function Landing() {
             e.target.style.boxShadow = '0 6px 25px rgba(255,215,0,0.2)';
           }}
         >
-           Student Login
+          🗳️ Student Login
         </button>
 
-        {/* Footer */}
         <p style={{ color: '#475569', fontSize: '11px', marginTop: '40px' }}>
           © {year} NAMATL FUPRE. All rights reserved.
         </p>

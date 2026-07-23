@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, storage } from '../firebase';
-import { collection, addDoc, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { useDataCharge } from '../context/DataChargeContext'; // KEEP for withdraw + activation
+import { useDataCharge } from '../context/DataChargeContext';
 
 const MAX_PER_POSITION = 5;
 
@@ -11,15 +11,15 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { withdrawalBalance, withdraw, checkActivationCost, processActivationPayment, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT, formPurchaseSettings, saveFormPurchaseSettings, formPurchases, loadFormPurchases } = useDataCharge();
 
-  // Sidebar state
+  // ─── Sidebar ───
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
 
-  // Loading & error
+  // ─── Loading / Error ───
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Candidates
+  // ─── Candidates ───
   const [candidates, setCandidates] = useState([]);
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
@@ -29,7 +29,7 @@ export default function AdminDashboard() {
   const [photoPreview, setPhotoPreview] = useState('');
   const [editingCandidate, setEditingCandidate] = useState(null);
 
-  // Settings
+  // ─── Election Settings (Activation) ───
   const [settings, setSettings] = useState({
     year: '',
     startDate: '',
@@ -38,992 +38,849 @@ export default function AdminDashboard() {
     endTime: '',
     isActive: false
   });
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState({ type: '', text: '' });
 
-  // Withdrawal
+  // ─── Withdrawal ───
   const [withdrawAdminId, setWithdrawAdminId] = useState('');
   const [withdrawPin, setWithdrawPin] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMsg, setWithdrawMsg] = useState({ type: '', text: '' });
 
-  // General settings
-  const [siteName, setSiteName] = useState('NAMATL STUDENT E-VOTING');
-  const [maxPerPosition, setMaxPerPosition] = useState(MAX_PER_POSITION);
+  // ─── General Settings ───
+  const [generalSettings, setGeneralSettings] = useState({
+    siteName: 'NAMATL Student E-Voting',
+    electionTitle: 'NAMATL STUDENT E-VOTING',
+    institutionName: 'Federal University of Petroleum Resources',
+    departmentName: 'Maritime Transport and Logistics',
+    contactEmail: 'admin@namtls.edu.ng',
+    academicYear: '',
+    maxCandidatesPerPosition: 5,
+    votingType: 'single', // single or points
+    pointsPerVoter: 1,
+    requireMatricVerification: true,
+    allowResultsPublic: false,
+    maintenanceMode: false,
+    customFooter: ''
+  });
+  const [generalSaved, setGeneralSaved] = useState(false);
+  const [generalMsg, setGeneralMsg] = useState({ type: '', text: '' });
 
-  // Support messages
+  // ─── Support Messages ───
   const [supportMessages, setSupportMessages] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    loadData();
-    loadSupportMessages();
-  }, []);
+  // ─── Activation ───
+  const [activationYear, setActivationYear] = useState('');
+  const [activationInfo, setActivationInfo] = useState(null);
+  const [activating, setActivating] = useState(false);
+  const [activationMsg, setActivationMsg] = useState({ type: '', text: '' });
 
-  const loadData = async () => {
+  // ─── Load Data ───
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
     setLoading(true);
     setError('');
     try {
-      const candSnap = await getDocs(collection(db, 'candidates'));
-      setCandidates(candSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      const settingsSnap = await getDocs(collection(db, 'settings'));
-      if (settingsSnap.docs.length > 0) setSettings(settingsSnap.docs[0].data());
+      // Load candidates
+      try {
+        const snap = await getDocs(collection(db, 'candidates'));
+        const list = [];
+        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        setCandidates(list);
+      } catch (e) { console.error('Candidates load error:', e); }
+
+      // Load election settings
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'main'));
+        if (snap.exists()) {
+          setSettings(prev => ({ ...prev, ...snap.data() }));
+        }
+      } catch (e) { console.error('Settings load error:', e); }
+
+      // Load general settings
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'general'));
+        if (snap.exists()) {
+          setGeneralSettings(prev => ({ ...prev, ...snap.data() }));
+        }
+      } catch (e) { console.error('General settings load error:', e); }
+
+      // Load support messages
+      try {
+        const snap = await getDocs(collection(db, 'supportMessages'));
+        const msgs = [];
+        snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
+        setSupportMessages(msgs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+      } catch (e) { console.error('Support load error:', e); }
+
+      // Load form purchase settings
+      if (loadFormPurchases) await loadFormPurchases();
     } catch (e) {
-      setError('FAILED TO LOAD: ' + e.message);
+      setError(e.message);
     }
     setLoading(false);
   };
 
-  const loadSupportMessages = async () => {
+  // ─── Computed ───
+  const totalVotes = candidates.reduce((sum, c) => sum + (c.votes || 0), 0);
+  const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+
+  const getPhase = () => {
+    if (!settings.isActive || !settings.startDate) return { label: 'Not Configured', color: '#6b7280' };
+    const now = new Date();
+    const start = new Date(settings.startDate + 'T' + (settings.startTime || '00:00'));
+    const end = new Date(settings.endDate + 'T' + (settings.endTime || '23:59'));
+    if (now < start) return { label: 'Coming Soon', color: '#f59e0b' };
+    if (now > end) return { label: 'Ended', color: '#dc2626' };
+    return { label: 'Live', color: '#16a34a' };
+  };
+  const phase = getPhase();
+
+  const unreadCount = supportMessages.filter(m => m.status === 'unread').length;
+
+  // ─── Save Election Settings ───
+  const saveSettings = async () => {
+    setSettingsMsg({ type: '', text: '' });
     try {
-      const msgSnap = await getDocs(collection(db, 'supportMessages'));
-      const msgs = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setSupportMessages(msgs);
-      setUnreadCount(msgs.filter(m => m.status === 'unread').length);
+      await setDoc(doc(db, 'settings', 'main'), settings, { merge: true });
+      setSettingsSaved(true);
+      setSettingsMsg({ type: 'success', text: 'Election settings saved!' });
+      setTimeout(() => setSettingsSaved(false), 3000);
     } catch (e) {
-      console.log('Could not load support messages:', e.message);
+      setSettingsMsg({ type: 'error', text: 'Save failed: ' + e.message });
     }
   };
 
-  const markAsRead = async (id) => {
+  // ─── Save General Settings ───
+  const saveGeneralSettings = async () => {
+    setGeneralMsg({ type: '', text: '' });
     try {
-      await updateDoc(doc(db, 'supportMessages', id), { status: 'read' });
-      loadSupportMessages();
+      await setDoc(doc(db, 'settings', 'general'), generalSettings, { merge: true });
+      setGeneralSaved(true);
+      setGeneralMsg({ type: 'success', text: 'General settings saved!' });
+      setTimeout(() => setGeneralSaved(false), 3000);
     } catch (e) {
-      console.log('Could not mark as read:', e.message);
+      setGeneralMsg({ type: 'error', text: 'Save failed: ' + e.message });
     }
   };
 
-  // Candidate functions
-  const handlePhotoUpload = (e) => {
+  // ─── Activation ───
+  const handleCheckActivation = async () => {
+    setActivationMsg({ type: '', text: '' });
+    if (!activationYear) { setActivationMsg({ type: 'error', text: 'Select academic year' }); return; }
+    const result = await checkActivationCost(activationYear);
+    setActivationInfo(result);
+  };
+
+  const handleActivate = async () => {
+    setActivating(true);
+    const result = await processActivationPayment(activationYear);
+    setActivationMsg({ type: result.success ? 'success' : 'error', text: result.message });
+    if (result.success) {
+      setSettings(prev => ({ ...prev, year: activationYear, isActive: true }));
+    }
+    setActivating(false);
+  };
+
+  // ─── Candidate CRUD ───
+  const handlePhotoChange = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    setPhoto(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setPhotoPreview(reader.result);
-    reader.readAsDataURL(file);
+    if (file) {
+      setPhoto(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
   };
 
-  const getCountForPosition = (pos) => candidates.filter(c => c.position === pos).length;
+  const resetCandidateForm = () => {
+    setName(''); setPosition(''); setDept('');
+    setManifesto(''); setPhoto(null); setPhotoPreview('');
+    setEditingCandidate(null);
+  };
 
-  const isPositionFull = (pos) => getCountForPosition(pos) >= MAX_PER_POSITION;
+  const handleAddCandidate = async (e) => {
+    e.preventDefault();
+    if (!name || !position || !dept) { alert('Name, Position, and Department are required.'); return; }
 
-  const positionsList = [...new Set(candidates.map(c => c.position))];
+    const posCount = candidates.filter(c => c.position === position && (!editingCandidate || c.id !== editingCandidate.id)).length;
+    if (posCount >= MAX_PER_POSITION) { alert(`Maximum ${MAX_PER_POSITION} candidates for "${position}".`); return; }
 
-  const saveCandidate = async () => {
-    if (!name || !position) { alert('Name and Position required'); return; }
-    if (isPositionFull(position) && !editingCandidate) { alert(`"${position}" is full (max ${MAX_PER_POSITION})`); return; }
     try {
-      let photoURL = '';
+      let photoURL = editingCandidate?.photoURL || '';
       if (photo) {
         const storageRef = ref(storage, `candidates/${Date.now()}_${photo.name}`);
-        await uploadBytes(storageRef, photo);
-        photoURL = await getDownloadURL(storageRef);
+        const snap = await uploadBytes(storageRef, photo);
+        photoURL = await getDownloadURL(snap.ref);
       }
+
+      const data = { name, position, dept, manifesto: manifesto || '', photoURL, votes: editingCandidate?.votes || 0 };
+
       if (editingCandidate) {
-        await setDoc(doc(db, 'candidates', editingCandidate.id), {
-          name, position, dept, manifesto,
-          photoURL: photoURL || editingCandidate.photoURL || ''
-        });
+        await updateDoc(doc(db, 'candidates', editingCandidate.id), data);
+        if (photo && editingCandidate.photoURL) {
+          try { await deleteObject(ref(storage, editingCandidate.photoURL)); } catch (e) {}
+        }
       } else {
-        await addDoc(collection(db, 'candidates'), {
-          name, position, dept, manifesto, photoURL, votes: 0
-        });
+        await addDoc(collection(db, 'candidates'), data);
       }
-      setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); setEditingCandidate(null);
-      loadData();
-      alert(editingCandidate ? 'Updated!' : 'Added!');
-    } catch (e) { alert('FAILED: ' + e.message); }
+
+      resetCandidateForm();
+      loadAll();
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
-  const editCandidate = (c) => {
+  const handleEdit = (c) => {
     setEditingCandidate(c);
-    setName(c.name);
-    setPosition(c.position);
-    setDept(c.dept || '');
+    setName(c.name); setPosition(c.position); setDept(c.dept);
     setManifesto(c.manifesto || '');
     setPhotoPreview(c.photoURL || '');
     setActiveView('candidates');
   };
 
-  const deleteCandidate = async (id, photoURL) => {
+  const handleDelete = async (id) => {
     if (!window.confirm('Delete this candidate?')) return;
     try {
-      if (photoURL) { try { await deleteObject(ref(storage, photoURL)); } catch (_) {} }
+      const c = candidates.find(c => c.id === id);
       await deleteDoc(doc(db, 'candidates', id));
-      loadData();
-    } catch (e) { alert('FAILED: ' + e.message); }
+      if (c?.photoURL) { try { await deleteObject(ref(storage, c.photoURL)); } catch (e) {} }
+      loadAll();
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
-  // Election settings
-  const handleSaveSettings = async () => {
-    if (!settings.year || !settings.startDate || !settings.startTime || !settings.endDate || !settings.endTime) {
-      alert('Fill all fields');
-      return;
-    }
-
-    // Check activation cost
-    const costCheck = await checkActivationCost(settings.year);
-
-    if (costCheck.free) {
-      // Free activation for 2026/2027
-      try {
-        await setDoc(doc(db, 'settings', 'main'), { ...settings, isActive: true });
-        alert('Election activated for FREE (2026/2027)!');
-        loadData();
-      } catch (e) { alert('FAILED: ' + e.message); }
-    } else if (costCheck.canActivate) {
-      if (window.confirm(costCheck.message)) {
-        const payment = await processActivationPayment(settings.year);
-        if (payment.success) {
-          try {
-            await setDoc(doc(db, 'settings', 'main'), { ...settings, isActive: true });
-            alert(`Election activated! ${payment.message}`);
-            loadData();
-          } catch (e) { alert('FAILED: ' + e.message); }
-        } else {
-          alert(payment.message);
-        }
-      }
-    } else {
-      alert(costCheck.message);
-    }
-  };
-
-  const toggleElection = async () => {
+  // ─── Mark Support as Read ───
+  const markAsRead = async (id) => {
     try {
-      await setDoc(doc(db, 'settings', 'main'), { ...settings, isActive: !settings.isActive });
-      loadData();
-    } catch (e) { alert('FAILED: ' + e.message); }
+      await updateDoc(doc(db, 'supportMessages', id), { status: 'read' });
+      setSupportMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'read' } : m));
+    } catch (e) { console.error(e); }
   };
 
-  const deleteAllElectionData = async () => {
-    if (!window.confirm('Delete ALL election data?')) return;
-    try {
-      const candSnap = await getDocs(collection(db, 'candidates'));
-      for (const d of candSnap.docs) {
-        if (d.data().photoURL) { try { await deleteObject(ref(storage, d.data().photoURL)); } catch (_) {} }
-        await deleteDoc(doc(db, 'candidates', d.id));
-      }
-      await setDoc(doc(db, 'settings', 'main'), { year: '', startDate: '', startTime: '', endDate: '', endTime: '', isActive: false });
-      loadData();
-      alert('Cleared!');
-    } catch (e) { alert('FAILED: ' + e.message); }
-  };
-
-  const clearAllVotes = async () => {
-    if (!window.confirm('Clear ALL votes?')) return;
-    try {
-      const candSnap = await getDocs(collection(db, 'candidates'));
-      for (const d of candSnap.docs) {
-        await updateDoc(doc(db, 'candidates', d.id), { votes: 0 });
-      }
-      loadData();
-      alert('Votes cleared!');
-    } catch (e) { alert('FAILED: ' + e.message); }
-  };
-
-  // Withdrawal
+  // ─── Withdrawal ───
   const handleWithdraw = async () => {
-    const result = await withdraw(withdrawAdminId, withdrawPin, parseInt(withdrawAmount));
+    setWithdrawMsg({ type: '', text: '' });
+    if (!withdrawAdminId || !withdrawPin || !withdrawAmount) {
+      setWithdrawMsg({ type: 'error', text: 'Fill all fields' }); return;
+    }
+    if (withdrawAdminId !== ADMIN_ID) {
+      setWithdrawMsg({ type: 'error', text: 'Invalid Admin ID' }); return;
+    }
+    if (withdrawPin !== WITHDRAWAL_PIN) {
+      setWithdrawMsg({ type: 'error', text: 'Invalid PIN' }); return;
+    }
+    const amt = parseInt(withdrawAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setWithdrawMsg({ type: 'error', text: 'Invalid amount' }); return;
+    }
+    const result = await withdraw(ADMIN_ID, WITHDRAWAL_PIN, amt);
     setWithdrawMsg({ type: result.success ? 'success' : 'error', text: result.message });
     if (result.success) {
-      setWithdrawAdminId('');
-      setWithdrawPin('');
-      setWithdrawAmount('');
+      setWithdrawAdminId(''); setWithdrawPin(''); setWithdrawAmount('');
     }
-    setTimeout(() => setWithdrawMsg({ type: '', text: '' }), 5000);
   };
 
-  // Computed values
-  const totalVotes = candidates.reduce((s, c) => s + (c.votes || 0), 0);
-  const startDateTime = settings.startDate && settings.startTime ? new Date(settings.startDate + 'T' + settings.startTime) : null;
-  const endDateTime = settings.endDate && settings.endTime ? new Date(settings.endDate + 'T' + settings.endTime) : null;
-  const now = new Date();
-  const isElectionStarted = startDateTime ? now >= startDateTime : false;
-  const isElectionEnded = endDateTime ? now >= endDateTime : false;
-
-  const getElectionPhase = () => {
-    if (!settings.isActive) return { label: 'INACTIVE', color: '#6b7280' };
-    if (!settings.startDate) return { label: 'NOT CONFIGURED', color: '#6b7280' };
-    if (!isElectionStarted) return { label: 'COMING SOON', color: '#f59e0b' };
-    if (isElectionEnded) return { label: 'ENDED', color: '#dc2626' };
-    return { label: 'LIVE', color: '#16a34a' };
+  // ─── Styles ───
+  const layout = {
+    minHeight: '100vh',
+    background: '#0f172a',
+    color: 'white',
+    fontFamily: "'Segoe UI', system-ui, sans-serif",
+    display: 'flex',
   };
-
-  const phase = getElectionPhase();
-  const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-
-  const sidebarItems = [
-  { icon: '📊', label: 'Dashboard', key: 'dashboard' },
-  { icon: '⚙️', label: 'Settings', key: 'settings' },
-  { icon: '👥', label: 'Candidates', key: 'candidates' },
-  { icon: '📈', label: 'Results', key: 'results' },
-  { icon: '💰', label: 'Withdrawal', key: 'withdrawal' },
-  { icon: '🔑', label: 'Activation', key: 'activation' },
-  { icon: '📋', label: 'Form Purchase', key: 'formPurchase' },
-  { icon: '📩', label: 'Support', key: 'support' },
-];
-
+  const mainArea = {
+    flex: 1,
+    marginLeft: '0',
+    padding: '24px',
+    maxWidth: '1200px',
+    width: '100%',
+  };
+  const card = {
+    background: '#1e293b',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '20px',
+    border: '1px solid #334155',
+  };
   const inputStyle = {
     width: '100%',
     padding: '12px 14px',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
     marginBottom: '12px',
-    boxSizing: 'border-box',
+    background: '#0f172a',
+    color: 'white',
+    border: '1px solid #334155',
+    borderRadius: '8px',
     fontSize: '14px',
+    boxSizing: 'border-box',
     outline: 'none',
-    transition: 'border-color 0.2s'
   };
-
-  const cardStyle = {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '24px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-    marginBottom: '20px'
+  const labelStyle = {
+    display: 'block',
+    fontSize: '13px',
+    fontWeight: 600,
+    marginBottom: '6px',
+    color: '#94a3b8',
   };
-
-  const statCardStyle = {
-    background: 'white',
+  const grid4 = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '16px',
+    marginBottom: '20px',
+  };
+  const statCard = {
+    background: '#1e293b',
     borderRadius: '12px',
     padding: '20px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+    border: '1px solid #334155',
     textAlign: 'center',
-    flex: '1',
-    minWidth: '200px'
   };
+  const btnPrimary = {
+    padding: '12px 28px',
+    background: '#003366',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    cursor: 'pointer',
+  };
+  const btnSuccess = {
+    ...btnPrimary, background: '#16a34a',
+  };
+  const btnWarning = {
+    ...btnPrimary, background: '#f59e0b', color: '#061D3A',
+  };
+  const btnDanger = {
+    ...btnPrimary, background: '#dc2626',
+  };
+  const msgStyle = (type) => ({
+    padding: '12px 16px',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    fontSize: '13px',
+    fontWeight: 500,
+    background: type === 'success' ? 'rgba(22,163,74,0.15)' : 'rgba(220,38,38,0.15)',
+    color: type === 'success' ? '#16a34a' : '#dc2626',
+    border: `1px solid ${type === 'success' ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)'}`,
+  });
 
+  const sidebarItems = [
+    { key: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { key: 'settings', label: 'Election Settings', icon: '⚙️' },
+    { key: 'generalSettings', label: 'General Settings', icon: '🔧' },
+    { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
+    { key: 'results', label: 'Results', icon: '📈' },
+    { key: 'activation', label: 'Activation', icon: '🔑' },
+    { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
+    { key: 'support', label: 'Support Messages', icon: '💬' },
+  ];
+
+  // ─── LOADING ───
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '48px', height: '48px', border: '4px solid #e0e0e0', borderTop: '4px solid #003366',
-            borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px'
-          }}></div>
-          <p style={{ color: '#666' }}>Loading Admin Panel...</p>
-        </div>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid #334155', borderTopColor: '#FFD700', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ color: '#94a3b8', fontSize: '14px' }}>Loading Admin Panel...</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', textAlign: 'center' }}>
-          <h2 style={{ color: '#dc2626', margin: '0 0 8px' }}>ERROR</h2>
-          <p style={{ color: '#666' }}>{error}</p>
-          <button onClick={loadData} style={{
-            marginTop: '16px', padding: '10px 24px', background: '#003366', color: 'white',
-            border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
-          }}>Retry</button>
-        </div>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
+        <h2 style={{ color: '#dc2626' }}>⚠️ ERROR</h2>
+        <p style={{ color: '#94a3b8' }}>{error}</p>
+        <button onClick={loadAll} style={btnPrimary}>Retry</button>
       </div>
     );
   }
 
+  // ─── RENDER ───
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif', display: 'flex' }}>
-      {/* SIDEBAR OVERLAY */}
-      {sidebarOpen && (
-        <div
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }}
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <div style={layout}>
+      {/* Sidebar Overlay */}
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10 }} />}
 
-      {/* SIDEBAR */}
+      {/* Sidebar */}
       <div style={{
-        width: sidebarOpen ? '280px' : '0px',
-        overflow: 'hidden',
-        background: '#003366',
-        color: 'white',
-        transition: 'width 0.3s ease',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        bottom: 0,
-        zIndex: 50,
-        boxShadow: sidebarOpen ? '4px 0 24px rgba(0,0,0,0.2)' : 'none'
+        position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px',
+        background: '#0a1628', borderRight: '1px solid #1e293b',
+        zIndex: 20, display: 'flex', flexDirection: 'column',
+        transform: sidebarOpen ? 'translateX(0)' : 'translateX(-260px)',
+        transition: 'transform 0.3s ease',
       }}>
-        <div style={{ padding: '20px', minWidth: '280px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-            <h3 style={{ margin: 0, color: '#FFD700', fontSize: '16px' }}>NAMATLS Admin</h3>
-            <button onClick={() => setSidebarOpen(false)} style={{
-              background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: '0'
-            }}>&times;</button>
-          </div>
-
+        <div style={{ padding: '20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, color: '#FFD700', fontSize: '16px' }}>NAMATLS Admin</h3>
+          <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: '0' }}>×</button>
+        </div>
+        <div style={{ flex: 1, padding: '12px', overflowY: 'auto' }}>
           {sidebarItems.map(item => (
-            <div
-              key={item.key}
-              onClick={() => { setActiveView(item.key); setSidebarOpen(false); }}
+            <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); }}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '14px 16px',
-                marginBottom: '4px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                background: activeView === item.key ? 'rgba(255, 215, 0, 0.15)' : 'transparent',
-                color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.8)',
+                display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px',
+                marginBottom: '2px', borderRadius: '8px', cursor: 'pointer',
+                background: activeView === item.key ? 'rgba(255,215,0,0.12)' : 'transparent',
+                color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.7)',
+                fontWeight: activeView === item.key ? 600 : 400, fontSize: '14px',
                 transition: 'all 0.2s',
-                fontWeight: activeView === item.key ? 'bold' : 'normal'
               }}
               onMouseEnter={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-              onMouseLeave={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'transparent'; }}
-            >
-              <span style={{ fontSize: '18px', width: '28px' }}>{item.icon}</span>
-              <span style={{ fontSize: '14px' }}>{item.label}</span>
+              onMouseLeave={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'transparent'; }}>
+              <span>{item.icon}</span> {item.label}
             </div>
           ))}
+        </div>
+        <div style={{ padding: '12px', borderTop: '1px solid #1e293b' }}>
+          <button onClick={() => navigate('/admin')}
+            style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', transition: 'all 0.2s' }}
+            onMouseEnter={(e) => { e.target.style.background = '#dc2626'; e.target.style.borderColor = '#dc2626'; }}
+            onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.borderColor = 'rgba(255,255,255,0.1)'; }}>
+            🚪 Logout
+          </button>
+        </div>
+      </div>
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '20px', paddingTop: '20px' }}>
-            <button onClick={() => navigate('/admin')} style={{
-              width: '100%', padding: '12px', background: 'rgba(255,255,255,0.1)', color: 'white',
-              border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', cursor: 'pointer',
-              fontWeight: 'bold', fontSize: '14px', transition: 'all 0.2s'
-            }}
-              onMouseEnter={(e) => { e.target.style.background = '#dc2626'; e.target.style.borderColor = '#dc2626'; }}
-              onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.1)'; e.target.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-            >
-              Logout
+      {/* Main Content */}
+      <div style={{ flex: 1, padding: '24px', maxWidth: '1200px', width: '100%', marginLeft: sidebarOpen ? '260px' : '0', transition: 'margin-left 0.3s' }}>
+        
+        {/* Top Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button onClick={() => setSidebarOpen(true)}
+              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', width: '40px', height: '40px', borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'background 0.2s' }}
+              onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.15)'; }}
+              onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.08)'; }}>
+              <div style={{ width: '18px', height: '2px', background: '#FFD700', borderRadius: '2px' }} />
+              <div style={{ width: '18px', height: '2px', background: '#FFD700', borderRadius: '2px' }} />
+              <div style={{ width: '18px', height: '2px', background: '#FFD700', borderRadius: '2px' }} />
+            </button>
+            <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>Admin Dashboard</h2>
+          </div>
+          <span style={{ fontSize: '13px', color: '#94a3b8', background: 'rgba(255,255,255,0.05)', padding: '6px 14px', borderRadius: '8px' }}>🔑 {ADMIN_ID}</span>
+        </div>
+
+        {/* ==================== DASHBOARD VIEW ==================== */}
+        {activeView === 'dashboard' && (
+          <>
+            <div style={{ ...card, textAlign: 'center', marginBottom: '24px' }}>
+              <h1 style={{ margin: '0 0 8px', fontSize: '28px' }}>👋 Welcome Admin</h1>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Admin ID: <strong style={{ color: '#FFD700' }}>{ADMIN_ID}</strong></p>
+            </div>
+
+            <div style={grid4}>
+              <div style={statCard}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>👥</div>
+                <div style={{ fontSize: '32px', fontWeight: 700, color: '#FFD700' }}>{candidates.length}</div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>Total Candidates</div>
+              </div>
+              <div style={statCard}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🗳️</div>
+                <div style={{ fontSize: '32px', fontWeight: 700, color: '#FFD700' }}>{totalVotes}</div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>Total Votes Cast</div>
+              </div>
+              <div style={statCard}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>💰</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#FFD700' }}>₦{withdrawalBalance.toLocaleString()}</div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>Withdrawal Balance</div>
+              </div>
+              <div style={statCard}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📊</div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: phase.color }}>{phase.label}</div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>Election Status</div>
+              </div>
+            </div>
+
+            <div style={card}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>⚡ Quick Actions</h3>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button onClick={() => setActiveView('settings')} style={btnPrimary}>⚙️ Election Settings</button>
+                <button onClick={() => setActiveView('candidates')} style={{ ...btnPrimary, background: '#2563eb' }}>👥 Manage Candidates</button>
+                <button onClick={() => setActiveView('results')} style={btnSuccess}>📈 View Results</button>
+                <button onClick={() => setActiveView('withdrawal')} style={btnWarning}>💰 Withdraw Funds</button>
+                <button onClick={() => setActiveView('activation')} style={{ ...btnPrimary, background: '#7c3aed' }}>🔑 Activation</button>
+              </div>
+            </div>
+
+            <div style={card}>
+              <h3 style={{ margin: '0 0 12px', fontSize: '16px' }}>📋 Election Info</h3>
+              <div style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.8 }}>
+                <div><strong style={{ color: 'white' }}>Academic Year:</strong> {settings.year || 'Not set'}</div>
+                <div><strong style={{ color: 'white' }}>Start:</strong> {settings.startDate || 'Not set'} {settings.startTime ? `@ ${settings.startTime}` : ''}</div>
+                <div><strong style={{ color: 'white' }}>End:</strong> {settings.endDate || 'Not set'} {settings.endTime ? `@ ${settings.endTime}` : ''}</div>
+                <div><strong style={{ color: 'white' }}>Active:</strong> <span style={{ color: settings.isActive ? '#16a34a' : '#dc2626' }}>{settings.isActive ? '✅ Yes' : '❌ No'}</span></div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ==================== ELECTION SETTINGS VIEW ==================== */}
+        {activeView === 'settings' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>⚙️ Election Settings</h2>
+            
+            {settingsMsg.text && <div style={msgStyle(settingsMsg.type)}>{settingsMsg.text}</div>}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={labelStyle}>Academic Year</label>
+                <select value={settings.year} onChange={e => setSettings({...settings, year: e.target.value})} style={inputStyle}>
+                  <option value="">Select Year</option>
+                  <option value="2025/2026">2025/2026</option>
+                  <option value="2026/2027">2026/2027</option>
+                  <option value="2027/2028">2027/2028</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select value={settings.isActive ? 'true' : 'false'} onChange={e => setSettings({...settings, isActive: e.target.value === 'true'})} style={inputStyle}>
+                  <option value="false">🔴 Inactive</option>
+                  <option value="true">🟢 Active (Voting Open)</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Start Date</label>
+                <input type="date" value={settings.startDate} onChange={e => setSettings({...settings, startDate: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Start Time</label>
+                <input type="time" value={settings.startTime} onChange={e => setSettings({...settings, startTime: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>End Date</label>
+                <input type="date" value={settings.endDate} onChange={e => setSettings({...settings, endDate: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>End Time</label>
+                <input type="time" value={settings.endTime} onChange={e => setSettings({...settings, endTime: e.target.value})} style={inputStyle} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <button onClick={saveSettings} style={{ ...btnSuccess, padding: '14px 32px', fontSize: '15px' }}>
+                {settingsSaved ? '✅ Saved!' : '💾 Save Election Settings'}
+              </button>
+              <button onClick={loadAll} style={{ ...btnPrimary, background: '#475569' }}>🔄 Reload</button>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== GENERAL SETTINGS VIEW ==================== */}
+        {activeView === 'generalSettings' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>🔧 General Settings</h2>
+            
+            {generalMsg.text && <div style={msgStyle(generalMsg.type)}>{generalMsg.text}</div>}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={labelStyle}>Site Name</label>
+                <input type="text" value={generalSettings.siteName} onChange={e => setGeneralSettings({...generalSettings, siteName: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Election Title</label>
+                <input type="text" value={generalSettings.electionTitle} onChange={e => setGeneralSettings({...generalSettings, electionTitle: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Institution Name</label>
+                <input type="text" value={generalSettings.institutionName} onChange={e => setGeneralSettings({...generalSettings, institutionName: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Department Name</label>
+                <input type="text" value={generalSettings.departmentName} onChange={e => setGeneralSettings({...generalSettings, departmentName: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Contact Email</label>
+                <input type="email" value={generalSettings.contactEmail} onChange={e => setGeneralSettings({...generalSettings, contactEmail: e.target.value})} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Default Academic Year</label>
+                <input type="text" value={generalSettings.academicYear} onChange={e => setGeneralSettings({...generalSettings, academicYear: e.target.value})} placeholder="e.g. 2026/2027" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Max Candidates Per Position</label>
+                <input type="number" value={generalSettings.maxCandidatesPerPosition} onChange={e => setGeneralSettings({...generalSettings, maxCandidatesPerPosition: parseInt(e.target.value) || 5})} min="1" max="20" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Voting Type</label>
+                <select value={generalSettings.votingType} onChange={e => setGeneralSettings({...generalSettings, votingType: e.target.value})} style={inputStyle}>
+                  <option value="single">Single Vote Per Position</option>
+                  <option value="points">Points-Based Voting</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Points Per Voter</label>
+                <input type="number" value={generalSettings.pointsPerVoter} onChange={e => setGeneralSettings({...generalSettings, pointsPerVoter: parseInt(e.target.value) || 1})} min="1" style={inputStyle} disabled={generalSettings.votingType !== 'points'} />
+              </div>
+              <div>
+                <label style={labelStyle}>Require Matric Verification</label>
+                <select value={generalSettings.requireMatricVerification ? 'true' : 'false'} onChange={e => setGeneralSettings({...generalSettings, requireMatricVerification: e.target.value === 'true'})} style={inputStyle}>
+                  <option value="true">✅ Yes</option>
+                  <option value="false">❌ No</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Allow Public Results</label>
+                <select value={generalSettings.allowResultsPublic ? 'true' : 'false'} onChange={e => setGeneralSettings({...generalSettings, allowResultsPublic: e.target.value === 'true'})} style={inputStyle}>
+                  <option value="false">🔒 Admin Only</option>
+                  <option value="true">🌍 Public</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Maintenance Mode</label>
+                <select value={generalSettings.maintenanceMode ? 'true' : 'false'} onChange={e => setGeneralSettings({...generalSettings, maintenanceMode: e.target.value === 'true'})} style={inputStyle}>
+                  <option value="false">🟢 Live</option>
+                  <option value="true">🔴 Maintenance</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '12px' }}>
+              <label style={labelStyle}>Custom Footer Text</label>
+              <textarea value={generalSettings.customFooter} onChange={e => setGeneralSettings({...generalSettings, customFooter: e.target.value})} style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} placeholder="Custom footer text for the voting portal..." />
+            </div>
+
+            <button onClick={saveGeneralSettings} style={{ ...btnSuccess, padding: '14px 32px', fontSize: '15px', marginTop: '16px' }}>
+              {generalSaved ? '✅ Saved!' : '💾 Save General Settings'}
             </button>
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* MAIN CONTENT */}
-      <div style={{ flex: 1, marginLeft: '0px', transition: 'margin-left 0.3s ease' }}>
-        {/* TOP HEADER */}
-        <div style={{
-          background: '#003366',
-          color: 'white',
-          padding: '16px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 30
-        }}>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              color: 'white',
-              width: '40px',
-              height: '40px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.2)'; }}
-            onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.1)'; }}
-          >
-            <span style={{ display: 'block', width: '18px', height: '2px', background: 'white', borderRadius: '1px' }}></span>
-            <span style={{ display: 'block', width: '18px', height: '2px', background: 'white', borderRadius: '1px' }}></span>
-            <span style={{ display: 'block', width: '18px', height: '2px', background: 'white', borderRadius: '1px' }}></span>
-          </button>
-          <h2 style={{ margin: 0, fontSize: '18px', flex: 1 }}>Admin Dashboard</h2>
-          <div style={{ fontSize: '13px', opacity: 0.8 }}>BROUTE</div>
-        </div>
+        {/* ==================== CANDIDATES VIEW ==================== */}
+        {activeView === 'candidates' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>👥 Manage Candidates</h2>
 
-        <div style={{ padding: '24px', maxWidth: '1100px', margin: '0 auto' }}>
-          {/* === DASHBOARD VIEW === */}
-          {activeView === 'dashboard' && (
-            <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-              <div style={{
-                background: 'linear-gradient(135deg, #003366 0%, #004080 50%, #005599 100%)',
-                borderRadius: '16px',
-                padding: '40px',
-                color: 'white',
-                marginBottom: '24px',
-                boxShadow: '0 4px 20px rgba(0,51,102,0.3)'
-              }}>
-                <h1 style={{ margin: '0 0 8px', fontSize: '28px' }}>Welcome Admin</h1>
-                <p style={{ margin: '0 0 4px', opacity: 0.9, fontSize: '14px' }}>Admin ID: {ADMIN_ID}</p>
-                <p style={{ margin: 0, opacity: 0.7, fontSize: '13px' }}>BROUTE</p>
-              </div>
-
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '24px' }}>
-                <div style={statCardStyle}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>👥</div>
-                  <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#003366' }}>{candidates.length}</div>
-                  <div style={{ color: '#666', fontSize: '13px' }}>Total Candidates</div>
-                </div>
-                <div style={statCardStyle}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🗳️</div>
-                  <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#003366' }}>{totalVotes}</div>
-                  <div style={{ color: '#666', fontSize: '13px' }}>Total Votes</div>
-                </div>
-                <div style={statCardStyle}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>💰</div>
-                  <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</div>
-                  <div style={{ color: '#666', fontSize: '13px' }}>Withdrawal Balance</div>
-                </div>
-                <div style={statCardStyle}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📊</div>
-                  <div style={{ fontSize: '28px', fontWeight: 'bold', color: phase.color }}>{phase.label}</div>
-                  <div style={{ color: '#666', fontSize: '13px' }}>Election Status</div>
-                </div>
-              </div>
-
-              <div style={cardStyle}>
-                <h3 style={{ color: '#003366', margin: '0 0 16px' }}>Quick Actions</h3>
-                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                  <button onClick={() => setActiveView('settings')} style={{
-                    padding: '12px 24px', background: '#003366', color: 'white', border: 'none',
-                    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                  }}>⚙️ Election Settings</button>
-                  <button onClick={() => setActiveView('candidates')} style={{
-                    padding: '12px 24px', background: '#2563eb', color: 'white', border: 'none',
-                    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                  }}>👥 Manage Candidates</button>
-                  <button onClick={() => setActiveView('results')} style={{
-                    padding: '12px 24px', background: '#16a34a', color: 'white', border: 'none',
-                    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                  }}>📈 View Results</button>
-                  <button onClick={() => setActiveView('withdrawal')} style={{
-                    padding: '12px 24px', background: '#f59e0b', color: 'white', border: 'none',
-                    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                  }}>💰 Withdraw Funds</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-     {/* === RESULTS VIEW === */}
-          {activeView === 'results' && (
-            <div style={cardStyle} className="results-print-area">
-              
-              {/* LOGO HEADER - CENTERED */}
-              <div className="print-header" style={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                alignItems: 'center', 
-                justifyContent: 'center',
-                gap: '8px', 
-                marginBottom: '20px', 
-                borderBottom: '2px solid #FFD700', 
-                paddingBottom: '16px',
-                textAlign: 'center'
-              }}>
-                {/* ONLY YOUR LOGO - CENTER */}
-                <img 
-                  src="/logo.png" 
-                  alt="NAMTLS Logo"
-                  style={{ width: '80px', height: '80px', objectFit: 'contain', marginBottom: '4px' }}
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-
-                {/* CENTER TEXT */}
-                <div>
-                  <h2 style={{ color: '#003366', margin: '0', fontSize: '18px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-                    FEDERAL UNIVERSITY OF PETROLEUM RESOURCES 
-                  </h2>
-                  <h3 style={{ color: '#003366', margin: '4px 0', fontSize: '16px', fontWeight: 'bold' }}>NAMATL STUDENT E-VOTING</h3>
-                  <p style={{ color: '#666', margin: '0', fontSize: '14px' }}>{settings.year} OFFICIAL RESULT</p>
-                </div>
-              </div>
-              
-              {/* TITLE + PRINT BUTTON ROW - HIDES ON PRINT */}
-              <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ color: '#003366', margin: '0' }}>📈 Election Results</h2>
-                <button 
-                  onClick={() => window.print()}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#16a34a',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '14px'
-                  }}
-                >
-                  🖨️ Print Result
-                </button>
-              </div>
-
-              {!settings.isActive ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#f59e0b' }}>
-                  <span style={{ fontSize: '48px' }}>📊</span>
-                  <h3 style={{ margin: '12px 0' }}>No Result Yet</h3>
-                  <p style={{ color: '#666' }}>Election has not been configured or activated.</p>
-                </div>
-              ) : candidates.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                  <span style={{ fontSize: '48px' }}>📭</span>
-                  <h3 style={{ margin: '12px 0' }}>No Candidates</h3>
-                  <p>No candidates have been added yet.</p>
-                </div>
-              ) : (
-                <div>
-                  {sortedByVotes.map((c, idx) => (
-                    <div key={c.id} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '16px', borderBottom: '1px solid #f0f0f0',
-                      background: idx === 0 ? 'rgba(255, 215, 0, 0.05)' : 'transparent'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{
-                          width: '28px', height: '28px', borderRadius: '50%',
-                          background: idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : '#f0f0f0',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 'bold', fontSize: '13px', color: idx < 3 ? 'white' : '#666'
-                        }}>{idx + 1}</span>
-                        <div>
-                          <div style={{ fontWeight: 'bold', color: '#333' }}>{c.name}</div>
-                          <div style={{ fontSize: '12px', color: '#888' }}>{c.position}</div>
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{c.votes || 0}</div>
-                        <div style={{ fontSize: '11px', color: '#888' }}>votes</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* PRINT CSS - ONLY SHOWS HEADER + RESULTS */}
-              <style>{`
-                @media print {
-                  body { background: white !important; }
-                  /* HIDE EVERYTHING */
-                  .no-print, 
-                  div[style*="background: #003366"],
-                  nav, header, footer { display: none !important; }
-                  
-                  /* ONLY SHOW RESULTS AREA */
-                  .results-print-area { 
-                    box-shadow: none !important; 
-                    border: none !important; 
-                    padding: 0 !important;
-                    margin: 0 !important;
-                  }
-                  .print-header { border-bottom: 2px solid #FFD700 !important; }
-                }
-                @keyframes spin { from {transform: rotate(0deg)} to {transform: rotate(360deg)} }
-                @keyframes fadeIn { from {opacity: 0; transform: translateY(10px)} to {opacity: 1; transform: translateY(0)} }
-              `}</style>
-            </div>
-          )}
-
-          {/* === CANDIDATES VIEW === */}
-          {activeView === 'candidates' && (
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
-                👥 Edit Candidates
-              </h2>
-
-              {/* Add/Edit form */}
-              <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
-                <h3 style={{ margin: '0 0 16px', color: '#333', fontSize: '16px' }}>
-                  {editingCandidate ? 'Edit Candidate' : 'Add New Candidate'}
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <input placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
-                  <input placeholder="Position" value={position} onChange={(e) => setPosition(e.target.value)} style={inputStyle} />
-                  <input placeholder="Department" value={dept} onChange={(e) => setDept(e.target.value)} style={inputStyle} />
-                  <div>
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ ...inputStyle, padding: '8px' }} />
-                  </div>
-                </div>
-                <textarea placeholder="Manifesto" value={manifesto} onChange={(e) => setManifesto(e.target.value)} rows="3"
-                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'Arial, sans-serif' }} />
-                {photoPreview && (
-                  <img src={photoPreview} alt="Preview" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' }} />
-                )}
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button onClick={saveCandidate} style={{
-                    padding: '12px 24px', background: '#003366', color: 'white', border: 'none',
-                    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
-                  }}>{editingCandidate ? 'Update Candidate' : 'Add Candidate'}</button>
-                  {editingCandidate && (
-                    <button onClick={() => { setEditingCandidate(null); setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); }} style={{
-                      padding: '12px 24px', background: '#6b7280', color: 'white', border: 'none',
-                      borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
-                    }}>Cancel Edit</button>
-                  )}
-                </div>
-              </div>
-
-              {/* Candidates list */}
-              <div>
-                <p style={{ color: '#666', marginBottom: '12px', fontSize: '13px' }}>
-                  Total: {candidates.length} candidates | Votes: {totalVotes}
-                </p>
-                {candidates.length === 0 ? (
-                  <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>No candidates yet.</p>
-                ) : (
-                  candidates.map(c => (
-                    <div key={c.id} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '14px', borderBottom: '1px solid #f0f0f0'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {c.photoURL ? (
-                          <img src={c.photoURL} alt={c.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
-                            onError={(e) => { e.target.style.display = 'none'; }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: '#999' }}>👤</div>
-                        )}
-                        <div>
-                          <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333' }}>{c.name}</div>
-                          <div style={{ fontSize: '12px', color: '#888' }}>{c.position} — Votes: {c.votes || 0}</div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => editCandidate(c)} style={{
-                          padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none',
-                          borderRadius: '6px', cursor: 'pointer', fontSize: '12px'
-                        }}>Edit</button>
-                        <button onClick={() => deleteCandidate(c.id, c.photoURL)} style={{
-                          padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none',
-                          borderRadius: '6px', cursor: 'pointer', fontSize: '12px'
-                        }}>Delete</button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* === ELECTION SETTINGS VIEW === */}
-          {activeView === 'settings' && (
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
-                ⚙️ Election Settings
-              </h2>
-
+            {/* Form */}
+            <div style={{ ...card, background: '#0f172a', border: '1px solid #2563eb' }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '15px' }}>{editingCandidate ? '✏️ Edit Candidate' : '➕ Add New Candidate'}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+                <input type="text" placeholder="Position *" value={position} onChange={e => setPosition(e.target.value)} style={inputStyle} />
+                <input type="text" placeholder="Department *" value={dept} onChange={e => setDept(e.target.value)} style={inputStyle} />
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>Academic Year (format: 2026/2027)</label>
-                  <input
-                    placeholder="e.g. 2026/2027"
-                    value={settings.year}
-                    onChange={(e) => setSettings({ ...settings, year: e.target.value })}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>Election Phase</label>
-                  <div style={{
-                    padding: '12px 14px', borderRadius: '8px', border: '1px solid #ddd',
-                    marginBottom: '12px', fontWeight: 'bold', color: phase.color
-                  }}>
-                    {phase.label}
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>Start Date</label>
-                  <input
-                    type="date"
-                    value={settings.startDate}
-                    onChange={(e) => setSettings({ ...settings, startDate: e.target.value })}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>Start Time</label>
-                  <input
-                    type="time"
-                    value={settings.startTime}
-                    onChange={(e) => setSettings({ ...settings, startTime: e.target.value })}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>End Date</label>
-                  <input
-                    type="date"
-                    value={settings.endDate}
-                    onChange={(e) => setSettings({ ...settings, endDate: e.target.value })}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '4px', fontWeight: 'bold' }}>End Time</label>
-                  <input
-                    type="time"
-                    value={settings.endTime}
-                    onChange={(e) => setSettings({ ...settings, endTime: e.target.value })}
-                    style={inputStyle}
-                  />
+                  <input type="file" accept="image/*" onChange={handlePhotoChange} style={{ ...inputStyle, padding: '10px' }} />
+                  {photoPreview && <img src={photoPreview} alt="Preview" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', marginTop: '8px' }} />}
                 </div>
               </div>
+              <textarea placeholder="Manifesto / Bio (optional)" value={manifesto} onChange={e => setManifesto(e.target.value)} style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={handleAddCandidate} style={btnSuccess}>
+                  {editingCandidate ? '✏️ Update Candidate' : '➕ Add Candidate'}
+                </button>
+                {editingCandidate && <button onClick={resetCandidateForm} style={btnDanger}>Cancel Edit</button>}
+              </div>
+            </div>
 
-              {/* Activation cost info */}
-              <div style={{
-                padding: '16px',
-                background: settings.year === '2026/2027' ? '#f0fdf4' : '#fefce8',
-                borderRadius: '8px',
-                marginBottom: '16px',
-                border: `1px solid ${settings.year === '2026/2027' ? '#bbf7d0' : '#fde68a'}`
-              }}>
-                <div style={{ fontSize: '14px', color: '#333' }}>
-                  <strong>Activation Cost:</strong>{' '}
-                  {settings.year === '2026/2027' ? (
-                    <span style={{ color: '#16a34a', fontWeight: 'bold' }}>FREE — First activation for 2026/2027</span>
-                  ) : settings.year ? (
-                    <span style={{ color: '#d97706', fontWeight: 'bold' }}>
-                      ₦25,000 — Will deduct from withdrawal balance (Balance: ₦{withdrawalBalance.toLocaleString()})
+            {/* Candidate List */}
+            {candidates.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#94a3b8', padding: '40px' }}>📭 No candidates added yet.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#0a1628' }}>
+                      <th style={{ padding: '12px', textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Photo</th>
+                      <th style={{ padding: '12px', textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Name</th>
+                      <th style={{ padding: '12px', textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Position</th>
+                      <th style={{ padding: '12px', textAlign: 'left', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Dept</th>
+                      <th style={{ padding: '12px', textAlign: 'center', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Votes</th>
+                      <th style={{ padding: '12px', textAlign: 'center', color: '#94a3b8', borderBottom: '1px solid #334155' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidates.map(c => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                        <td style={{ padding: '10px' }}>
+                          {c.photoURL ? <img src={c.photoURL} alt="" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} /> : '—'}
+                        </td>
+                        <td style={{ padding: '10px', fontWeight: 500 }}>{c.name}</td>
+                        <td style={{ padding: '10px', color: '#94a3b8' }}>{c.position}</td>
+                        <td style={{ padding: '10px', color: '#94a3b8' }}>{c.dept}</td>
+                        <td style={{ padding: '10px', textAlign: 'center', color: '#FFD700', fontWeight: 700 }}>{c.votes || 0}</td>
+                        <td style={{ padding: '10px', textAlign: 'center' }}>
+                          <button onClick={() => handleEdit(c)} style={{ ...btnPrimary, padding: '6px 14px', fontSize: '12px', background: '#2563eb', marginRight: '6px' }}>✏️</button>
+                          <button onClick={() => handleDelete(c.id)} style={{ ...btnDanger, padding: '6px 14px', fontSize: '12px' }}>🗑️</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==================== RESULTS VIEW ==================== */}
+        {activeView === 'results' && (
+          <div style={card}>
+            {/* Logo Header */}
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <img src="/logo.png" alt="NAMATL Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }}
+                onError={(e) => { e.target.style.display = 'none'; }} />
+              <h3 style={{ margin: '8px 0 0', color: '#FFD700', fontSize: '14px', letterSpacing: '1px' }}>FEDERAL UNIVERSITY OF PETROLEUM RESOURCES</h3>
+              <h4 style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>NAMATL STUDENT E-VOTING — {settings.year || 'YEAR'} OFFICIAL RESULT</h4>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '20px' }}>📈 Election Results</h2>
+              <button onClick={() => window.print()} style={btnSuccess}>🖨️ Print Result</button>
+            </div>
+
+            {!settings.isActive ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                <span style={{ fontSize: '48px' }}>📊</span>
+                <h3 style={{ margin: '12px 0 0' }}>No Result Yet</h3>
+                <p>Election has not been configured or activated.</p>
+              </div>
+            ) : candidates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                <span style={{ fontSize: '48px' }}>📭</span>
+                <h3 style={{ margin: '12px 0 0' }}>No Candidates</h3>
+                <p>No candidates have been added yet.</p>
+              </div>
+            ) : (
+              <div>
+                {sortedByVotes.map((c, idx) => (
+                  <div key={c.id} style={{ ...card, background: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <span style={{ fontSize: '18px', fontWeight: 700, color: idx === 0 ? '#FFD700' : '#94a3b8', minWidth: '30px' }}>#{idx + 1}</span>
+                      <div>
+                        <strong>{c.name}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: '12px', marginLeft: '8px' }}>{c.position}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 700, color: '#FFD700' }}>{c.votes || 0}</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>votes</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Print CSS */}
+            <style>{`
+              @media print {
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .no-print { display: none !important; }
+              }
+            `}</style>
+          </div>
+        )}
+
+        {/* ==================== ACTIVATION VIEW ==================== */}
+        {activeView === 'activation' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>🔑 Election Activation</h2>
+            
+            {activationMsg.text && <div style={msgStyle(activationMsg.type)}>{activationMsg.text}</div>}
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}>Select Academic Year for Activation</label>
+              <select value={activationYear} onChange={e => setActivationYear(e.target.value)} style={inputStyle}>
+                <option value="">Select Academic Year</option>
+                <option value="2025/2026">2025/2026</option>
+                <option value="2026/2027">2026/2027 (FREE)</option>
+                <option value="2027/2028">2027/2028 (N25,000)</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+              <button onClick={handleCheckActivation} style={btnPrimary}>🔍 Check Activation Cost</button>
+              {activationInfo && (
+                <button onClick={handleActivate} disabled={activating} style={{ ...btnSuccess, opacity: activating ? 0.6 : 1 }}>
+                  {activating ? '⏳ Processing...' : activationInfo.free ? '✅ Activate Free' : `💳 Pay ₦${activationInfo.cost.toLocaleString()}`}
+                </button>
+              )}
+            </div>
+
+            {activationInfo && (
+              <div style={{ ...card, background: activationInfo.free ? 'rgba(22,163,74,0.1)' : 'rgba(245,158,11,0.1)', border: `1px solid ${activationInfo.free ? 'rgba(22,163,74,0.3)' : 'rgba(245,158,11,0.3)'}` }}>
+                <p style={{ margin: 0, fontWeight: 600, color: activationInfo.free ? '#16a34a' : '#f59e0b' }}>
+                  {activationInfo.free ? '🎉 FREE ACTIVATION' : '💳 PAID ACTIVATION'}
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#94a3b8' }}>{activationInfo.message}</p>
+              </div>
+            )}
+
+            <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,215,0,0.05)', borderRadius: '8px', border: '1px solid rgba(255,215,0,0.1)' }}>
+              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                <strong>Note:</strong> Current academic year 2026/2027 is FREE. Other years require a ₦25,000 activation fee via Flutterwave.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== WITHDRAWAL VIEW ==================== */}
+        {activeView === 'withdrawal' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>💰 Withdraw Funds</h2>
+
+            <div style={{ ...card, background: '#0f172a', textAlign: 'center', marginBottom: '20px' }}>
+              <p style={{ margin: '0 0 4px', color: '#94a3b8', fontSize: '13px' }}>Available Balance</p>
+              <p style={{ margin: 0, fontSize: '36px', fontWeight: 700, color: '#FFD700' }}>₦{withdrawalBalance.toLocaleString()}</p>
+            </div>
+
+            {withdrawMsg.text && <div style={msgStyle(withdrawMsg.type)}>{withdrawMsg.text}</div>}
+
+            <div>
+              <label style={labelStyle}>Admin ID</label>
+              <input type="text" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} placeholder={ADMIN_ID} style={inputStyle} />
+              
+              <label style={labelStyle}>Withdrawal PIN</label>
+              <input type="password" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} placeholder="Enter PIN" style={inputStyle} />
+              
+              <label style={labelStyle}>Amount (₦)</label>
+              <input type="number" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} placeholder="Enter amount" min="1" style={inputStyle} />
+            </div>
+
+            <div style={{ marginTop: '8px', padding: '12px', background: 'rgba(245,158,11,0.1)', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.2)', fontSize: '12px', color: '#f59e0b' }}>
+              💳 Funds sent to Opay account: <strong>{OPAY_ACCOUNT}</strong>
+            </div>
+
+            <button onClick={handleWithdraw} style={{ ...btnWarning, marginTop: '16px', padding: '14px 32px', fontSize: '15px' }}>
+              💸 Withdraw Funds
+            </button>
+          </div>
+        )}
+
+        {/* ==================== SUPPORT MESSAGES VIEW ==================== */}
+        {activeView === 'support' && (
+          <div style={card}>
+            <h2 style={{ margin: '0 0 20px', color: '#FFD700', borderBottom: '2px solid rgba(255,215,0,0.2)', paddingBottom: '12px' }}>
+              💬 Support Messages {unreadCount > 0 && <span style={{ color: '#f59e0b', fontSize: '14px' }}>({unreadCount} unread)</span>}
+            </h2>
+
+            {supportMessages.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                <span style={{ fontSize: '48px' }}>📭</span>
+                <h3 style={{ margin: '12px 0 0', fontSize: '16px' }}>No messages yet</h3>
+              </div>
+            ) : (
+              supportMessages.map(msg => (
+                <div key={msg.id} onClick={() => markAsRead(msg.id)}
+                  style={{
+                    padding: '16px', borderBottom: '1px solid #1e293b', cursor: 'pointer',
+                    background: msg.status === 'unread' ? 'rgba(255,215,0,0.04)' : 'transparent',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = msg.status === 'unread' ? 'rgba(255,215,0,0.04)' : 'transparent'; }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <strong style={{ color: '#FFD700', fontSize: '14px' }}>{msg.name || 'Anonymous'}</strong>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      {msg.timestamp?.toDate?.()?.toLocaleString() || msg.timestamp || 'Just now'}
                     </span>
-                  ) : (
-                    <span style={{ color: '#6b7280' }}>Enter academic year to see cost</span>
+                  </div>
+                  {msg.email && msg.email !== 'Not provided' && <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>📧 {msg.email}</div>}
+                  <p style={{ margin: 0, fontSize: '13px', color: '#cbd5e1', lineHeight: 1.5 }}>{msg.message}</p>
+                  {msg.status === 'unread' && (
+                    <span style={{ display: 'inline-block', marginTop: '8px', padding: '2px 8px', background: '#f59e0b', color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>NEW</span>
                   )}
                 </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button onClick={handleSaveSettings} style={{
-                  padding: '12px 24px', background: '#003366', color: 'white', border: 'none',
-                  borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                }}>Activate Election</button>
-                <button onClick={toggleElection} style={{
-                  padding: '12px 24px', background: settings.isActive ? '#dc2626' : '#16a34a', color: 'white',
-                  border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                }}>{settings.isActive ? 'Deactivate' : 'Activate (Toggle)'}</button>
-                <button onClick={deleteAllElectionData} style={{
-                  padding: '12px 24px', background: '#6b7280', color: 'white', border: 'none',
-                  borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                }}>Delete All</button>
-                <button onClick={clearAllVotes} style={{
-                  padding: '12px 24px', background: '#f59e0b', color: 'white', border: 'none',
-                  borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-                }}>Clear Votes</button>
-              </div>
-
-              {settings.startDate && (
-                <div style={{ marginTop: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '8px', fontSize: '13px', color: '#666' }}>
-                  <div>Start: {settings.startDate} at {settings.startTime}</div>
-                  <div>End: {settings.endDate} at {settings.endTime}</div>
-                  <div>Year: {settings.year}</div>
-                  <div>Max candidates per position: {MAX_PER_POSITION}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* === WITHDRAWAL VIEW === */}
-          {activeView === 'withdrawal' && (
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
-                💰 Withdrawal
-              </h2>
-
-              {/* Balance card */}
-              <div style={{
-                background: 'linear-gradient(135deg, #16a34a, #15803d)',
-                borderRadius: '12px',
-                padding: '24px',
-                color: 'white',
-                marginBottom: '24px',
-                textAlign: 'center',
-                boxShadow: '0 4px 16px rgba(22,163,74,0.3)'
-              }}>
-                <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Available Withdrawal Balance</div>
-                <div style={{ fontSize: '36px', fontWeight: 'bold' }}>₦{withdrawalBalance.toLocaleString()}</div>
-                <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '8px' }}>Opay Account: {OPAY_ACCOUNT}</div>
-              </div>
-
-              {withdrawMsg.text && (
-                <div style={{
-                  padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px',
-                  fontWeight: 'bold', textAlign: 'center',
-                  background: withdrawMsg.type === 'success' ? '#f0fdf4' : '#fee2e2',
-                  color: withdrawMsg.type === 'success' ? '#16a34a' : '#dc2626',
-                  border: `1px solid ${withdrawMsg.type === 'success' ? '#bbf7d0' : '#fecaca'}`
-                }}>
-                  {withdrawMsg.text}
-                </div>
-              )}
-
-              <div style={{ background: '#f8f9fa', padding: '24px', borderRadius: '12px' }}>
-                <h3 style={{ margin: '0 0 16px', color: '#333', fontSize: '16px' }}>Process Withdrawal</h3>
-                <input
-                  placeholder="Admin ID"
-                  value={withdrawAdminId}
-                  onChange={(e) => setWithdrawAdminId(e.target.value)}
-                  style={inputStyle}
-                />
-                <input
-                  type="password"
-                  placeholder="Withdrawal PIN"
-                  value={withdrawPin}
-                  onChange={(e) => setWithdrawPin(e.target.value)}
-                  style={inputStyle}
-                />
-                <input
-                  type="number"
-                  placeholder="Amount (₦)"
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(e.target.value)}
-                  style={inputStyle}
-                />
-                <button onClick={handleWithdraw} style={{
-                  width: '100%', padding: '14px', background: '#16a34a', color: 'white',
-                  border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px'
-                }}>
-                  Withdraw to {OPAY_ACCOUNT}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* === GENERAL SETTINGS VIEW === */}
-          {activeView === 'general' && (
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
-                🔧 General Settings
-              </h2>
-
-              <div style={{ display: 'grid', gap: '16px' }}>
-                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Site Name</label>
-                  <input value={siteName} onChange={(e) => setSiteName(e.target.value)} style={inputStyle} />
-                </div>
-
-                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Max Candidates Per Position</label>
-                  <input type="number" value={maxPerPosition} onChange={(e) => setMaxPerPosition(parseInt(e.target.value))} style={inputStyle} />
-                </div>
-
-                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Admin ID (Read Only)</label>
-                  <input value={ADMIN_ID} readOnly style={{ ...inputStyle, background: '#e5e7eb', cursor: 'not-allowed' }} />
-                </div>
-
-                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Withdrawal PIN (Read Only)</label>
-                  <input value="••••" readOnly style={{ ...inputStyle, background: '#e5e7eb', cursor: 'not-allowed' }} />
-                </div>
-
-                <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '12px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#666', marginBottom: '6px', fontWeight: 'bold' }}>Opay Account (Read Only)</label>
-                  <input value={OPAY_ACCOUNT} readOnly style={{ ...inputStyle, background: '#e5e7eb', cursor: 'not-allowed' }} />
-                </div>
-              </div>
-
-              <button style={{
-                marginTop: '20px', padding: '12px 24px', background: '#003366', color: 'white',
-                border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px'
-              }}>Save General Settings</button>
-            </div>
-          )}
-
-         {/* === FORM PURCHASE VIEW === */}
-        {activeView === 'formPurchase' && (
-  <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-    <h2 style={{ color: '#003366', marginBottom: '12px', borderBottom: '2px solid #FFD700', paddingBottom: '8px' }}>
-      📋 Candidates Form Purchase Settings
-    </h2>
-    <div style={cardStyle}>
-      <h3 style={{ margin: '0 0 16px 0', color: '#FFD700' }}>📅 Payment Deadline</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Opening Date</label>
-          <input type="date" value={formPurchaseSettings.openingDate || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, openingDate: e.target.value})} style={inputStyle} /></div>
-        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Opening Time</label>
-          <input type="time" value={formPurchaseSettings.openingTime || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, openingTime: e.target.value})} style={inputStyle} /></div>
-        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Closing Date</label>
-          <input type="date" value={formPurchaseSettings.closingDate || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, closingDate: e.target.value})} style={inputStyle} /></div>
-        <div><label style={{ fontSize: '13px', opacity: 0.7, display: 'block', marginBottom: '4px' }}>Closing Time</label>
-          <input type="time" value={formPurchaseSettings.closingTime || ''} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, closingTime: e.target.value})} style={inputStyle} /></div>
-      </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }}>
-        <input type="checkbox" checked={formPurchaseSettings.isActive || false} onChange={e => setFormPurchaseSettings({...formPurchaseSettings, isActive: e.target.checked})} /> Enable Form Purchase
-      </label>
-    </div>
-    <div style={cardStyle}>
-      <h3 style={{ margin: '0 0 16px 0', color: '#FFD700' }}>🏛️ Positions & Prices</h3>
-      {(formPurchaseSettings.positions || []).map((pos, i) => (
-        <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center' }}>
-          <input value={pos.position} onChange={e => { const u = [...formPurchaseSettings.positions]; u[i] = {...u[i], position: e.target.value}; setFormPurchaseSettings({...formPurchaseSettings, positions: u}); }} placeholder="Position" style={{...inputStyle, marginBottom: 0, flex: 1}} />
-          <input type="number" value={pos.amount} onChange={e => { const u = [...formPurchaseSettings.positions]; u[i] = {...u[i], amount: Number(e.target.value)}; setFormPurchaseSettings({...formPurchaseSettings, positions: u}); }} style={{...inputStyle, marginBottom: 0, width: '120px'}} />
-          <button onClick={() => setFormPurchaseSettings({...formPurchaseSettings, positions: formPurchaseSettings.positions.filter((_, idx) => idx !== i)})} style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer' }}>✕</button>
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-        <input id="npn" placeholder="New position" style={{...inputStyle, marginBottom: 0, flex: 1}} />
-        <input id="npa" type="number" placeholder="Amount" style={{...inputStyle, marginBottom: 0, width: '120px'}} />
-        <button onClick={() => { const n = document.getElementById('npn').value.trim(); const a = Number(document.getElementById('npa').value); if (!n || a <= 0) { alert('Enter name and amount'); return; } setFormPurchaseSettings({...formPurchaseSettings, positions: [...(formPurchaseSettings.positions || []), { position: n, amount: a }]}); document.getElementById('npn').value = ''; document.getElementById('npa').value = ''; }} style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', fontWeight: 'bold' }}>+ Add</button>
-      </div>
-    </div>
-    <button onClick={async () => { const r = await saveFormPurchaseSettings(formPurchaseSettings); if (r.success) { alert('✅ Saved!'); loadFormPurchases(); } else { alert('❌ ' + r.message); } }} style={{ padding: '14px 24px', background: '#003366', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', width: '100%' }}>💾 Save Form Purchase Settings</button>
-    <div style={{...cardStyle, marginTop: '24px'}}>
-      <h3 style={{ margin: '0 0 12px 0', color: '#FFD700' }}>📊 Purchase History</h3>
-      {formPurchases.length === 0 ? <p style={{ textAlign: 'center', opacity: 0.5, padding: '20px' }}>No purchases yet.</p> : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead><tr style={{ borderBottom: '1px solid #475569' }}><th style={{ padding: '8px', textAlign: 'left' }}>Name</th><th style={{ padding: '8px', textAlign: 'left' }}>Position</th><th style={{ padding: '8px', textAlign: 'right' }}>Amount</th><th style={{ padding: '8px', textAlign: 'left' }}>Date</th><th style={{ padding: '8px', textAlign: 'center' }}>Status</th></tr></thead>
-            <tbody>{formPurchases.slice().reverse().map((p, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #334155' }}>
-                <td style={{ padding: '8px' }}>{p.fullName}</td>
-                <td style={{ padding: '8px' }}>{p.position}</td>
-                <td style={{ padding: '8px', textAlign: 'right', color: '#22c55e' }}>₦{Number(p.amount).toLocaleString()}</td>
-                <td style={{ padding: '8px', fontSize: '12px', opacity: 0.7 }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString() : '-'}</td>
-                <td style={{ padding: '8px', textAlign: 'center' }}><span style={{ background: '#16a34a', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '11px' }}>{p.status || 'paid'}</span></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  </div>
-)}
-          {/* === SUPPORT MESSAGES VIEW === */}
-          {activeView === 'messages' && (
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', margin: '0 0 20px', borderBottom: '2px solid #FFD700', paddingBottom: '12px' }}>
-                ✉️ Support Messages ({unreadCount} unread)
-              </h2>
-
-              {supportMessages.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                  <span style={{ fontSize: '48px' }}>📭</span>
-                  <h3 style={{ margin: '12px 0 0' }}>No messages yet</h3>
-                </div>
-              ) : (
-                supportMessages.map(msg => (
-                  <div key={msg.id} style={{
-                    padding: '16px', borderBottom: '1px solid #f0f0f0',
-                    background: msg.status === 'unread' ? '#fefce8' : 'transparent',
-                    cursor: 'pointer'
-                  }} onClick={() => markAsRead(msg.id)}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <strong style={{ color: '#333' }}>{msg.name}</strong>
-                      <span style={{ fontSize: '12px', color: '#888' }}>
-                        {msg.timestamp?.toDate?.()?.toLocaleString() || 'Just now'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#555', marginBottom: '4px' }}>
-                      {msg.email !== 'Not provided' && <div>Email: {msg.email}</div>}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#333' }}>{msg.message}</div>
-                    {msg.status === 'unread' && (
-                      <span style={{
-                        display: 'inline-block', marginTop: '8px', padding: '2px 8px',
-                        background: '#f59e0b', color: 'white', borderRadius: '4px', fontSize: '11px'
-                      }}>Unread</span>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -102,12 +102,12 @@ export default function Landing() {
 
       {/* ===== CENTRAL CONTENT ===== */}
       <div style={{ textAlign: 'center', zIndex: 1, padding: '20px' }}>
-        {/* ROUND LOGO */}
+        {/* ROUND LOGO — CENTERED */}
         <img src="/logo.png" alt="NAMATL Official Logo"
           onError={(e) => { e.target.style.display = 'none'; }}
           style={{
             width: '110px', height: '110px',
-            borderRadius: '50%',  /* ← ROUND */
+            borderRadius: '50%',
             objectFit: 'cover',
             boxShadow: '0 12px 40px rgba(255,215,0,0.15)',
             marginBottom: '20px',
@@ -115,26 +115,14 @@ export default function Landing() {
             padding: '6px',
           }} />
 
-        {/* BADGE */}
-        <div style={{
-          display: 'inline-block', padding: '5px 16px',
-          background: 'rgba(255,215,0,0.1)',
-          color: '#FFD700', borderRadius: '20px',
-          fontSize: '11px', fontWeight: 600,
-          letterSpacing: '0.5px', textTransform: 'uppercase',
-          border: '1px solid rgba(255,215,0,0.15)',
-          marginBottom: '14px',
-        }}>
-          🗳️ {year}/{year + 1} Election
-        </div>
-
-        {/* TITLE */}
+        {/* TITLE — E-VOTING TOGETHER */}
         <h1 style={{
           fontSize: 'clamp(30px, 6vw, 52px)',
           fontWeight: 800, margin: '0 0 4px',
           letterSpacing: '-0.5px',
+          color: '#FFD700',
         }}>
-          NAMATL STUDENT <span style={{ color: '#FFD700' }}>E-VOTING</span>
+          NAMATL STUDENT E-VOTING
         </h1>
 
         {/* SUBTITLE */}

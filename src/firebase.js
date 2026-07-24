@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -12,15 +12,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-
-// CRITICAL FIX: Use initializeFirestore with long-polling and local cache
-// This prevents "client is offline" errors in restrictive network environments
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-  experimentalAutoDetectLongPolling: true,
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
-
+export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Enable offline persistence silently (ignores errors if already enabled)
+try {
+  enableIndexedDbPersistence(db).catch(() => {});
+} catch (e) {}

@@ -1,6 +1,6 @@
-// NAMTLS DataCharge v4.0 - Activation + Withdrawal + Form Purchase
-import { createContext, useContext, useEffect, useState } from 'react';
-import { doc, getDoc, setDoc, increment, collection, getDocs } from 'firebase/firestore';
+// NAMTLS DataCharge v4.1 - CLEAN: No data charge. Only Activation + Form Purchase + Withdrawal
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { doc, getDoc, setDoc, increment, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const ADMIN_ID = 'Admin@Namatls128756BC';
@@ -13,15 +13,16 @@ export function useDataCharge() {
   const ctx = useContext(DataChargeContext);
   if (!ctx) {
     return {
-      totalCharged: 0, sessionSeconds: 0, sessionCost: 0,
-      withdrawalBalance: 0, isCharging: false, setIsCharging: () => {},
+      withdrawalBalance: 0,
+      loadBalance: async () => {},
       withdraw: async () => ({ success: false, message: 'Context not available' }),
       checkActivationCost: async () => ({ free: false, cost: 25000, message: 'Context not available', canActivate: false }),
       processActivationPayment: async () => ({ success: false, message: 'Context not available' }),
       purchaseForm: async () => ({ success: false, message: 'Context not available' }),
-      loadBalance: async () => {},
-      formPurchaseSettings: null, saveFormPurchaseSettings: async () => ({ success: false, message: 'Context not available' }),
-      formPurchases: [], loadFormPurchases: async () => {},
+      saveFormPurchaseSettings: async () => ({ success: false, message: 'Context not available' }),
+      loadFormPurchases: async () => {},
+      formPurchaseSettings: null,
+      formPurchases: [],
       ADMIN_ID: 'Admin@Namatls128756BC',
       WITHDRAWAL_PIN: '1966',
       OPAY_ACCOUNT: '9167557038'
@@ -35,28 +36,32 @@ async function sendFlutterwavePayout(amount, accountNumber, narration) {
     const response = await fetch('/api/withdraw', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, accountNumber, narration: narration || 'NAMTLS E-Voting Withdrawal' })
+      body: JSON.stringify({
+        amount,
+        accountNumber,
+        narration: narration || 'NAMTLS E-Voting Withdrawal'
+      })
     });
+
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const text = await response.text();
-      return { success: false, message: `API returned non-JSON: ${text.substring(0, 300)}` };
+      return {
+        success: false,
+        message: `API returned non-JSON response: ${text.substring(0, 300)}`
+      };
     }
-    return await response.json();
+
+    const data = await response.json();
+    return data;
   } catch (e) {
     return { success: false, message: `Network error: ${e.message}` };
   }
 }
 
 export function DataChargeProvider({ children }) {
-  const [totalCharged, setTotalCharged] = useState(0);
-  const [sessionSeconds, setSessionSeconds] = useState(0);
-  const [sessionCost, setSessionCost] = useState(0);
   const [withdrawalBalance, setWithdrawalBalance] = useState(0);
-  const [isCharging, setIsCharging] = useState(false);
-  const [formPurchaseSettings, setFormPurchaseSettings] = useState({
-    positions: [], openingDate: '', openingTime: '', closingDate: '', closingTime: '', isActive: false
-  });
+  const [formPurchaseSettings, setFormPurchaseSettings] = useState(null);
   const [formPurchases, setFormPurchases] = useState([]);
 
   const loadBalance = async () => {
@@ -64,60 +69,54 @@ export function DataChargeProvider({ children }) {
       const balanceDoc = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
       if (balanceDoc.exists()) {
         setWithdrawalBalance(balanceDoc.data().balance || 0);
-        setTotalCharged(balanceDoc.data().totalCharged || 0);
-      } else {
-        await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-          balance: 0, totalCharged: 0, totalReceived: 0, totalWithdrawn: 0, initializedAt: new Date().toISOString()
-        });
-        setWithdrawalBalance(0);
-        setTotalCharged(0);
       }
-    } catch (e) { console.log('Could not load balance:', e.message); }
+    } catch (e) {
+      console.log('Could not load balance:', e.message);
+    }
   };
 
   const loadFormPurchaseSettings = async () => {
     try {
-      const settingsDoc = await getDoc(doc(db, 'settings', 'formPurchase'));
-      if (settingsDoc.exists()) {
-        setFormPurchaseSettings(settingsDoc.data());
-      } else {
-        const defaults = { positions: [], openingDate: '', openingTime: '', closingDate: '', closingTime: '', isActive: false, createdAt: new Date().toISOString() };
-        await setDoc(doc(db, 'settings', 'formPurchase'), defaults);
-        setFormPurchaseSettings(defaults);
+      const snap = await getDoc(doc(db, 'settings', 'formPurchase'));
+      if (snap.exists()) {
+        setFormPurchaseSettings(snap.data());
       }
-    } catch (e) { console.log('Could not load form purchase settings:', e.message); }
+    } catch (e) {
+      console.log('Could not load form purchase settings:', e.message);
+    }
   };
-
-  const loadFormPurchases = async () => {
-    try {
-      const purchasesSnap = await getDocs(collection(db, 'formPurchases'));
-      const purchases = [];
-      purchasesSnap.forEach(docSnap => { purchases.push({ id: docSnap.id, ...docSnap.data() }); });
-      setFormPurchases(purchases);
-    } catch (e) { console.log('Could not load form purchases:', e.message); }
-  };
-
-  useEffect(() => {
-    loadBalance();
-    loadFormPurchaseSettings();
-    loadFormPurchases();
-  }, []);
 
   const saveFormPurchaseSettings = async (settings) => {
     try {
       await setDoc(doc(db, 'settings', 'formPurchase'), settings, { merge: true });
       setFormPurchaseSettings(settings);
-      return { success: true };
-    } catch (e) { return { success: false, message: e.message }; }
+      return { success: true, message: 'Form purchase settings saved!' };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
   };
+
+  const loadFormPurchases = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'formPurchases'));
+      setFormPurchases(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.log('Could not load form purchases:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    loadBalance();
+    loadFormPurchaseSettings();
+  }, []);
 
   const withdraw = async (adminId, pin, amount) => {
     if (adminId !== ADMIN_ID) return { success: false, message: 'Invalid Admin ID' };
-    if (pin !== WITHDRAWAL_PIN) return { success: false, message: 'Invalid PIN' };
-    if (amount <= 0) return { success: false, message: 'Invalid amount' };
-    if (amount > withdrawalBalance) return { success: false, message: `Insufficient balance. Available: N${withdrawalBalance.toLocaleString()}` };
+    if (pin !== WITHDRAWAL_PIN) return { success: false, message: 'Invalid Withdrawal PIN' };
+    if (amount <= 0) return { success: false, message: 'Invalid withdrawal amount' };
+    if (amount > withdrawalBalance) return { success: false, message: `Insufficient balance. Available: ₦${withdrawalBalance.toLocaleString()}` };
 
-    const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS withdrawal to Opay ${OPAY_ACCOUNT}`);
+    const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS E-Voting withdrawal to Opay ${OPAY_ACCOUNT}`);
     if (!transferResult.success) return transferResult;
     if (transferResult.warning || transferResult.unverified) {
       return { success: false, message: transferResult.message, reference: transferResult.reference || '' };
@@ -134,9 +133,9 @@ export function DataChargeProvider({ children }) {
         lastWithdrawalVerified: transferResult.verified ? true : false
       }, { merge: true });
       setWithdrawalBalance(prev => prev - amount);
-      return { success: true, message: `CONFIRMED: N${amount.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${transferResult.reference || 'N/A'}` };
+      return { success: true, message: `✅ CONFIRMED: ₦${amount.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${transferResult.reference || 'N/A'}` };
     } catch (e) {
-      return { success: false, message: `Money WAS sent (Ref: ${transferResult.reference}) but balance update failed: ${e.message}.` };
+      return { success: false, message: `⚠️ Money WAS sent (Ref: ${transferResult.reference}) but balance update failed: ${e.message}` };
     }
   };
 
@@ -144,7 +143,7 @@ export function DataChargeProvider({ children }) {
     if (academicYear === '2026/2027') {
       return { free: true, cost: 0, message: 'FREE activation for 2026/2027!', canActivate: true };
     }
-    return { free: false, cost: 25000, message: `Activation for ${academicYear} costs N25,000.`, canActivate: true };
+    return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
   };
 
   const processActivationPayment = async (academicYear) => {
@@ -176,7 +175,7 @@ export function DataChargeProvider({ children }) {
                     balance: increment(25000), lastActivationDeposit: 25000, lastActivationYear: academicYear, lastActivationDate: new Date().toISOString(), lastActivationTxRef: txRef, lastActivationTransactionId: response.transaction_id
                   }, { merge: true });
                   setWithdrawalBalance(prev => prev + 25000);
-                  resolve({ success: true, message: `N25,000 added to withdrawal balance for ${academicYear}.` });
+                  resolve({ success: true, message: `✅ ₦25,000 added to withdrawal balance for ${academicYear}.` });
                 } else {
                   resolve({ success: false, message: `Verification failed: ${verifyData.message}. Ref: ${txRef}` });
                 }
@@ -193,11 +192,11 @@ export function DataChargeProvider({ children }) {
         checkout.open();
       });
     } catch (e) {
-      return { success: false, message: e.message.includes('Cannot find module') ? 'flutterwave-react-v3 missing' : 'Error: ' + e.message };
+      return { success: false, message: e.message.includes('Cannot find module') ? 'flutterwave-react-v3 missing in package.json' : 'Error: ' + e.message };
     }
   };
 
-  // === NEW: Form Purchase Helper ===
+  // === Form Purchase via Flutterwave ===
   const purchaseForm = async (position, amount, candidateData) => {
     try {
       const txRef = `FORM-${position.replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -210,7 +209,7 @@ export function DataChargeProvider({ children }) {
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: candidateData.email || 'candidate@namtls.edu.ng', name: candidateData.fullName },
-          customizations: { title: 'NAMATL Form Purchase', description: `${position} candidacy form`, logo: 'https://namtls-election.vercel.app/logo.png' },
+          customizations: { title: 'NAMTLS Form Purchase', description: `${position} candidacy form`, logo: 'https://namtls-election.vercel.app/logo.png' },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
@@ -245,12 +244,13 @@ export function DataChargeProvider({ children }) {
 
   return (
     <DataChargeContext.Provider value={{
-      totalCharged, sessionSeconds, sessionCost,
-      withdrawalBalance, isCharging, setIsCharging,
-      withdraw, checkActivationCost, processActivationPayment,
-      purchaseForm, loadBalance,
-      formPurchaseSettings, saveFormPurchaseSettings,
-      formPurchases, loadFormPurchases,
+      withdrawalBalance,
+      loadBalance,
+      withdraw,
+      checkActivationCost, processActivationPayment,
+      purchaseForm,
+      saveFormPurchaseSettings, loadFormPurchases,
+      formPurchaseSettings, formPurchases,
       ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT
     }}>
       {children}

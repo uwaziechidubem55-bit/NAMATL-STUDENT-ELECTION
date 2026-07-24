@@ -12,21 +12,22 @@ function generateUniqueKey() {
 /**
  * Retry a Firebase operation up to `retries` times with delay.
  * Catches "offline" errors which Firestore throws when security rules deny access.
+ * With long-polling enabled in firebase.js, retries are rarely needed.
  */
-async function firestoreRetry(fn, retries = 3, delayMs = 1500) {
+async function firestoreRetry(fn, retries = 2, delayMs = 500) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err) {
       const msg = err.message || '';
       const isOffline = msg.includes('offline') || msg.includes('unavailable') || msg.includes('permission-denied');
-      
+
       if (attempt < retries && isOffline) {
         console.log(`[firestoreRetry] Attempt ${attempt}/${retries} failed, retrying in ${delayMs}ms...`);
         await new Promise(r => setTimeout(r, delayMs));
         continue;
       }
-      throw err; // Last attempt or non-offline error — throw
+      throw err;
     }
   }
 }

@@ -9,6 +9,28 @@ function generateUniqueKey() {
   return `${randomPart}-NAMATLEC`;
 }
 
+/**
+ * Retry a Firebase operation up to `retries` times with delay.
+ * Catches "offline" errors which Firestore throws when security rules deny access.
+ */
+async function firestoreRetry(fn, retries = 3, delayMs = 1500) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err.message || '';
+      const isOffline = msg.includes('offline') || msg.includes('unavailable') || msg.includes('permission-denied');
+      
+      if (attempt < retries && isOffline) {
+        console.log(`[firestoreRetry] Attempt ${attempt}/${retries} failed, retrying in ${delayMs}ms...`);
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+      throw err; // Last attempt or non-offline error — throw
+    }
+  }
+}
+
 export default function useStudentAuth() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -16,38 +38,34 @@ export default function useStudentAuth() {
   const showMessage = (type, text) => {
     console.log(`[useStudentAuth] Message: ${type} — ${text}`);
     setMessage({ type, text });
-    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+    setTimeout(() => setMessage({ type: '', text: '' }), 6000);
   };
 
   const isAllowedMatric = (matric) => {
-    console.log('[useStudentAuth] isAllowedMatric checking:', JSON.stringify(matric));
-    // Debug: log first few entries to confirm format
-    console.log('[useStudentAuth] First 5 allowed entries:', ALLOWED_MATRIC_NUMBER.slice(0, 5));
     const found = ALLOWED_MATRIC_NUMBER.includes(matric);
-    console.log('[useStudentAuth] isAllowedMatric result:', found);
+    console.log('[useStudentAuth] isAllowedMatric:', matric, '→', found);
     return found;
   };
 
   const handleSignup = async (formData) => {
     const { name, matric, level } = formData;
-    
-    console.log('[useStudentAuth] handleSignup called with matric:', JSON.stringify(matric));
-    
+
     if (!name || !matric || !level) {
       showMessage('error', 'Please fill all fields');
       return { success: false };
     }
 
     const rawMatric = matric.trim().toUpperCase();
-    console.log('[useStudentAuth] rawMatric:', JSON.stringify(rawMatric));
-    
     if (!isValidMatricFormat(rawMatric)) {
-      showMessage('error', 'Invalid matric number format');
+      showMessage('error', 'Invalid matric number format. Use CMOS/XXXXX/XXXX or CMO/MTL/XXXXX/XXXX');
       return { success: false };
     }
 
     const normalizedMatric = normalizeMatric(rawMatric);
-    console.log('[useStudentAuth] normalizedMatric:', JSON.stringify(normalizedMatric));
+    if (!normalizedMatric) {
+      showMessage('error', 'Could not normalize matric number. Check format.');
+      return { success: false };
+    }
 
     if (!isAllowedMatric(normalizedMatric)) {
       showMessage('error', 'Access Denied. Matric Number not on voter list');
@@ -59,7 +77,8 @@ export default function useStudentAuth() {
       const docId = getDocId(normalizedMatric);
       console.log('[useStudentAuth] Checking Firestore docId:', docId);
       const studentRef = doc(db, 'students', docId);
-      const studentSnap = await getDoc(studentRef);
+
+      const studentSnap = await firestoreRetry(() => getDoc(studentRef));
 
       if (studentSnap.exists()) {
         showMessage('error', 'Matric Number already registered. Please Login.');
@@ -75,7 +94,14 @@ export default function useStudentAuth() {
       };
     } catch (e) {
       console.error('[useStudentAuth] Signup Firestore error:', e);
-      showMessage('error', 'ERROR: ' + e.message);
+      const msg = e.message || '';
+      if (msg.includes('offline') || msg.includes('unavailable')) {
+        showMessage('error', 'Cannot reach the database. Check your internet connection and make sure Firestore security rules allow reads (no auth required).');
+      } else if (msg.includes('permission-denied')) {
+        showMessage('error', 'Firestore rules are blocking reads. Update rules to allow read/write without authentication.');
+      } else {
+        showMessage('error', 'ERROR: ' + msg.substring(0, 120));
+      }
       setLoading(false);
       return { success: false };
     }
@@ -83,10 +109,10 @@ export default function useStudentAuth() {
 
   const completeSignup = async (tempStudent, fiveDigitCode) => {
     console.log('[useStudentAuth] completeSignup — matric:', tempStudent.matric, 'code entered:', fiveDigitCode);
-    
+
     const correctCode = getFirst5Digits(tempStudent.matric);
     console.log('[useStudentAuth] correct code from matric:', correctCode);
-    
+
     if (fiveDigitCode !== correctCode) {
       showMessage('error', 'Incorrect verification code');
       return { success: false };
@@ -106,7 +132,9 @@ export default function useStudentAuth() {
 
       const docId = getDocId(tempStudent.matric);
       console.log('[useStudentAuth] Writing to Firestore docId:', docId);
-      await setDoc(doc(db, 'students', docId), newStudent);
+
+      await firestoreRetry(() => setDoc(doc(db, 'students', docId), newStudent));
+
       console.log('[useStudentAuth] Firestore write successful');
 
       const sessionInfo = {
@@ -122,7 +150,14 @@ export default function useStudentAuth() {
       return { success: true, phase: 'key', generatedKey: key };
     } catch (e) {
       console.error('[useStudentAuth] completeSignup error:', e);
-      showMessage('error', 'ERROR: ' + e.message);
+      const msg = e.message || '';
+      if (msg.includes('offline') || msg.includes('unavailable')) {
+        showMessage('error', 'Cannot reach the database. Check connection and Firestore security rules.');
+      } else if (msg.includes('permission-denied')) {
+        showMessage('error', 'Firestore rules blocking writes. Update rules to allow write without auth.');
+      } else {
+        showMessage('error', 'ERROR: ' + msg.substring(0, 120));
+      }
       setLoading(false);
       return { success: false };
     }
@@ -130,22 +165,23 @@ export default function useStudentAuth() {
 
   const handleLogin = async (matric) => {
     console.log('[useStudentAuth] handleLogin called with matric:', JSON.stringify(matric));
-    
+
     if (!matric) {
       showMessage('error', 'Please enter your Matric Number');
       return { success: false };
     }
 
     const rawMatric = matric.trim().toUpperCase();
-    console.log('[useStudentAuth] rawMatric:', JSON.stringify(rawMatric));
-
     if (!isValidMatricFormat(rawMatric)) {
       showMessage('error', 'Invalid matric number format');
       return { success: false };
     }
 
     const normalizedMatric = normalizeMatric(rawMatric);
-    console.log('[useStudentAuth] normalizedMatric:', JSON.stringify(normalizedMatric));
+    if (!normalizedMatric) {
+      showMessage('error', 'Could not normalize matric number');
+      return { success: false };
+    }
 
     if (!isAllowedMatric(normalizedMatric)) {
       showMessage('error', 'Access Denied. Matric Number not on voter list');
@@ -157,7 +193,8 @@ export default function useStudentAuth() {
       const docId = getDocId(normalizedMatric);
       console.log('[useStudentAuth] Looking up Firestore docId:', docId);
       const studentRef = doc(db, 'students', docId);
-      const studentSnap = await getDoc(studentRef);
+
+      const studentSnap = await firestoreRetry(() => getDoc(studentRef));
 
       if (!studentSnap.exists()) {
         showMessage('error', 'Matric Number not registered. Please sign up first.');
@@ -167,12 +204,19 @@ export default function useStudentAuth() {
 
       const foundStudent = studentSnap.data();
       console.log('[useStudentAuth] Found student:', foundStudent.name);
-      
+
       setLoading(false);
       return { success: true, phase: 'key', tempStudent: foundStudent };
     } catch (e) {
       console.error('[useStudentAuth] Login Firestore error:', e);
-      showMessage('error', 'ERROR: ' + e.message);
+      const msg = e.message || '';
+      if (msg.includes('offline') || msg.includes('unavailable')) {
+        showMessage('error', 'Cannot reach the database. Check connection and Firestore rules.');
+      } else if (msg.includes('permission-denied')) {
+        showMessage('error', 'Firestore rules blocking reads. Update rules to allow read without auth.');
+      } else {
+        showMessage('error', 'ERROR: ' + msg.substring(0, 120));
+      }
       setLoading(false);
       return { success: false };
     }
@@ -180,7 +224,7 @@ export default function useStudentAuth() {
 
   const verifyKeyAccess = async (tempStudent, uniqueKeyInput) => {
     console.log('[useStudentAuth] verifyKeyAccess for matric:', tempStudent.matric);
-    
+
     if (uniqueKeyInput.trim() === tempStudent.uniqueKey) {
       const sessionInfo = {
         name: tempStudent.name,

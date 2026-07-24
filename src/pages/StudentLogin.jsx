@@ -127,14 +127,15 @@ export default function StudentLogin() {
   };
 
   const logoStyle = {
-    width: '80px',
-    height: '80px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-    border: '3px solid #FFD700',
-    boxShadow: '0 0 15px rgba(255, 215, 0, 0.2)',
-    marginBottom: '16px'
-  };
+  width: '80px',
+  height: '80px',
+  borderRadius: '50%',
+  objectFit: 'cover',
+  border: '3px solid #FFD700',
+  boxShadow: '0 0 15px rgba(255, 215, 0, 0.2)',
+  display: 'block',       // ADD THIS
+  margin: '0 auto 16px'   // ADD THIS - auto left/right forces center
+};
 
   return (
     <div style={pageStyle}>

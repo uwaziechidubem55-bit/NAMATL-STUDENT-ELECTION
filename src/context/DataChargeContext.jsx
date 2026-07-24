@@ -155,7 +155,7 @@ export function DataChargeProvider({ children }) {
       const FlutterwaveCheckout = (await import('flutterwave-react-v3')).default;
       return new Promise((resolve) => {
         const config = {
-          public_key: process.env.VITE_FLW_PUBLIC_KEY,
+          public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: 25000,
           currency: 'NGN',
@@ -203,7 +203,7 @@ export function DataChargeProvider({ children }) {
       const FlutterwaveCheckout = (await import('flutterwave-react-v3')).default;
       return new Promise((resolve) => {
         const config = {
-          public_key: process.env.VITE_FLW_PUBLIC_KEY,
+          public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: amount,
           currency: 'NGN',

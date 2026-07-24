@@ -1,6 +1,6 @@
 // NAMTLS Manual Verify + Credit API
 import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
-import { db } from '../src/firebase';  // FIXED PATH
+import { db } from '../src/firebase';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,7 +14,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+    // Support BOTH env var names for backward compatibility
+    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
     if (!secretKey) {
       return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel env vars' });
     }

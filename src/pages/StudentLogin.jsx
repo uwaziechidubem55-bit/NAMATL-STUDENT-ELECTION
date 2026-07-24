@@ -56,7 +56,7 @@ export default function StudentLogin() {
     }
   };
 
-  // ── Shared Popup Styles ───────────────────────────────────
+  // ── Shared Popup Styles ──
   const popupOverlay = {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     background: 'rgba(0,0,0,0.7)', display: 'flex',
@@ -84,103 +84,137 @@ export default function StudentLogin() {
     ...btnPrimary, background: '#16a34a',
   };
 
+  // ── Page Layout Styles ──
+  const pageStyle = {
+    minHeight: '100vh',
+    background: '#003366',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
+    fontFamily: 'Arial, sans-serif'
+  };
+
+  const cardStyle = {
+    background: 'white',
+    padding: '32px',
+    borderRadius: '8px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    width: '100%',
+    maxWidth: '400px'
+  };
+
+  const msgBoxStyle = {
+    padding: '10px',
+    borderRadius: '4px',
+    marginBottom: '12px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    background: message.type === 'error' ? '#fee2e2' : '#d1fae5',
+    color: message.type === 'error' ? '#dc2626' : '#16a34a',
+    border: message.type === 'error' ? '1px solid #fecaca' : '1px solid #bbf7d0'
+  };
+
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      fontFamily: 'system-ui, sans-serif',
-    }}>
-      <div style={{
-        background: 'white', padding: '32px', borderRadius: '12px',
-        width: '90%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-      }}>
-        <h1 style={{ margin: '0 0 4px 0', fontSize: '22px', color: '#333' }}>
+    <div style={pageStyle}>
+      <div style={cardStyle}>
+
+        <h1 style={{ color: '#003366', textAlign: 'center', marginBottom: '4px' }}>
           {authMode === 'signup' ? 'Student Registration' : 'Student Login'}
         </h1>
-        <p style={{ margin: '0 0 20px 0', color: '#666', fontSize: '14px' }}>
+        <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginBottom: '20px' }}>
           {authMode === 'signup' ? 'Create account to continue' : 'Login with your Matric Number'}
         </p>
 
         {message.text && (
-          <div style={{
-            padding: '10px', borderRadius: '6px', marginBottom: '16px',
-            background: message.type === 'error' ? '#fee2e2' : '#d1fae5',
-            color: message.type === 'error' ? '#dc2626' : '#16a34a',
-            fontSize: '14px', fontWeight: '500',
-          }}>
-            {message.text}
-          </div>
+          <div style={msgBoxStyle}>{message.text}</div>
         )}
 
         {authMode === 'signup' ? (
           <>
-            <input placeholder="Full Name" value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              style={inputStyle} disabled={loading} />
-
-            <input placeholder="Matric Number" value={form.matric}
-              onChange={e => setForm({ ...form, matric: e.target.value })}
-              style={inputStyle} disabled={loading} />
-
-            <input placeholder="Level (e.g. 200)" value={form.level}
-              onChange={e => setForm({ ...form, level: e.target.value })}
-              style={inputStyle} disabled={loading} />
-
-            <button onClick={onSignup} disabled={loading} style={btnPrimary}>
+            <input
+              placeholder="Full Name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              style={inputStyle}
+              disabled={loading}
+            />
+            <input
+              placeholder="Matric Number (CMOS/XXXXX/XXXX)"
+              value={form.matric}
+              onChange={(e) => setForm({ ...form, matric: e.target.value })}
+              style={inputStyle}
+              disabled={loading}
+            />
+            <input
+              placeholder="Level (e.g. 200, 300, 400)"
+              value={form.level}
+              onChange={(e) => setForm({ ...form, level: e.target.value })}
+              style={inputStyle}
+              disabled={loading}
+            />
+            <button onClick={onSignup} style={btnPrimary} disabled={loading}>
               {loading ? 'Please wait...' : 'Register'}
             </button>
-
             <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#666' }}>
               Already have an account?{' '}
-              <button onClick={() => { setAuthMode('login'); setMessage({ type: '', text: '' }); }}
-                style={{ color: '#2563eb', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '0' }}>
+              <button
+                onClick={() => { setAuthMode('login'); }}
+                style={{ color: '#2563eb', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '0' }}
+              >
                 Login
               </button>
             </p>
           </>
         ) : (
           <>
-            <input placeholder="Matric Number" value={loginMatric}
-              onChange={e => setLoginMatric(e.target.value)}
-              style={inputStyle} disabled={loading} />
-
-            <button onClick={onLogin} disabled={loading} style={btnPrimary}>
+            <input
+              placeholder="Matric Number (CMOS/XXXXX/XXXX)"
+              value={loginMatric}
+              onChange={(e) => setLoginMatric(e.target.value)}
+              style={{ ...inputStyle, marginBottom: '16px' }}
+              disabled={loading}
+            />
+            <button onClick={onLogin} style={btnPrimary} disabled={loading}>
               {loading ? 'Please wait...' : 'Login'}
             </button>
-
             <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#666' }}>
               Don't have an account?{' '}
-              <button onClick={() => { setAuthMode('signup'); setMessage({ type: '', text: '' }); }}
-                style={{ color: '#2563eb', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '0' }}>
+              <button
+                onClick={() => { setAuthMode('signup'); }}
+                style={{ color: '#2563eb', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '0' }}
+              >
                 Register
               </button>
             </p>
           </>
         )}
 
-        <div style={{ textAlign: 'center', marginTop: '16px' }}>
-          <Link to="/" style={{ color: '#888', fontSize: '13px' }}>Back to Home</Link>
-        </div>
+        <p style={{ textAlign: 'center', marginTop: '20px' }}>
+          <Link to="/" style={{ color: '#2563eb', fontSize: '14px' }}>Back to Home</Link>
+        </p>
+
       </div>
 
       {/* ── POPUP 1: 5-Digit Verification ── */}
       {showVerifyPopup && (
         <div style={popupOverlay}>
           <div style={popupBox}>
-            <h2 style={{ marginTop: 0, color: '#333' }}>Verification</h2>
-            <p style={{ color: '#666', fontSize: '14px' }}>
+            <h2 style={{ color: '#003366', textAlign: 'center' }}>Verification</h2>
+            <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
               Enter the first 5 digits from your matric number
             </p>
             <input
               value={fiveDigitCode}
-              onChange={e => setFiveDigitCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              onChange={(e) => setFiveDigitCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
               placeholder="e.g. XXXXX"
               maxLength={5}
               style={inputStyle}
               disabled={loading}
               autoFocus
             />
-            <button onClick={onVerifyCode} disabled={loading} style={btnPrimary}>
+            <button onClick={onVerifyCode} style={btnPrimary} disabled={loading}>
               {loading ? 'Verifying...' : 'Verify'}
             </button>
           </div>
@@ -191,20 +225,19 @@ export default function StudentLogin() {
       {showKeyPopup && (
         <div style={popupOverlay}>
           <div style={popupBox}>
-            <h2 style={{ marginTop: 0, color: '#333' }}>
+            <h2 style={{ color: '#003366', textAlign: 'center' }}>
               {generatedKey ? 'Your Unique Code — Save This' : 'Access Voting Portal'}
             </h2>
-
             {generatedKey ? (
               <>
-                <p style={{ color: '#666', fontSize: '14px' }}>
+                <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
                   This is your one-time access key. Save it now — you will need it to log in later.
                 </p>
                 <div style={{
-                  background: '#f3f4f6', padding: '16px', borderRadius: '6px',
-                  fontFamily: 'monospace', fontSize: '18px', fontWeight: 'bold',
-                  textAlign: 'center', color: '#7c3aed', marginBottom: '16px',
-                  letterSpacing: '1px',
+                  background: '#f0fdf4', border: '2px dashed #16a34a',
+                  padding: '20px', textAlign: 'center', borderRadius: '8px',
+                  marginBottom: '16px', fontSize: '20px', fontWeight: 'bold',
+                  color: '#15803d', wordBreak: 'break-all', fontFamily: 'monospace'
                 }}>
                   {generatedKey}
                 </div>
@@ -214,18 +247,18 @@ export default function StudentLogin() {
               </>
             ) : (
               <>
-                <p style={{ color: '#666', fontSize: '14px' }}>
+                <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
                   Enter your unique code to access the voting portal
                 </p>
                 <input
                   value={uniqueKeyInput}
-                  onChange={e => setUniqueKeyInput(e.target.value)}
+                  onChange={(e) => setUniqueKeyInput(e.target.value)}
                   placeholder="Paste your unique code"
                   style={inputStyle}
                   disabled={loading}
                   autoFocus
                 />
-                <button onClick={onKeyAccess} disabled={loading} style={btnPrimary}>
+                <button onClick={onKeyAccess} style={btnPrimary} disabled={loading}>
                   {loading ? 'Verifying...' : 'Access Voting Portal'}
                 </button>
               </>
@@ -233,6 +266,7 @@ export default function StudentLogin() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

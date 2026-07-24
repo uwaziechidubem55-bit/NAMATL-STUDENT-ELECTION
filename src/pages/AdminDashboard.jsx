@@ -52,6 +52,67 @@ export default function AdminDashboard() {
   const [fpMsg, setFpMsg] = useState('');
   const [fpCandidateCounts, setFpCandidateCounts] = useState({});
 
+  // ===================== ACTIVATION STATE =====================
+  const [activeMode, setActiveMode] = useState('none');
+  const [activationLoading, setActivationLoading] = useState(false);
+  const [activationMsg, setActivationMsg] = useState({ type: '', text: '' });
+
+  // ===================== LOAD ACTIVATION FROM FIRESTORE =====================
+  const loadActivation = async () => {
+    try {
+      const activationSnap = await getDoc(doc(db, 'settings', 'main'));
+      if (activationSnap.exists()) {
+        const data = activationSnap.data();
+        setActiveMode(data.activeMode || 'none');
+      }
+    } catch (e) {
+      console.error('Load activation error:', e);
+    }
+  };
+
+  // ===================== ACTIVATION HANDLERS =====================
+  const handleActivate = async (type) => {
+    setActivationLoading(true);
+    setActivationMsg({ type: '', text: '' });
+    try {
+      let newMode;
+      if (type === 'election') {
+        newMode = activeMode === 'formPurchase' ? 'both' : 'election';
+      } else if (type === 'formPurchase') {
+        newMode = activeMode === 'election' ? 'both' : 'formPurchase';
+      }
+      
+      await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
+      setActiveMode(newMode);
+      setActivationMsg({ type: 'success', text: `✅ ${type === 'election' ? 'Election' : 'Form Purchase'} activated!` });
+      setTimeout(() => setActivationMsg({ type: '', text: '' }), 4000);
+    } catch (e) {
+      setActivationMsg({ type: 'error', text: '❌ Error: ' + e.message });
+    }
+    setActivationLoading(false);
+  };
+
+  const handleToggleStop = async (type) => {
+    setActivationLoading(true);
+    setActivationMsg({ type: '', text: '' });
+    try {
+      let newMode;
+      if (type === 'election') {
+        newMode = activeMode === 'both' ? 'formPurchase' : 'none';
+      } else if (type === 'formPurchase') {
+        newMode = activeMode === 'both' ? 'election' : 'none';
+      }
+      
+      await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
+      setActiveMode(newMode);
+      setActivationMsg({ type: 'success', text: `✅ ${type === 'election' ? 'Election' : 'Form Purchase'} stopped. ${type === 'election' ? 'Results now available.' : ''}` });
+      setTimeout(() => setActivationMsg({ type: '', text: '' }), 4000);
+    } catch (e) {
+      setActivationMsg({ type: 'error', text: '❌ Error: ' + e.message });
+    }
+    setActivationLoading(false);
+  };
+
   const loadAllData = async () => {
     setLoading(true);
     setError('');
@@ -85,6 +146,7 @@ export default function AdminDashboard() {
 
       try { await loadBalance(); } catch (e) {}
       try { await loadFormPurchases(); } catch (e) {}
+      try { await loadActivation(); } catch (e) {}
 
       setLoading(false);
     } catch (e) {
@@ -115,6 +177,7 @@ export default function AdminDashboard() {
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'settings', label: 'Election Settings', icon: '⚙️' },
     { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
+    { key: 'activation', label: 'Activation', icon: '🔘' },
     { key: 'results', label: 'Election Results', icon: '📈' },
     { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
     { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
@@ -142,6 +205,7 @@ export default function AdminDashboard() {
   };
   const btnDanger = { ...btnPrimary, background: '#dc2626' };
   const btnSuccess = { ...btnPrimary, background: '#16a34a' };
+  const btnWarning = { ...btnPrimary, background: '#f59e0b', color: '#003366' };
 
   const handleSaveSettings = async () => {
     try { await setDoc(doc(db, 'settings', 'election'), settings, { merge: true }); alert('✅ Saved!'); }
@@ -320,10 +384,26 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div style={cardStyle}>
-              <h3 style={{ color: '#003366', marginBottom: '16px' }}>Quick Actions</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ color: '#003366', margin: 0 }}>Quick Actions</h3>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#666' }}>Mode:</span>
+                  <span style={{
+                    padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold',
+                    background: activeMode === 'none' ? '#fee2e2' : '#d1fae5',
+                    color: activeMode === 'none' ? '#dc2626' : '#16a34a'
+                  }}>
+                    {activeMode === 'none' && '○ Inactive'}
+                    {activeMode === 'election' && '● Election'}
+                    {activeMode === 'formPurchase' && '● Forms'}
+                    {activeMode === 'both' && '● Election + Forms'}
+                  </span>
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <button onClick={() => setActiveView('settings')} style={btnPrimary}>⚙️ Settings</button>
                 <button onClick={() => setActiveView('candidates')} style={{ ...btnPrimary, background: '#2563eb' }}>👥 Candidates</button>
+                <button onClick={() => setActiveView('activation')} style={{ ...btnPrimary, background: '#8b5cf6' }}>🔘 Activation</button>
                 <button onClick={() => setActiveView('results')} style={{ ...btnPrimary, background: '#16a34a' }}>📈 Results</button>
                 <button onClick={() => setActiveView('form-purchase')} style={{ ...btnPrimary, background: '#8b5cf6' }}>📋 Form Purchase</button>
                 <button onClick={() => setActiveView('withdrawal')} style={{ ...btnPrimary, background: '#f59e0b' }}>💰 Withdraw</button>
@@ -366,6 +446,203 @@ export default function AdminDashboard() {
               </div>
             </div>
             <button onClick={handleSaveSettings} style={{ ...btnPrimary, marginTop: '16px' }}>💾 Save</button>
+          </div>
+        )}
+
+        {/* ===================== ACTIVATION VIEW ===================== */}
+        {activeView === 'activation' && (
+          <div>
+            {/* Status Banner */}
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', marginBottom: '8px' }}>🔘 Activation Control</h2>
+              <p style={{ color: '#666', fontSize: '14px', marginBottom: '20px' }}>
+                Control what appears on the StudentDashboard and Form Purchase page.
+              </p>
+
+              {activationMsg.text && (
+                <div style={{
+                  padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold',
+                  background: activationMsg.type === 'error' ? '#fee2e2' : '#d1fae5',
+                  color: activationMsg.type === 'error' ? '#dc2626' : '#16a34a'
+                }}>
+                  {activationMsg.text}
+                </div>
+              )}
+
+              {/* Current Mode Display */}
+              <div style={{
+                textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px',
+                marginBottom: '24px'
+              }}>
+                <div style={{ fontSize: '13px', color: '#666', marginBottom: '4px' }}>Current Mode</div>
+                <div style={{
+                  padding: '8px 24px', borderRadius: '20px', fontWeight: 'bold', display: 'inline-block', fontSize: '16px',
+                  background: activeMode === 'none' ? '#fee2e2' : '#d1fae5',
+                  color: activeMode === 'none' ? '#dc2626' : '#16a34a'
+                }}>
+                  {activeMode === 'none' && '🔴 Nothing Active'}
+                  {activeMode === 'election' && '🟢 Election Voting Active'}
+                  {activeMode === 'formPurchase' && '🟢 Form Purchase Active'}
+                  {activeMode === 'both' && '🟢 Election Voting + Form Purchase Active'}
+                </div>
+              </div>
+            </div>
+
+            {/* Election Activation Card */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#003366',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
+                }}>🗳️</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 2px 0', color: '#003366' }}>Election</h3>
+                  <p style={{ margin: 0, color: '#666', fontSize: '13px' }}>
+                    {activeMode === 'election' || activeMode === 'both'
+                      ? 'Voting is LIVE on StudentDashboard'
+                      : 'Students cannot vote right now'}
+                  </p>
+                </div>
+                <div style={{
+                  padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
+                  background: (activeMode === 'election' || activeMode === 'both') ? '#d1fae5' : '#fee2e2',
+                  color: (activeMode === 'election' || activeMode === 'both') ? '#16a34a' : '#dc2626'
+                }}>
+                  {(activeMode === 'election' || activeMode === 'both') ? '● LIVE' : '○ OFF'}
+                </div>
+              </div>
+
+              {/* Prerequisites */}
+              <div style={{
+                padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', marginBottom: '20px',
+                fontSize: '13px', color: '#666'
+              }}>
+                <strong>Prerequisites:</strong>
+                <span style={{ marginLeft: '8px' }}>
+                  {candidates.length === 0 ? (
+                    <span style={{ color: '#dc2626' }}>❌ No candidates</span>
+                  ) : (
+                    <span style={{ color: '#16a34a' }}>✅ {candidates.length} candidates</span>
+                  )}
+                </span>
+                <span style={{ margin: '0 12px' }}>|</span>
+                <span>
+                  {!settings.startDate || !settings.endDate ? (
+                    <span style={{ color: '#dc2626' }}>❌ Dates not set</span>
+                  ) : (
+                    <span style={{ color: '#16a34a' }}>✅ Dates configured</span>
+                  )}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Activation Button */}
+                <button
+                  onClick={() => handleActivate('election')}
+                  disabled={activationLoading || (activeMode === 'election' || activeMode === 'both') || candidates.length === 0}
+                  style={{
+                    ...btnSuccess,
+                    opacity: (activationLoading || (activeMode === 'election' || activeMode === 'both') || candidates.length === 0) ? 0.5 : 1,
+                    cursor: (activationLoading || (activeMode === 'election' || activeMode === 'both') || candidates.length === 0) ? 'not-allowed' : 'pointer',
+                    padding: '14px 32px', fontSize: '15px'
+                  }}
+                >
+                  {activationLoading ? '⏳...' : '🔘 Activate'}
+                </button>
+
+                {/* Activation Toggle Button */}
+                <button
+                  onClick={() => handleToggleStop('election')}
+                  disabled={activationLoading || !(activeMode === 'election' || activeMode === 'both')}
+                  style={{
+                    ...btnWarning,
+                    opacity: (activationLoading || !(activeMode === 'election' || activeMode === 'both')) ? 0.5 : 1,
+                    cursor: (activationLoading || !(activeMode === 'election' || activeMode === 'both')) ? 'not-allowed' : 'pointer',
+                    padding: '14px 32px', fontSize: '15px'
+                  }}
+                >
+                  {activationLoading ? '⏳...' : '🔘 Toggle (Stop)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Form Purchase Activation Card */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#8b5cf6',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
+                }}>📋</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 2px 0', color: '#003366' }}>Form Purchase</h3>
+                  <p style={{ margin: 0, color: '#666', fontSize: '13px' }}>
+                    {activeMode === 'formPurchase' || activeMode === 'both'
+                      ? 'Forms are available for purchase'
+                      : 'Form purchase is closed'}
+                  </p>
+                </div>
+                <div style={{
+                  padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
+                  background: (activeMode === 'formPurchase' || activeMode === 'both') ? '#d1fae5' : '#fee2e2',
+                  color: (activeMode === 'formPurchase' || activeMode === 'both') ? '#16a34a' : '#dc2626'
+                }}>
+                  {(activeMode === 'formPurchase' || activeMode === 'both') ? '● LIVE' : '○ OFF'}
+                </div>
+              </div>
+
+              {/* Prerequisites */}
+              <div style={{
+                padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', marginBottom: '20px',
+                fontSize: '13px', color: '#666'
+              }}>
+                <strong>Prerequisites:</strong>
+                <span style={{ marginLeft: '8px' }}>
+                  {fpPositions.length === 0 ? (
+                    <span style={{ color: '#dc2626' }}>❌ No positions set</span>
+                  ) : (
+                    <span style={{ color: '#16a34a' }}>✅ {fpPositions.length} positions</span>
+                  )}
+                </span>
+                <span style={{ margin: '0 12px' }}>|</span>
+                <span>
+                  {!fpOpeningDate || !fpClosingDate ? (
+                    <span style={{ color: '#dc2626' }}>❌ Dates not set</span>
+                  ) : (
+                    <span style={{ color: '#16a34a' }}>✅ Dates configured</span>
+                  )}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Activation Button */}
+                <button
+                  onClick={() => handleActivate('formPurchase')}
+                  disabled={activationLoading || (activeMode === 'formPurchase' || activeMode === 'both') || fpPositions.length === 0}
+                  style={{
+                    ...btnSuccess,
+                    opacity: (activationLoading || (activeMode === 'formPurchase' || activeMode === 'both') || fpPositions.length === 0) ? 0.5 : 1,
+                    cursor: (activationLoading || (activeMode === 'formPurchase' || activeMode === 'both') || fpPositions.length === 0) ? 'not-allowed' : 'pointer',
+                    padding: '14px 32px', fontSize: '15px'
+                  }}
+                >
+                  {activationLoading ? '⏳...' : '🔘 Activate'}
+                </button>
+
+                {/* Activation Toggle Button */}
+                <button
+                  onClick={() => handleToggleStop('formPurchase')}
+                  disabled={activationLoading || !(activeMode === 'formPurchase' || activeMode === 'both')}
+                  style={{
+                    ...btnWarning,
+                    opacity: (activationLoading || !(activeMode === 'formPurchase' || activeMode === 'both')) ? 0.5 : 1,
+                    cursor: (activationLoading || !(activeMode === 'formPurchase' || activeMode === 'both')) ? 'not-allowed' : 'pointer',
+                    padding: '14px 32px', fontSize: '15px'
+                  }}
+                >
+                  {activationLoading ? '⏳...' : '🔘 Toggle (Stop)'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

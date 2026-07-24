@@ -142,7 +142,7 @@ export default function StudentLogin() {
 
         {/* LOGO - TOP CENTER */}
         <img
-          src="https://raw.githubusercontent.com/logo.png"
+          src="/logo.png"
           alt="NAMTLS Logo"
           style={logoStyle}
           onError={(e) => { e.target.style.display = 'none'; }}

@@ -194,7 +194,7 @@ export default function Landing() {
       )}
 
       <img
-        src="https://raw.githubusercontent.com/logo.png"
+        src="/logo.png"
         alt="NAMTLS Logo"
         style={logoStyle}
         onError={(e) => { e.target.style.display = 'none'; }}

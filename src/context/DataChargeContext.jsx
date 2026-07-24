@@ -3,9 +3,9 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, increment, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const ADMIN_ID = 'Admin@Namatls128756BC';
-const WITHDRAWAL_PIN = '1966';
-const OPAY_ACCOUNT = '9167557038';
+const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || 'Admin@Namatls128756BC';
+const WITHDRAWAL_PIN = import.meta.env.VITE_WITHDRAWAL_PIN || '1966';
+const OPAY_ACCOUNT = import.meta.env.VITE_OPAY_ACCOUNT || '9167557038';
 
 const DataChargeContext = createContext();
 
@@ -23,9 +23,9 @@ export function useDataCharge() {
       loadFormPurchases: async () => {},
       formPurchaseSettings: null,
       formPurchases: [],
-      ADMIN_ID: 'Admin@Namatls128756BC',
-      WITHDRAWAL_PIN: '1966',
-      OPAY_ACCOUNT: '9167557038'
+      ADMIN_ID: import.meta.env.VITE_ADMIN_ID || 'Admin@Namatls128756BC',
+  WITHDRAWAL_PIN: import.meta.env.VITE_WITHDRAWAL_PIN || '1966',
+  OPAY_ACCOUNT: import.meta.env.VITE_OPAY_ACCOUNT || '9167557038'
     };
   }
   return ctx;

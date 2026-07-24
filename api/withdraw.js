@@ -1,8 +1,17 @@
-// NAMTLS Withdrawal API v3.2 - FIXED import path
+// NAMTLS Withdrawal API v3.2 - FIXED import path + CORS
 import { doc, setDoc, increment } from 'firebase/firestore';
-import { db } from '../src/firebase';  // FIXED PATH
+import { db } from '../src/firebase';
 
 export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
@@ -14,11 +23,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: 'Amount and account number are required' });
     }
 
-    const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY;
+    const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
     if (!FLUTTERWAVE_SECRET) {
       return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel env vars' });
     }
 
+    // ... rest stays exactly the same as your current v3.2
     const withdrawalAmount = Number(amount);
     if (withdrawalAmount < 100) {
       return res.status(400).json({ success: false, message: 'Minimum withdrawal is 100' });
@@ -49,6 +59,7 @@ export default async function handler(req, res) {
       })
     });
 
+    // ... everything below stays the exact same
     const transferData = await transferResponse.json();
     console.log('[NAMTLS] Submit response:', JSON.stringify(transferData, null, 2));
 

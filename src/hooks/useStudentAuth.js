@@ -5,8 +5,9 @@ import ALLOWED_MATRIC_NUMBER from '../config/students';
 import { normalizeMatric, getFirst5Digits, getDocId, isValidMatricFormat } from '../utils/matricHelpers';
 
 function generateUniqueKey() {
-  const randomPart = crypto.randomUUID().replace(/-/g, '').substring(0, 10).toUpperCase();
-  return `${randomPart}-NAMATLEC`;
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 10).toUpperCase();
+  return `${timestamp}${random}-NAMATLEC`;
 }
 
 /**

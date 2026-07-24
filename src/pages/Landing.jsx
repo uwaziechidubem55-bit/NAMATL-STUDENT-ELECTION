@@ -7,27 +7,26 @@ export default function Landing() {
   const [blink, setBlink] = useState(true);
 
   useEffect(() => {
-    // Trigger a sharp golden flash when the page mounts (e.g. navigating "back")
-    setBlink(true);
-    const timer = setTimeout(() => setBlink(false), 400);
-    return () => clearTimeout(timer);
-  }, []);
+  // Trigger a super sharp WHITE flash
+  setBlink(true);
+  const timer = setTimeout(() => setBlink(false), 300); // CHANGED: 400ms -> 300ms
+  return () => clearTimeout(timer);
+}, []);
 
-  const containerStyle = {
-    minHeight: '100vh',
-    background: blink
-      ? 'radial-gradient(circle at center, rgba(255,215,0,0.4) 0%, #003366 60%)'
-      : 'linear-gradient(135deg, #003366 0%, #004080 50%, #003366 100%)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: 'Arial, sans-serif',
-    position: 'relative',
-    padding: '20px',
-    transition: 'background 0.15s ease-out'
-  };
-
+const containerStyle = {
+  minHeight: '100vh',
+  background: blink
+    ? 'radial-gradient(circle at center, rgba(255,255,255,0.35) 0%, #003366 60%)' // Sharp White
+    : 'linear-gradient(135deg, #003366 0%, #004080 50%, #003366 100%)',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: 'Arial, sans-serif',
+  position: 'relative',
+  padding: '20px',
+  transition: 'background 0.12s ease-out' // CHANGED: 0.15s -> 0.12s
+};
   const logoStyle = {
     width: '100px',
     height: '100px',

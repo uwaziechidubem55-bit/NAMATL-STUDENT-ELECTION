@@ -14,9 +14,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
     if (!secretKey) {
-      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set' });
+      return res.status(500).json({ success: false, message: 'Flutterwave secret key not set in environment variables' });
     }
 
     // 1. Verify with Flutterwave
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
 
     // 2. Verify amount matches
     if (Number(paidAmount) < Number(amount)) {
-      return res.status(400).json({ success: false, message: 'Paid less than required amount' });
+      return res.status(400).json({ success: false, message: `Paid N${paidAmount} but required N${amount}` });
     }
 
     // 3. Check 5-candidate limit
@@ -79,6 +79,12 @@ export default async function handler(req, res) {
         manifesto: 'Form purchased on ' + new Date().toLocaleDateString(),
         paidForm: true,
         paidAt: new Date().toISOString()
+      });
+    } else {
+      return res.status(200).json({
+        success: true,
+        warning: true,
+        message: `N${Number(paidAmount).toLocaleString()} credited! But ${position} already has 5 candidates. Candidate NOT added.`
       });
     }
 

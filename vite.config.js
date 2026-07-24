@@ -8,7 +8,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
+  // Optional: Only add this if you want to use process.env in code
+  // But the best way is to use import.meta.env directly
   define: {
-    'process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY': JSON.stringify(process.env.VITE_FLW_PUBLIC_KEY || '')
+    'import.meta.env.VITE_FLW_PUBLIC_KEY': JSON.stringify(process.env.VITE_FLW_PUBLIC_KEY || '')
   }
 })

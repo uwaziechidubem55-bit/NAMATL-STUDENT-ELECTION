@@ -83,7 +83,7 @@ export default function PurchaseForm() {
       const txRef = 'FORM-' + selectedPosition.position.replace(/\s+/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
       const FLW = (await import('flutterwave-react-v3')).default;
       const checkout = new FLW({
-        public_key: process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY,
+        public_key: process.env.VITE_FLW_PUBLIC_KEY,
         tx_ref: txRef,
         amount: selectedPosition.amount,
         currency: 'NGN',

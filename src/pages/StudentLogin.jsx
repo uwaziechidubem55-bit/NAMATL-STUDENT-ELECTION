@@ -101,7 +101,8 @@ export default function StudentLogin() {
     borderRadius: '8px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
     width: '100%',
-    maxWidth: '400px'
+    maxWidth: '400px',
+    textAlign: 'center'
   };
 
   const msgBoxStyle = {
@@ -116,9 +117,27 @@ export default function StudentLogin() {
     border: message.type === 'error' ? '1px solid #fecaca' : '1px solid #bbf7d0'
   };
 
+  const logoStyle = {
+    width: '80px',
+    height: '80px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '3px solid #FFD700',
+    boxShadow: '0 0 15px rgba(255, 215, 0, 0.2)',
+    marginBottom: '16px'
+  };
+
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
+
+        {/* LOGO - TOP CENTER */}
+        <img
+          src="https://raw.githubusercontent.com/logo.png"
+          alt="NAMTLS Logo"
+          style={logoStyle}
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
 
         <h1 style={{ color: '#003366', textAlign: 'center', marginBottom: '4px' }}>
           {authMode === 'signup' ? 'Student Registration' : 'Student Login'}
@@ -141,7 +160,7 @@ export default function StudentLogin() {
               disabled={loading}
             />
             <input
-              placeholder="Matric Number (CMOS/XXXXX/XXXX)"
+              placeholder="Matric Number"
               value={form.matric}
               onChange={(e) => setForm({ ...form, matric: e.target.value })}
               style={inputStyle}
@@ -170,7 +189,7 @@ export default function StudentLogin() {
         ) : (
           <>
             <input
-              placeholder="Matric Number (CMOS/XXXXX/XXXX)"
+              placeholder="Matric Number"
               value={loginMatric}
               onChange={(e) => setLoginMatric(e.target.value)}
               style={{ ...inputStyle, marginBottom: '16px' }}

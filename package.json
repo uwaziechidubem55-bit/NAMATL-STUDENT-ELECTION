@@ -1,14 +1,14 @@
 {
   "name": "namatl-student-e-voting",
   "private": true,
-  "version": "3.0.0",
+  "version": "2.0.0",
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build --emptyOutDir",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -18,7 +18,7 @@
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
     "firebase": "^10.14.1",
-    "flutterwave-react-v3": "^1.1.0"
+    "flutterwave-react-v3": "^1.1.12"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.2",

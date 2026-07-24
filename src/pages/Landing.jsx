@@ -1,20 +1,31 @@
-// NAMTLS Landing v2.0.1 - FORCE UPDATE 2026-07-17
-import { useState } from 'react';
+// NAMTLS Landing v2.0.2 - Sharp blink on return
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [blink, setBlink] = useState(true);
+
+  useEffect(() => {
+    // Trigger a sharp golden flash when the page mounts (e.g. navigating "back")
+    setBlink(true);
+    const timer = setTimeout(() => setBlink(false), 400);
+    return () => clearTimeout(timer);
+  }, []);
 
   const containerStyle = {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #003366 0%, #004080 50%, #003366 100%)',
+    background: blink
+      ? 'radial-gradient(circle at center, rgba(255,215,0,0.4) 0%, #003366 60%)'
+      : 'linear-gradient(135deg, #003366 0%, #004080 50%, #003366 100%)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: 'Arial, sans-serif',
     position: 'relative',
-    padding: '20px'
+    padding: '20px',
+    transition: 'background 0.15s ease-out'
   };
 
   const logoStyle = {
@@ -53,6 +64,32 @@ export default function Landing() {
     borderRadius: '50%',
     background: '#FFD700',
     display: 'block'
+  };
+
+  const menuDropdownStyle = {
+    position: 'absolute',
+    top: '65px',
+    left: '15px',
+    background: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+    zIndex: 30,
+    minWidth: '220px',
+    overflow: 'hidden'
+  };
+
+  const menuItemStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 18px',
+    color: '#333',
+    textDecoration: 'none',
+    fontSize: '14px',
+    fontWeight: '500',
+    borderBottom: '1px solid #f0f0f0',
+    cursor: 'pointer',
+    transition: 'background 0.2s'
   };
 
   const titleStyle = {
@@ -110,32 +147,6 @@ export default function Landing() {
     padding: '0 20px'
   };
 
-  const menuDropdownStyle = {
-    position: 'absolute',
-    top: '65px',
-    left: '15px',
-    background: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-    zIndex: 30,
-    minWidth: '220px',
-    overflow: 'hidden'
-  };
-
-  const menuItemStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '12px 18px',
-    color: '#333',
-    textDecoration: 'none',
-    fontSize: '14px',
-    fontWeight: '500',
-    borderBottom: '1px solid #f0f0f0',
-    cursor: 'pointer',
-    transition: 'background 0.2s'
-  };
-
   return (
     <div style={containerStyle}>
 
@@ -169,7 +180,6 @@ export default function Landing() {
             >
               🔐 Access Admin Dashboard
             </Link>
-
             <Link
               to="/support"
               onClick={() => setMenuOpen(false)}
@@ -179,7 +189,6 @@ export default function Landing() {
             >
               💬 Chat / Support
             </Link>
-
             <Link
               to="/purchase-form"
               onClick={() => setMenuOpen(false)}
@@ -194,7 +203,7 @@ export default function Landing() {
       )}
 
       <img
-        src="/logo.png"
+        src="https://raw.githubusercontent.com/logo.png"
         alt="NAMTLS Logo"
         style={logoStyle}
         onError={(e) => { e.target.style.display = 'none'; }}

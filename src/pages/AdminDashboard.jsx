@@ -1,18 +1,33 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, storage } from '../firebase';
-import { collection, addDoc, getDocs, getDoc, doc, setDoc,
-deleteDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { collection, addDoc, getDocs, getDoc, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext';
 
 const MAX_PER_POSITION = 5;
 
+/** Retry helper: faster with long-polling enabled */
+async function firestoreRetry(fn, retries = 2, delayMs = 500) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err.message || '';
+      const isOffline = msg.includes('offline') || msg.includes('unavailable') || msg.includes('permission-denied');
+      if (attempt < retries && isOffline) {
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const {
-    withdrawalBalance, withdraw, checkActivationCost, processActivationPayment,
-    loadBalance, loadFormPurchases, saveFormPurchaseSettings,
+    withdrawalBalance, withdraw, loadBalance, loadFormPurchases, saveFormPurchaseSettings,
     formPurchaseSettings, formPurchases, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT
   } = useDataCharge();
 
@@ -36,7 +51,6 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState({
     year: '', startDate: '', startTime: '', endDate: '', endTime: '', isActive: false
   });
-  const [siteName, setSiteName] = useState('NAMATL STUDENT E-VOTING');
 
   // ── Withdrawal ──
   const [withdrawAdminId, setWithdrawAdminId] = useState('');
@@ -44,13 +58,11 @@ export default function AdminDashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMsg, setWithdrawMsg] = useState({ type: '', text: '' });
 
-  // ── Voters ──
+  // ── Voters & Messages ──
   const [voters, setVoters] = useState([]);
-
-  // ── Support Messages ──
   const [supportMessages, setSupportMessages] = useState([]);
 
-  // ── Form Purchase Settings ──
+  // ── Form Purchase ──
   const [fpPositions, setFpPositions] = useState([]);
   const [fpOpeningDate, setFpOpeningDate] = useState('');
   const [fpClosingDate, setFpClosingDate] = useState('');
@@ -65,59 +77,62 @@ export default function AdminDashboard() {
 
   // ── Load All Data ──
   const loadAllData = async () => {
-    try {
-      // Load candidates
-      const candidatesSnap = await getDocs(collection(db, 'candidates'));
-      const candidatesList = [];
-      candidatesSnap.forEach(d => candidatesList.push({ id: d.id, ...d.data() }));
-      setCandidates(candidatesList);
+    setLoading(true);
+    setError('');
 
-      // Count candidates per position
+    try {
+      const [candidatesSnap, settingsSnap, supportSnap] = await Promise.all([
+        firestoreRetry(() => getDocs(collection(db, 'candidates'))),
+        firestoreRetry(() => getDoc(doc(db, 'settings', 'election'))),
+        firestoreRetry(() => getDocs(collection(db, 'supportMessages')))
+      ]);
+
+      // Candidates
+      const cData = [];
+      candidatesSnap.forEach(d => cData.push({ id: d.id, ...d.data() }));
+      setCandidates(cData);
+
+      // Candidate counts per position
       const counts = {};
-      candidatesList.forEach(c => {
-        counts[c.position] = (counts[c.position] || 0) + 1;
-      });
+      cData.forEach(c => { counts[c.position] = (counts[c.position] || 0) + 1; });
       setFpCandidateCounts(counts);
 
-      // Load settings
-      const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
-      if (settingsSnap.exists()) setSettings(settingsSnap.data());
-
-      // Load voters
-      const votersSnap = await getDocs(collection(db, 'students'));
-      const votersList = [];
-      votersSnap.forEach(d => votersList.push({ id: d.id, ...d.data() }));
-      setVoters(votersList);
-
-      // Load support messages
-      const msgSnap = await getDocs(collection(db, 'supportMessages'));
-      const msgs = [];
-      msgSnap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
-      setSupportMessages(msgs);
-
-      // Load form purchase settings from context
-      if (formPurchaseSettings) {
-        setFpPositions(formPurchaseSettings.positions || []);
-        setFpOpeningDate(formPurchaseSettings.openingDate || '');
-        setFpClosingDate(formPurchaseSettings.closingDate || '');
-        setFpOpeningTime(formPurchaseSettings.openingTime || '');
-        setFpClosingTime(formPurchaseSettings.closingTime || '');
-        setFpIsActive(formPurchaseSettings.isActive || false);
+      // Settings
+      if (settingsSnap.exists()) {
+        setSettings(settingsSnap.data());
       }
 
-      await loadBalance();
-      await loadFormPurchases();
+      // Support messages
+      const mData = [];
+      supportSnap.forEach(d => mData.push({ id: d.id, ...d.data() }));
+      setSupportMessages(mData);
 
+      // Background: voters, balance, form purchases
+      try {
+        const votersSnap = await firestoreRetry(() => getDocs(collection(db, 'students')));
+        const vData = [];
+        votersSnap.forEach(d => vData.push({ id: d.id, ...d.data() }));
+        setVoters(vData);
+      } catch (e) { console.log('[Admin] voters load non-fatal:', e.message); }
+
+      try {
+        await Promise.all([loadBalance(), loadFormPurchases()]);
+      } catch (e) { console.log('[Admin] balance/fp load non-fatal:', e.message); }
+
+      setLoading(false);
     } catch (e) {
-      console.error('loadAllData error:', e);
-      setError(e.message);
+      console.error('[Admin] Data loading error:', e);
+      const msg = e.message || '';
+      if (msg.includes('offline') || msg.includes('unavailable')) {
+        setError('Cannot reach Firestore. Please go to Firebase Console > Firestore Database > Create Database, set rules to allow read/write.');
+      } else {
+        setError('Failed to load data: ' + msg.substring(0, 150));
+      }
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  useEffect(() => {
-    loadAllData();
-  }, []);
+  useEffect(() => { loadAllData(); }, []);
 
   useEffect(() => {
     if (formPurchaseSettings) {
@@ -136,12 +151,7 @@ export default function AdminDashboard() {
   const unreadMessages = supportMessages.filter(m => m.status === 'unread').length;
   const activeVoters = voters.filter(v => v.hasVoted).length;
 
-  const phase = !settings.isActive
-    ? { label: 'Not Active', color: '#6b7280' }
-    : settings.startDate && new Date(settings.startDate + 'T' + (settings.startTime || '00:00')) > new Date()
-      ? { label: 'Scheduled', color: '#f59e0b' }
-      : { label: 'Running', color: '#22c55e' };
-
+  // ── Sidebar ──
   const sidebarItems = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'settings', label: 'Election Settings', icon: '⚙️' },
@@ -156,7 +166,7 @@ export default function AdminDashboard() {
   const inputStyle = {
     width: '100%', padding: '12px 14px', border: '1px solid #ddd',
     borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box',
-    fontSize: '14px', outline: 'none', transition: 'border-color 0.2s'
+    fontSize: '14px', outline: 'none'
   };
   const cardStyle = {
     background: 'white', borderRadius: '12px', padding: '24px',
@@ -170,33 +180,28 @@ export default function AdminDashboard() {
   const btnPrimary = {
     padding: '12px 24px', background: '#003366', color: 'white',
     border: 'none', borderRadius: '8px', cursor: 'pointer',
-    fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s'
+    fontWeight: 'bold', fontSize: '14px'
   };
   const btnDanger = { ...btnPrimary, background: '#dc2626' };
   const btnSuccess = { ...btnPrimary, background: '#16a34a' };
 
-  // ── Handle Settings Save ──
+  // ── Handlers ──
   const handleSaveSettings = async () => {
     try {
-      await setDoc(doc(db, 'settings', 'main'), settings, { merge: true });
+      await setDoc(doc(db, 'settings', 'election'), settings, { merge: true });
       alert('✅ Election settings saved!');
-    } catch (e) {
-      alert('Error: ' + e.message);
-    }
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
-  // ── Handle Candidate Add/Edit ──
   const handleSaveCandidate = async () => {
     if (!name || !position || !dept) { alert('Name, position and dept required'); return; }
     try {
       if (editingCandidate) {
         await updateDoc(doc(db, 'candidates', editingCandidate.id), { name, position, dept, manifesto });
       } else {
-        // Check limit
         const posCount = candidates.filter(c => c.position === position).length;
         if (posCount >= MAX_PER_POSITION) {
-          alert(`Maximum ${MAX_PER_POSITION} candidates for ${position}`);
-          return;
+          alert(`Maximum ${MAX_PER_POSITION} candidates for ${position}`); return;
         }
         let photoURL = '';
         if (photo) {
@@ -212,9 +217,7 @@ export default function AdminDashboard() {
       setName(''); setPosition(''); setDept(''); setManifesto('');
       setPhoto(null); setPhotoPreview(''); setEditingCandidate(null);
       loadAllData();
-    } catch (e) {
-      alert('Error: ' + e.message);
-    }
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
   const handleEditCandidate = (c) => {
@@ -226,38 +229,28 @@ export default function AdminDashboard() {
 
   const handleDeleteCandidate = async (id) => {
     if (!window.confirm('Delete this candidate?')) return;
-    try {
-      await deleteDoc(doc(db, 'candidates', id));
-      loadAllData();
-    } catch (e) {
-      alert('Error: ' + e.message);
-    }
+    try { await deleteDoc(doc(db, 'candidates', id)); loadAllData(); }
+    catch (e) { alert('Error: ' + e.message); }
   };
 
-  // ── Handle Withdrawal ──
   const handleWithdraw = async () => {
     if (!withdrawAdminId || !withdrawPin || !withdrawAmount) {
-      setWithdrawMsg({ type: 'error', text: 'Fill all withdrawal fields' });
-      return;
+      setWithdrawMsg({ type: 'error', text: 'Fill all withdrawal fields' }); return;
     }
     const amount = Number(withdrawAmount);
     setWithdrawMsg({ type: '', text: 'Processing...' });
     const result = await withdraw(withdrawAdminId, withdrawPin, amount);
     if (result.success) {
       setWithdrawMsg({ type: 'success', text: result.message });
-      setWithdrawAmount(''); setWithdrawPin('');
-      loadBalance();
+      setWithdrawAmount(''); setWithdrawPin(''); loadBalance();
     } else {
       setWithdrawMsg({ type: 'error', text: result.message });
     }
   };
 
-  // ── Handle Form Purchase Settings Save ──
   const handleFpAddPosition = () => {
     if (!fpNewPosition || !fpNewAmount) { alert('Position name and amount required'); return; }
-    if (fpPositions.find(p => p.position === fpNewPosition.trim())) {
-      alert('Position already exists'); return;
-    }
+    if (fpPositions.find(p => p.position === fpNewPosition.trim())) { alert('Position already exists'); return; }
     setFpPositions([...fpPositions, { position: fpNewPosition.trim(), amount: Number(fpNewAmount) }]);
     setFpNewPosition(''); setFpNewAmount('');
   };
@@ -268,20 +261,13 @@ export default function AdminDashboard() {
 
   const handleFpSaveSettings = async () => {
     if (!fpPositions.length) { alert('Add at least one position'); return; }
-    setFpSaving(true);
-    setFpMsg('Saving...');
+    setFpSaving(true); setFpMsg('Saving...');
     const result = await saveFormPurchaseSettings({
-      isActive: fpIsActive,
-      openingDate: fpOpeningDate,
-      closingDate: fpClosingDate,
-      openingTime: fpOpeningTime,
-      closingTime: fpClosingTime,
-      positions: fpPositions
+      isActive: fpIsActive, openingDate: fpOpeningDate, closingDate: fpClosingDate,
+      openingTime: fpOpeningTime, closingTime: fpClosingTime, positions: fpPositions
     });
     setFpMsg(result.message);
-    if (result.success) {
-      setTimeout(() => setFpMsg(''), 3000);
-    }
+    if (result.success) { setTimeout(() => setFpMsg(''), 3000); }
     setFpSaving(false);
   };
 
@@ -298,7 +284,7 @@ export default function AdminDashboard() {
     return (
       <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', fontFamily: 'Arial, sans-serif' }}>
         <h2 style={{ color: '#ef4444' }}>ERROR</h2>
-        <p style={{ color: 'white' }}>{error}</p>
+        <p style={{ color: 'white', textAlign: 'center', maxWidth: '500px', padding: '16px' }}>{error}</p>
         <button onClick={loadAllData} style={{ padding: '10px 24px', background: '#FFD700', color: '#003366', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginTop: '16px' }}>Retry</button>
       </div>
     );
@@ -307,12 +293,11 @@ export default function AdminDashboard() {
   return (
     <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
 
-      {/* ===== SIDEBAR ===== */}
+      {/* ── SIDEBAR ── */}
       {sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)}
              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }} />
       )}
-
       <div style={{
         position: 'fixed', top: 0, left: 0, bottom: 0, width: '250px',
         background: '#001a33', zIndex: 50, padding: '20px 16px',
@@ -324,7 +309,6 @@ export default function AdminDashboard() {
           <button onClick={() => setSidebarOpen(false)}
                   style={{ background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: 0 }}>×</button>
         </div>
-
         {sidebarItems.map(item => (
           <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); }}
                style={{
@@ -332,7 +316,7 @@ export default function AdminDashboard() {
                  marginBottom: '4px', borderRadius: '8px', cursor: 'pointer',
                  background: activeView === item.key ? 'rgba(255,215,0,0.15)' : 'transparent',
                  color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.8)',
-                 transition: 'all 0.2s', fontWeight: activeView === item.key ? 'bold' : 'normal'
+                 fontWeight: activeView === item.key ? 'bold' : 'normal'
                }}
                onMouseEnter={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
                onMouseLeave={(e) => { if (activeView !== item.key) e.currentTarget.style.background = 'transparent'; }}>
@@ -340,7 +324,6 @@ export default function AdminDashboard() {
             <span>{item.label}</span>
           </div>
         ))}
-
         <button onClick={() => navigate('/admin-login')}
                 style={{
                   width: '100%', padding: '12px', marginTop: '20px',
@@ -354,10 +337,10 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* ===== MAIN CONTENT ===== */}
+      {/* ── MAIN CONTENT ── */}
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
 
-        {/* ── HEADER ── */}
+        {/* HEADER */}
         <div style={{
           background: '#003366', borderRadius: '12px', padding: '16px 24px',
           marginBottom: '20px', display: 'flex', justifyContent: 'space-between',
@@ -365,14 +348,7 @@ export default function AdminDashboard() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button onClick={() => setSidebarOpen(true)}
-                    style={{
-                      background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white',
-                      width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      justifyContent: 'center', gap: '4px'
-                    }}
-                    onMouseEnter={(e) => { e.target.style.background = 'rgba(255,255,255,0.2)'; }}
-                    onMouseLeave={(e) => { e.target.style.background = 'rgba(255,255,255,0.1)'; }}>
+                    style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
               <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
               <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
               <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
@@ -385,9 +361,7 @@ export default function AdminDashboard() {
           <span style={{ fontSize: '13px', opacity: 0.7 }}>₦{withdrawalBalance.toLocaleString()}</span>
         </div>
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  DASHBOARD VIEW                                 */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== DASHBOARD VIEW ===== */}
         {activeView === 'dashboard' && (
           <>
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
@@ -412,7 +386,6 @@ export default function AdminDashboard() {
                 <div style={{ fontSize: '13px', color: '#666' }}>Balance</div>
               </div>
             </div>
-
             <div style={cardStyle}>
               <h3 style={{ color: '#003366', marginBottom: '16px' }}>Quick Actions</h3>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -426,9 +399,7 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  ELECTION SETTINGS VIEW                         */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== ELECTION SETTINGS VIEW ===== */}
         {activeView === 'settings' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>⚙️ Election Settings</h2>
@@ -465,33 +436,25 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  CANDIDATES VIEW                                */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== CANDIDATES VIEW ===== */}
         {activeView === 'candidates' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>👥 Edit Candidates</h2>
-
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
               <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>{editingCandidate ? '✏️ Edit Candidate' : '➕ Add New Candidate'}</h3>
               <input placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
               <input placeholder="Position" value={position} onChange={(e) => setPosition(e.target.value)} style={inputStyle} />
               <input placeholder="Department" value={dept} onChange={(e) => setDept(e.target.value)} style={inputStyle} />
               <textarea placeholder="Manifesto (optional)" value={manifesto} onChange={(e) => setManifesto(e.target.value)} style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} />
-              <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files[0]; if (f) { setPhoto(f); setPhotoPreview(URL.createObjectURL(f)); }}} style={{ marginBottom: '12px' }} />
-              {photoPreview && <img src={photoPreview} alt="Preview" style={{ width: '100px', height: '100px', borderRadius: '8px', objectFit: 'cover', marginBottom: '12px' }} />}
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button onClick={handleSaveCandidate} style={btnSuccess}>
-                  {editingCandidate ? '✏️ Update' : '➕ Add'}
-                </button>
+              <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files[0]; if (f) { setPhoto(f); setPhotoPreview(URL.createObjectURL(f)); }}} />
+              {photoPreview && <img src={photoPreview} alt="Preview" style={{ width: '100px', height: '100px', borderRadius: '8px', objectFit: 'cover', display: 'block', margin: '8px 0' }} />}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button onClick={handleSaveCandidate} style={btnSuccess}>{editingCandidate ? '✏️ Update' : '➕ Add'}</button>
                 {editingCandidate && (
-                  <button onClick={() => { setEditingCandidate(null); setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); }} style={btnDanger}>
-                    Cancel
-                  </button>
+                  <button onClick={() => { setEditingCandidate(null); setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); }} style={btnDanger}>Cancel</button>
                 )}
               </div>
             </div>
-
             {candidates.length === 0 ? (
               <p style={{ color: '#999', textAlign: 'center' }}>No candidates added yet</p>
             ) : (
@@ -526,23 +489,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  RESULTS VIEW                                   */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== RESULTS VIEW ===== */}
         {activeView === 'results' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>📈 Election Results</h2>
-
-            {!settings.isActive ? (
-              <div style={{ textAlign: 'center', padding: '40px' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }}>📊</div>
-                <p style={{ color: '#999' }}>Election has not been configured or activated.</p>
-              </div>
-            ) : candidates.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }}>📭</div>
-                <p style={{ color: '#999' }}>No candidates have been added yet.</p>
-              </div>
+            {candidates.length === 0 ? (
+              <p style={{ color: '#999', textAlign: 'center' }}>No candidates have been added yet.</p>
             ) : (
               <>
                 <div style={{ overflowX: 'auto' }}>
@@ -559,9 +511,7 @@ export default function AdminDashboard() {
                       {sortedByVotes.map((c, idx) => (
                         <tr key={c.id} style={{ borderBottom: '1px solid #eee' }}>
                           <td style={{ padding: '12px', color: '#666', fontSize: '13px' }}>{c.position}</td>
-                          <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '18px', color: idx === 0 ? '#FFD700' : idx === 1 ? '#94a3b8' : idx === 2 ? '#cd7f32' : '#003366' }}>
-                            {idx + 1}
-                          </td>
+                          <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '18px', color: idx === 0 ? '#FFD700' : idx === 1 ? '#94a3b8' : idx === 2 ? '#cd7f32' : '#003366' }}>{idx + 1}</td>
                           <td style={{ padding: '12px', fontWeight: 'bold' }}>{c.name}</td>
                           <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', color: '#003366', fontSize: '18px' }}>{c.votes || 0}</td>
                         </tr>
@@ -569,38 +519,25 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
-
-                <div style={{ marginTop: '20px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                  <button onClick={() => window.print()}
-                          style={{ padding: '10px 20px', background: '#003366', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    🖨️ Print Results
-                  </button>
-                </div>
+                <button onClick={() => window.print()} style={{ ...btnPrimary, marginTop: '16px' }}>🖨️ Print Results</button>
               </>
             )}
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  FORM PURCHASE SETTINGS VIEW                   */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== FORM PURCHASE VIEW ===== */}
         {activeView === 'form-purchase' && (
           <>
             <div style={cardStyle}>
               <h2 style={{ color: '#003366', marginBottom: '4px' }}>📋 Form Purchase Settings</h2>
-              <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>
-                Configure positions, prices, and availability for candidate form purchase
-              </p>
-
+              <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>Configure positions, prices, and availability for candidate form purchase</p>
               {fpMsg && (
                 <div style={{
                   padding: '10px 14px', borderRadius: '8px', marginBottom: '16px',
                   background: fpMsg.includes('Error') ? '#fee2e2' : '#d1fae5',
-                  color: fpMsg.includes('Error') ? '#dc2626' : '#16a34a',
-                  fontWeight: 'bold', fontSize: '14px'
+                  color: fpMsg.includes('Error') ? '#dc2626' : '#16a34a', fontWeight: 'bold', fontSize: '14px'
                 }}>{fpMsg}</div>
               )}
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '4px' }}>Opening Date</label>
@@ -619,17 +556,13 @@ export default function AdminDashboard() {
                   <input type="time" value={fpClosingTime} onChange={(e) => setFpClosingTime(e.target.value)} style={inputStyle} />
                 </div>
               </div>
-
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '4px' }}>
                   <input type="checkbox" checked={fpIsActive} onChange={(e) => setFpIsActive(e.target.checked)} style={{ marginRight: '8px' }} />
                   Form Purchase Active
                 </label>
               </div>
-
               <h3 style={{ color: '#003366', marginBottom: '12px' }}>Positions & Pricing</h3>
-
-              {/* Add new position */}
               <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'flex-end' }}>
                 <div style={{ flex: 2 }}>
                   <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '2px' }}>Position Name</label>
@@ -641,8 +574,6 @@ export default function AdminDashboard() {
                 </div>
                 <button onClick={handleFpAddPosition} style={{ ...btnPrimary, whiteSpace: 'nowrap', padding: '12px 20px' }}>➕ Add</button>
               </div>
-
-              {/* Position list */}
               {fpPositions.length === 0 ? (
                 <p style={{ color: '#999', fontSize: '14px', textAlign: 'center', padding: '20px' }}>No positions added yet</p>
               ) : (
@@ -668,9 +599,7 @@ export default function AdminDashboard() {
                               background: (fpCandidateCounts[p.position] || 0) >= 5 ? '#fee2e2' : '#d1fae5',
                               color: (fpCandidateCounts[p.position] || 0) >= 5 ? '#dc2626' : '#16a34a',
                               padding: '2px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold'
-                            }}>
-                              {fpCandidateCounts[p.position] || 0}/5
-                            </span>
+                            }}>{(fpCandidateCounts[p.position] || 0)}/5</span>
                           </td>
                           <td style={{ padding: '10px', textAlign: 'center' }}>
                             <button onClick={() => handleFpRemovePosition(i)} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Remove</button>
@@ -681,13 +610,11 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               )}
-
               <button onClick={handleFpSaveSettings} disabled={fpSaving} style={{ ...btnPrimary, background: fpSaving ? '#999' : '#003366' }}>
                 {fpSaving ? '⏳ Saving...' : '💾 Save Form Purchase Settings'}
               </button>
             </div>
 
-            {/* Purchase History */}
             {formPurchases.length > 0 && (
               <div style={cardStyle}>
                 <h3 style={{ color: '#003366', marginBottom: '12px' }}>📋 Purchase History ({formPurchases.length})</h3>
@@ -722,40 +649,29 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  WITHDRAWAL VIEW                                */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== WITHDRAWAL VIEW ===== */}
         {activeView === 'withdrawal' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             <div style={cardStyle}>
               <h2 style={{ color: '#003366', marginBottom: '16px' }}>💰 Withdraw Funds</h2>
               <p style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>Available Balance</p>
               <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#16a34a', margin: '0 0 20px 0' }}>₦{withdrawalBalance.toLocaleString()}</p>
-
               <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
                 <p style={{ fontSize: '13px', color: '#888', margin: '0 0 4px 0' }}>Beneficiary</p>
                 <p style={{ fontWeight: 'bold', margin: 0 }}>{OPAY_ACCOUNT} (Opay)</p>
               </div>
-
               <input placeholder="Admin ID" value={withdrawAdminId} onChange={(e) => setWithdrawAdminId(e.target.value)} style={inputStyle} />
               <input type="password" placeholder="Withdrawal PIN" value={withdrawPin} onChange={(e) => setWithdrawPin(e.target.value)} style={inputStyle} />
               <input type="number" placeholder="Amount (₦)" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} style={inputStyle} />
-
-              <button onClick={handleWithdraw} style={{ ...btnPrimary, width: '100%', padding: '14px', background: '#f59e0b', color: '#003366', fontSize: '16px' }}>
-                💸 Withdraw to Opay
-              </button>
-
+              <button onClick={handleWithdraw} style={{ ...btnPrimary, width: '100%', padding: '14px', background: '#f59e0b', color: '#003366', fontSize: '16px' }}>💸 Withdraw to Opay</button>
               {withdrawMsg.text && (
                 <div style={{
                   padding: '12px', borderRadius: '8px', marginTop: '16px', fontSize: '14px', fontWeight: 'bold',
                   background: withdrawMsg.type === 'error' ? '#fee2e2' : '#d1fae5',
                   color: withdrawMsg.type === 'error' ? '#dc2626' : '#16a34a',
-                }}>
-                  {withdrawMsg.text}
-                </div>
+                }}>{withdrawMsg.text}</div>
               )}
             </div>
-
             <div style={cardStyle}>
               <h3 style={{ color: '#003366', marginBottom: '12px' }}>Quick Stats</h3>
               <div style={{ padding: '14px', borderBottom: '1px solid #eee' }}>
@@ -774,9 +690,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────── */}
-        {/*  SUPPORT MESSAGES VIEW                          */}
-        {/* ──────────────────────────────────────────────── */}
+        {/* ===== MESSAGES VIEW ===== */}
         {activeView === 'messages' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>✉️ Support Messages ({supportMessages.length})</h2>
@@ -799,7 +713,7 @@ export default function AdminDashboard() {
                     <p style={{ margin: '0 0 4px 0', color: '#666' }}>{msg.message}</p>
                     {msg.email !== 'Not provided' && <span style={{ fontSize: '12px', color: '#888' }}>📧 {msg.email}</span>}
                     {msg.status === 'unread' && (
-                      <button onClick={() => { try { updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' }); loadAllData(); } catch(e){} }}
+                      <button onClick={async () => { try { await updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' }); loadAllData(); } catch(e) {} }}
                               style={{ marginLeft: '12px', padding: '4px 10px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
                         Mark Read
                       </button>

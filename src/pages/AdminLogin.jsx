@@ -11,7 +11,7 @@ export default function AdminLogin() {
     e.preventDefault();
     setError('');
 
-    if (username === 'admin' && password === 'Officialelectoralcommission123') {
+    if (username === 'Brouse' && password === 'Officialelectoralcommission123') {
       navigate('/admin-dashboard');
     } else {
       setError('Invalid Credentials. Ask admin for password.');

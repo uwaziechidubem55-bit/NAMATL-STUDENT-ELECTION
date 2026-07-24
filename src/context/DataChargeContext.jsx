@@ -1,4 +1,4 @@
-// NAMTLS DataCharge v4.1 - Activation + Withdrawal + Form Purchase
+// NAMTLS DataCharge v4.0 - Activation + Withdrawal + Form Purchase
 import { createContext, useContext, useEffect, useState } from 'react';
 import { doc, getDoc, setDoc, increment, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -20,10 +20,8 @@ export function useDataCharge() {
       processActivationPayment: async () => ({ success: false, message: 'Context not available' }),
       purchaseForm: async () => ({ success: false, message: 'Context not available' }),
       loadBalance: async () => {},
-      formPurchaseSettings: null,
-      saveFormPurchaseSettings: async () => ({ success: false, message: 'Context not available' }),
-      formPurchases: [],
-      loadFormPurchases: async () => {},
+      formPurchaseSettings: null, saveFormPurchaseSettings: async () => ({ success: false, message: 'Context not available' }),
+      formPurchases: [], loadFormPurchases: async () => {},
       ADMIN_ID: 'Admin@Namatls128756BC',
       WITHDRAWAL_PIN: '1966',
       OPAY_ACCOUNT: '9167557038'
@@ -33,8 +31,6 @@ export function useDataCharge() {
 }
 
 async function sendFlutterwavePayout(amount, accountNumber, narration) {
-  // NOTE: In production, this needs a serverless function at /api/withdraw
-  // For now, it records the withdrawal in Firestore for manual processing
   try {
     const response = await fetch('/api/withdraw', {
       method: 'POST',
@@ -44,66 +40,76 @@ async function sendFlutterwavePayout(amount, accountNumber, narration) {
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const text = await response.text();
-      console.warn('[Flutterwave] Non-JSON response:', text);
-      return { success: true, warning: true, message: 'Withdrawal recorded. Manual verification needed.', reference: `MANUAL-${Date.now()}` };
+      return { success: false, message: `API returned non-JSON: ${text.substring(0, 300)}` };
     }
     return await response.json();
   } catch (e) {
-    console.warn('[Flutterwave] Payout error (recording as manual):', e.message);
-    return { success: true, unverified: true, message: 'Withdrawal logged. Admin will process manually.', reference: `MANUAL-${Date.now()}` };
+    return { success: false, message: `Network error: ${e.message}` };
   }
 }
 
 export function DataChargeProvider({ children }) {
-  const [withdrawalBalance, setWithdrawalBalance] = useState(0);
   const [totalCharged, setTotalCharged] = useState(0);
   const [sessionSeconds, setSessionSeconds] = useState(0);
   const [sessionCost, setSessionCost] = useState(0);
+  const [withdrawalBalance, setWithdrawalBalance] = useState(0);
   const [isCharging, setIsCharging] = useState(false);
-  const [formPurchaseSettings, setFormPurchaseSettingsState] = useState(null);
+  const [formPurchaseSettings, setFormPurchaseSettings] = useState({
+    positions: [], openingDate: '', openingTime: '', closingDate: '', closingTime: '', isActive: false
+  });
   const [formPurchases, setFormPurchases] = useState([]);
 
   const loadBalance = async () => {
     try {
-      const docSnap = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
-      if (docSnap.exists()) {
-        setWithdrawalBalance(docSnap.data().balance || 0);
+      const balanceDoc = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
+      if (balanceDoc.exists()) {
+        setWithdrawalBalance(balanceDoc.data().balance || 0);
+        setTotalCharged(balanceDoc.data().totalCharged || 0);
+      } else {
+        await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
+          balance: 0, totalCharged: 0, totalReceived: 0, totalWithdrawn: 0, initializedAt: new Date().toISOString()
+        });
+        setWithdrawalBalance(0);
+        setTotalCharged(0);
       }
-    } catch (e) {
-      console.error('loadBalance error:', e);
-    }
+    } catch (e) { console.log('Could not load balance:', e.message); }
+  };
+
+  const loadFormPurchaseSettings = async () => {
+    try {
+      const settingsDoc = await getDoc(doc(db, 'settings', 'formPurchase'));
+      if (settingsDoc.exists()) {
+        setFormPurchaseSettings(settingsDoc.data());
+      } else {
+        const defaults = { positions: [], openingDate: '', openingTime: '', closingDate: '', closingTime: '', isActive: false, createdAt: new Date().toISOString() };
+        await setDoc(doc(db, 'settings', 'formPurchase'), defaults);
+        setFormPurchaseSettings(defaults);
+      }
+    } catch (e) { console.log('Could not load form purchase settings:', e.message); }
   };
 
   const loadFormPurchases = async () => {
     try {
-      const snap = await getDocs(collection(db, 'settings', 'formPurchase', 'transactions'));
-      const list = [];
-      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      setFormPurchases(list);
-      
-      const settingsSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
-      if (settingsSnap.exists()) {
-        setFormPurchaseSettingsState(settingsSnap.data());
-      }
-    } catch (e) {
-      console.error('loadFormPurchases error:', e);
-    }
-  };
-
-  const saveFormPurchaseSettings = async (data) => {
-    try {
-      await setDoc(doc(db, 'settings', 'formPurchase'), data, { merge: true });
-      setFormPurchaseSettingsState(prev => ({ ...prev, ...data }));
-      return { success: true, message: 'Form purchase settings saved!' };
-    } catch (e) {
-      return { success: false, message: e.message };
-    }
+      const purchasesSnap = await getDocs(collection(db, 'formPurchases'));
+      const purchases = [];
+      purchasesSnap.forEach(docSnap => { purchases.push({ id: docSnap.id, ...docSnap.data() }); });
+      setFormPurchases(purchases);
+    } catch (e) { console.log('Could not load form purchases:', e.message); }
   };
 
   useEffect(() => {
     loadBalance();
+    loadFormPurchaseSettings();
     loadFormPurchases();
   }, []);
+
+  const saveFormPurchaseSettings = async (settings) => {
+    try {
+      await setDoc(doc(db, 'settings', 'formPurchase'), settings, { merge: true });
+      setFormPurchaseSettings(settings);
+      return { success: true };
+    } catch (e) { return { success: false, message: e.message }; }
+  };
 
   const withdraw = async (adminId, pin, amount) => {
     if (adminId !== ADMIN_ID) return { success: false, message: 'Invalid Admin ID' };
@@ -113,6 +119,9 @@ export function DataChargeProvider({ children }) {
 
     const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS withdrawal to Opay ${OPAY_ACCOUNT}`);
     if (!transferResult.success) return transferResult;
+    if (transferResult.warning || transferResult.unverified) {
+      return { success: false, message: transferResult.message, reference: transferResult.reference || '' };
+    }
 
     try {
       await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
@@ -140,35 +149,20 @@ export function DataChargeProvider({ children }) {
 
   const processActivationPayment = async (academicYear) => {
     if (academicYear === '2026/2027') {
-      // FREE activation - just record it
-      try {
-        await setDoc(doc(db, 'finances', 'activations'), {
-          [academicYear]: {
-            activated: true,
-            free: true,
-            date: new Date().toISOString(),
-            year: academicYear
-          }
-        }, { merge: true });
-        return { success: true, message: 'Election activated FREE for 2026/2027!' };
-      } catch (e) {
-        return { success: false, message: 'Record failed: ' + e.message };
-      }
+      return { success: true, message: 'Election activated FREE!' };
     }
-
-    // PAID activation via Flutterwave
     try {
       const txRef = `ACT-${academicYear.replace('/', '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
       const FlutterwaveCheckout = (await import('flutterwave-react-v3')).default;
       return new Promise((resolve) => {
         const config = {
-          public_key: import.meta.env.VITE_FLW_PUBLIC_KEY || process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY || '',
+          public_key: process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: 25000,
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: 'admin@namtls.edu.ng', name: 'NAMTLS Admin' },
-          customizations: { title: 'NAMTLS Activation Payment', description: `Activation fee for ${academicYear}`, logo: '/logo.png' },
+          customizations: { title: 'NAMTLS Activation Payment', description: `Activation fee for ${academicYear}`, logo: 'https://namtls-election.vercel.app/logo.png' },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
@@ -203,19 +197,20 @@ export function DataChargeProvider({ children }) {
     }
   };
 
+  // === NEW: Form Purchase Helper ===
   const purchaseForm = async (position, amount, candidateData) => {
     try {
       const txRef = `FORM-${position.replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
       const FlutterwaveCheckout = (await import('flutterwave-react-v3')).default;
       return new Promise((resolve) => {
         const config = {
-          public_key: import.meta.env.VITE_FLW_PUBLIC_KEY || process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY || '',
+          public_key: process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: amount,
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: candidateData.email || 'candidate@namtls.edu.ng', name: candidateData.fullName },
-          customizations: { title: 'NAMATL Form Purchase', description: `${position} candidacy form`, logo: '/logo.png' },
+          customizations: { title: 'NAMATL Form Purchase', description: `${position} candidacy form`, logo: 'https://namtls-election.vercel.app/logo.png' },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
@@ -250,9 +245,10 @@ export function DataChargeProvider({ children }) {
 
   return (
     <DataChargeContext.Provider value={{
-      totalCharged, sessionSeconds, sessionCost, withdrawalBalance,
-      isCharging, setIsCharging, withdraw, checkActivationCost,
-      processActivationPayment, purchaseForm, loadBalance,
+      totalCharged, sessionSeconds, sessionCost,
+      withdrawalBalance, isCharging, setIsCharging,
+      withdraw, checkActivationCost, processActivationPayment,
+      purchaseForm, loadBalance,
       formPurchaseSettings, saveFormPurchaseSettings,
       formPurchases, loadFormPurchases,
       ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT

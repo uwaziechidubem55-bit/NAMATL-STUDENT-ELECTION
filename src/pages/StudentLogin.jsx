@@ -17,8 +17,17 @@ export default function StudentLogin() {
   const { loading, message, handleSignup, completeSignup, handleLogin, verifyKeyAccess } = useStudentAuth();
   const navigate = useNavigate();
 
+  // CHANGED: Now using crypto.randomUUID() instead of Math.random()
+  const generateSecureKey = () => {
+    // Take first 10 chars of UUID and add -NAMATLEC
+    const uuid = crypto.randomUUID().replace(/-/g, '').toUpperCase();
+    const randomPart = uuid.substring(0, 10);
+    return `${randomPart}-NAMATLEC`;
+  }
+
   const onSignup = async () => {
-    const result = await handleSignup(form);
+    const formWithKey = {...form, uniqueKey: generateSecureKey() };
+    const result = await handleSignup(formWithKey);
     console.log('[StudentLogin] handleSignup result:', result);
     if (result.success && result.phase === 'verify') {
       setTempStudent(result.tempStudent);

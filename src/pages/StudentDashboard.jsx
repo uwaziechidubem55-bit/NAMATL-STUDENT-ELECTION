@@ -171,6 +171,7 @@ export default function StudentDashboard() {
     color: '#f1f5f9',
     marginBottom: '6px',
     fontFamily: "'Segoe UI', Tahoma, sans-serif",
+    whiteSpace: 'nowrap',
   };
 
   const positionLabelStyle = {
@@ -182,14 +183,25 @@ export default function StudentDashboard() {
     marginBottom: '12px',
   };
 
+  // ⬇ UPDATED: Manifesto now fills available space like a login/input bar
   const manifestoStyle = {
     fontSize: '14px',
     color: '#cbd5e1',
-    lineHeight: '1.6',
+    lineHeight: '1.7',
     marginBottom: '20px',
     fontStyle: 'italic',
-    padding: '0 8px',
-    maxWidth: '320px',
+    padding: '14px 16px',
+    maxWidth: '100%',
+    width: '100%',
+    background: 'rgba(15,23,42,0.5)',
+    borderRadius: '8px',
+    border: '1px solid rgba(255,255,255,0.06)',
+    textAlign: 'left',
+    wordBreak: 'break-word',
+    minHeight: '48px',
+    display: 'flex',
+    alignItems: 'center',
+    boxSizing: 'border-box',
   };
 
   const voteBtnStyle = {
@@ -207,6 +219,7 @@ export default function StudentDashboard() {
     transition: 'transform 0.15s ease',
     width: '100%',
     maxWidth: '200px',
+    whiteSpace: 'nowrap',
   };
 
   // ── Error State ──
@@ -299,12 +312,12 @@ export default function StudentDashboard() {
           positions.map(pos => (
             <div key={pos} style={sectionStyle}>
 
-              {/* ===== POSITION HEADING — BOLD, ON TOP, PROMINENT ===== */}
+              {/* Position Heading — Bold, Gold, On Top */}
               <h2 style={positionHeadingStyle}>
                 {pos}
               </h2>
 
-              {/* ===== CANDIDATES GRID ===== */}
+              {/* Candidates Grid */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -334,13 +347,13 @@ export default function StudentDashboard() {
                       />
                     )}
 
-                    {/* Name — under photo */}
+                    {/* Name — one line: "Chidubem Uwazie" */}
                     <h3 style={nameStyle}>{c.name}</h3>
 
-                    {/* Position — subtle label under name */}
+                    {/* Position — subtle label */}
                     <p style={positionLabelStyle}>{c.position}</p>
 
-                    {/* Manifesto — under name */}
+                    {/* Manifesto — fills width like a login/input bar */}
                     {c.manifesto && (
                       <p style={manifestoStyle}>"{c.manifesto}"</p>
                     )}

@@ -15,9 +15,7 @@ export default function StudentDashboard() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Read from localStorage using the correct key 'studentSession'
         const savedStudent = JSON.parse(localStorage.getItem('studentSession'));
-        console.log('[StudentDashboard] studentSession:', savedStudent);
         
         if (!savedStudent || !savedStudent.matric) {
           setError('No student data. Please Login.');
@@ -25,28 +23,23 @@ export default function StudentDashboard() {
           return;
         }
         setStudent(savedStudent);
-        console.log('[StudentDashboard] Matric:', savedStudent.matric);
 
-        // Load candidates from Firestore
         try {
           const candidatesSnap = await getDocs(collection(db, 'candidates'));
           const candidatesList = [];
           candidatesSnap.forEach(docSnap => {
             candidatesList.push({ id: docSnap.id, ...docSnap.data() });
           });
-          console.log('[StudentDashboard] Candidates loaded:', candidatesList.length);
           setCandidates(candidatesList);
         } catch (e) {
-          console.error('[StudentDashboard] Error loading candidates:', e);
+          console.error('Error loading candidates:', e);
           setCandidates([]);
         }
 
-        // Load settings from Firestore
         try {
           const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
           if (settingsSnap.exists()) {
             const fbSettings = settingsSnap.data();
-            console.log('[StudentDashboard] Settings loaded from Firestore');
             setSettings(fbSettings);
             localStorage.setItem('electionSettings', JSON.stringify(fbSettings));
           } else {
@@ -54,19 +47,17 @@ export default function StudentDashboard() {
             setSettings(savedSettings);
           }
         } catch (e) {
-          console.error('[StudentDashboard] Error loading settings:', e);
+          console.error('Error loading settings:', e);
           const savedSettings = JSON.parse(localStorage.getItem('electionSettings') || '{}');
           setSettings(savedSettings);
         }
 
-        // Check voted status
         const votedKey = 'voted_' + savedStudent.matric;
-        console.log('[StudentDashboard] voted key:', votedKey, 'value:', localStorage.getItem(votedKey));
         const votedStatus = localStorage.getItem(votedKey) === 'true';
         setHasVoted(votedStatus);
         
       } catch (e) {
-        console.error('[StudentDashboard] Fatal error:', e);
+        console.error('Fatal error:', e);
         setError('Error: ' + e.message);
       }
       setLoading(false);
@@ -127,24 +118,105 @@ export default function StudentDashboard() {
   });
   const positions = Object.keys(grouped);
 
+  // ── Styles ──
+  const sectionStyle = {
+    marginBottom: '48px',
+    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+    borderRadius: '16px',
+    padding: '32px 24px',
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+  };
+
+  const positionHeadingStyle = {
+    fontSize: '36px',
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    letterSpacing: '4px',
+    color: '#fbbf24',
+    marginBottom: '32px',
+    paddingBottom: '16px',
+    borderBottom: '3px solid #fbbf24',
+    textShadow: '0 2px 10px rgba(251,191,36,0.3)',
+    fontFamily: "'Segoe UI', Tahoma, sans-serif",
+  };
+
+  const cardStyle = {
+    background: 'linear-gradient(145deg, #1e293b 0%, #334155 100%)',
+    borderRadius: '14px',
+    padding: '28px 20px 24px',
+    textAlign: 'center',
+    border: '1px solid rgba(255,255,255,0.06)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+  };
+
+  const photoStyle = {
+    width: '120px',
+    height: '120px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '4px solid #fbbf24',
+    boxShadow: '0 0 20px rgba(251,191,36,0.25)',
+    marginBottom: '18px',
+  };
+
+  const nameStyle = {
+    fontSize: '22px',
+    fontWeight: '700',
+    color: '#f1f5f9',
+    marginBottom: '6px',
+    fontFamily: "'Segoe UI', Tahoma, sans-serif",
+  };
+
+  const positionLabelStyle = {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: '2px',
+    marginBottom: '12px',
+  };
+
+  const manifestoStyle = {
+    fontSize: '14px',
+    color: '#cbd5e1',
+    lineHeight: '1.6',
+    marginBottom: '20px',
+    fontStyle: 'italic',
+    padding: '0 8px',
+    maxWidth: '320px',
+  };
+
+  const voteBtnStyle = {
+    padding: '12px 36px',
+    background: 'linear-gradient(135deg, #16a34a, #15803d)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    fontSize: '16px',
+    letterSpacing: '1px',
+    textTransform: 'uppercase',
+    boxShadow: '0 4px 15px rgba(22,163,74,0.35)',
+    transition: 'transform 0.15s ease',
+    width: '100%',
+    maxWidth: '200px',
+  };
+
   // ── Error State ──
   if (error) {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: '#dc2626', color: 'white', fontFamily: 'system-ui, sans-serif',
-      }}>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
         <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
-        <h1 style={{ margin: '0 0 8px 0' }}>ERROR</h1>
-        <p style={{ fontSize: '18px', margin: '0 0 24px 0' }}>{error}</p>
-        <button onClick={() => navigate('/student-login')} style={{
-          padding: '10px 24px', background: 'white', color: '#dc2626',
-          border: 'none', borderRadius: '4px', cursor: 'pointer',
-          fontWeight: 'bold', marginTop: '16px',
-        }}>
-          Login
-        </button>
+        <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '12px', color: '#ef4444' }}>ERROR</h1>
+        <p style={{ color: '#94a3b8', marginBottom: '24px' }}>{error}</p>
+        <button onClick={() => navigate('/student-login')} style={{ padding: '10px 24px', background: 'white', color: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Login</button>
       </div>
     );
   }
@@ -152,12 +224,8 @@ export default function StudentDashboard() {
   // ── Loading State ──
   if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: '#1e293b', color: 'white',
-        fontFamily: 'system-ui, sans-serif',
-      }}>
-        <h2>Loading...</h2>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+        <h2 style={{ color: '#94a3b8' }}>Loading...</h2>
       </div>
     );
   }
@@ -165,18 +233,9 @@ export default function StudentDashboard() {
   // ── Not Logged In ──
   if (!student) {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: '#dc2626', color: 'white', fontFamily: 'system-ui, sans-serif',
-      }}>
-        <h2 style={{ margin: '0 0 16px 0' }}>NOT LOGGED IN</h2>
-        <button onClick={() => navigate('/student-login')} style={{
-          padding: '10px 24px', background: 'white', color: '#dc2626',
-          border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold',
-        }}>
-          Login
-        </button>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+        <h2 style={{ color: '#ef4444', marginBottom: '16px' }}>NOT LOGGED IN</h2>
+        <button onClick={() => navigate('/student-login')} style={{ padding: '10px 24px', background: 'white', color: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Login</button>
       </div>
     );
   }
@@ -184,38 +243,19 @@ export default function StudentDashboard() {
   // ── Election Not Open ──
   if (!isVotingOpen) {
     return (
-      <div style={{
-        minHeight: '100vh', background: '#1e293b', color: 'white',
-        fontFamily: 'system-ui, sans-serif',
-      }}>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '16px 24px', background: '#0f172a',
-        }}>
-          <h2 style={{ margin: 0, fontSize: '18px' }}>NAMATL E-VOTING</h2>
-          <button onClick={handleLogout} style={{
-            padding: '8px 16px', background: 'transparent', color: '#f87171',
-            border: '1px solid #f87171', borderRadius: '4px', cursor: 'pointer',
-          }}>
-            Logout
-          </button>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#fbbf24' }}>NAMATL E-VOTING</h2>
+          <button onClick={handleLogout} style={{ padding: '8px 20px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Logout</button>
         </div>
-
-        <hr style={{ borderColor: '#334155', margin: 0 }} />
-
-        <div style={{ textAlign: 'center', padding: '80px 24px' }}>
-          <h1 style={{ fontSize: '32px', margin: '0 0 16px 0' }}>ELECTION IS COMING SOON</h1>
-          <hr style={{ width: '60px', borderColor: '#3b82f6', margin: '24px auto' }} />
-          <p style={{ fontSize: '18px', color: '#94a3b8', margin: '0 0 8px 0' }}>
-            Welcome, {student.name}
-          </p>
-          <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
-            {student.matric}
-          </p>
+        <hr style={{ borderColor: '#334155' }} />
+        <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', marginBottom: '16px' }}>ELECTION IS COMING SOON</h1>
+          <hr style={{ width: '80px', borderColor: '#fbbf24', margin: '20px auto' }} />
+          <p style={{ fontSize: '18px', color: '#e2e8f0' }}>Welcome, {student.name}</p>
+          <p style={{ color: '#94a3b8', marginTop: '8px' }}>{student.matric}</p>
           {settings.startDate && (
-            <p style={{ marginTop: '24px', color: '#fbbf24', fontSize: '14px' }}>
-              Scheduled: {settings.startDate} at {settings.startTime || 'TBA'}
-            </p>
+            <p style={{ color: '#64748b', marginTop: '16px' }}>Scheduled: {settings.startDate} at {settings.startTime || 'TBA'}</p>
           )}
         </div>
       </div>
@@ -224,93 +264,94 @@ export default function StudentDashboard() {
 
   // ── Voting Open ──
   return (
-    <div style={{
-      minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif',
-    }}>
+    <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif", paddingBottom: '60px' }}>
+
       {/* Header */}
-      <div style={{
-        background: '#1e293b', color: 'white', padding: '16px 24px',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
-        <h2 style={{ margin: 0, fontSize: '18px' }}>Student Voting Portal</h2>
-        <button onClick={handleLogout} style={{
-          padding: '8px 16px', background: 'transparent', color: '#f87171',
-          border: '1px solid #f87171', borderRadius: '4px', cursor: 'pointer',
-        }}>
-          Logout
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: '#1e293b', borderBottom: '1px solid #334155', position: 'sticky', top: 0, zIndex: 10 }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#fbbf24' }}>Student Voting Portal</h2>
+        <button onClick={handleLogout} style={{ padding: '8px 20px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Logout</button>
       </div>
 
       {/* Student Info */}
-      <div style={{
-        background: '#1e293b', color: '#94a3b8', padding: '0 24px 16px',
-        fontSize: '14px',
-      }}>
-        Welcome, {student.name} — {student.matric}
+      <div style={{ textAlign: 'center', padding: '20px 16px 8px', color: '#e2e8f0', fontSize: '16px' }}>
+        Welcome, <strong>{student.name}</strong> — {student.matric}
       </div>
 
       {/* Info Bar */}
-      <div style={{
-        display: 'flex', gap: '16px', padding: '12px 24px',
-        background: 'white', borderBottom: '1px solid #e2e8f0',
-        fontSize: '13px', flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <span>Year: <strong>{settings.year || 'N/A'}</strong></span>
-        <span style={{
-          padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold',
-          background: badge.color, color: 'white', fontSize: '11px',
-        }}>
-          {badge.text}
-        </span>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', padding: '8px 16px 24px', color: '#94a3b8', fontSize: '14px', flexWrap: 'wrap' }}>
+        <span>Year: <strong style={{ color: '#e2e8f0' }}>{settings.year || 'N/A'}</strong></span>
+        <span style={{ padding: '4px 14px', borderRadius: '20px', background: badge.color, color: 'white', fontWeight: '700', fontSize: '12px', letterSpacing: '1px' }}>{badge.text}</span>
         <span>Closes: {settings.endDate || 'N/A'} {settings.endTime || ''}</span>
       </div>
 
       {/* Content */}
-      <div style={{ padding: '24px' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '0 20px' }}>
         {hasVoted ? (
-          <div style={{
-            textAlign: 'center', padding: '60px 24px',
-          }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
-            <h2 style={{ color: '#16a34a', margin: 0 }}>You have voted. Thank you!</h2>
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
+            <h2 style={{ fontSize: '26px', fontWeight: 'bold', color: '#16a34a' }}>You have voted. Thank you!</h2>
           </div>
         ) : candidates.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 24px' }}>
-            <h3 style={{ color: '#64748b' }}>No Candidates Available</h3>
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <h3 style={{ color: '#94a3b8' }}>No Candidates Available</h3>
           </div>
         ) : (
           positions.map(pos => (
-            <div key={pos} style={{ marginBottom: '32px' }}>
-              <h3 style={{
-                color: '#334155', borderBottom: '2px solid #3b82f6',
-                paddingBottom: '8px', marginBottom: '16px',
-              }}>
+            <div key={pos} style={sectionStyle}>
+
+              {/* ===== POSITION HEADING — BOLD, ON TOP, PROMINENT ===== */}
+              <h2 style={positionHeadingStyle}>
                 {pos}
-              </h3>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              </h2>
+
+              {/* ===== CANDIDATES GRID ===== */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '24px',
+                justifyContent: 'center',
+              }}>
                 {grouped[pos].map(c => (
-                  <div key={c.id} style={{
-                    background: 'white', borderRadius: '8px', padding: '16px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)', minWidth: '240px',
-                    flex: '1 1 240px', display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', textAlign: 'center',
-                  }}>
+                  <div
+                    key={c.id}
+                    style={cardStyle}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-4px)';
+                      e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
+                    }}
+                  >
+                    {/* Photo — top, centered */}
                     {c.photoURL && (
-                      <img src={c.photoURL} alt={c.name}
-                        onError={e => { e.target.style.display = 'none'; }}
-                        style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' }}
+                      <img
+                        src={c.photoURL}
+                        alt={c.name}
+                        style={photoStyle}
+                        onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     )}
-                    <h4 style={{ margin: '0 0 4px 0', color: '#1e293b' }}>{c.name}</h4>
-                    <p style={{ margin: '0 0 4px 0', color: '#64748b', fontSize: '13px' }}>{c.position}</p>
+
+                    {/* Name — under photo */}
+                    <h3 style={nameStyle}>{c.name}</h3>
+
+                    {/* Position — subtle label under name */}
+                    <p style={positionLabelStyle}>{c.position}</p>
+
+                    {/* Manifesto — under name */}
                     {c.manifesto && (
-                      <p style={{ margin: '0 0 12px 0', color: '#94a3b8', fontSize: '12px' }}>{c.manifesto}</p>
+                      <p style={manifestoStyle}>"{c.manifesto}"</p>
                     )}
-                    <button onClick={() => handleVote(c.id)} style={{
-                      padding: '12px 24px', background: '#16a34a', color: 'white',
-                      border: 'none', borderRadius: '6px', fontWeight: 'bold',
-                      cursor: 'pointer', fontSize: '16px', whiteSpace: 'nowrap',
-                    }}>
+
+                    {/* Vote Button */}
+                    <button
+                      onClick={() => handleVote(c.id)}
+                      style={voteBtnStyle}
+                      onMouseEnter={(e) => { e.target.style.transform = 'scale(1.03)'; }}
+                      onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; }}
+                    >
                       Vote
                     </button>
                   </div>
@@ -320,6 +361,7 @@ export default function StudentDashboard() {
           ))
         )}
       </div>
+
     </div>
   );
 }

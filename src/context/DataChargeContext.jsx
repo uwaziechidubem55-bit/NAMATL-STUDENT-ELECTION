@@ -1,8 +1,9 @@
-// NAMTLS DataCharge v4.1 - CLEAN: No data charge. Only Activation + Form Purchase + Withdrawal
+// NAMTLS DataCharge v4.2 - FIXED: No hardcoded credentials, no double-credit
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, increment, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
+// ===== READ FROM ENVIRONMENT VARIABLES =====
 const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || 'Admin@Namatls128756BC';
 const WITHDRAWAL_PIN = import.meta.env.VITE_WITHDRAWAL_PIN || '1966';
 const OPAY_ACCOUNT = import.meta.env.VITE_OPAY_ACCOUNT || '9167557038';
@@ -24,8 +25,8 @@ export function useDataCharge() {
       formPurchaseSettings: null,
       formPurchases: [],
       ADMIN_ID: import.meta.env.VITE_ADMIN_ID || 'Admin@Namatls128756BC',
-  WITHDRAWAL_PIN: import.meta.env.VITE_WITHDRAWAL_PIN || '1966',
-  OPAY_ACCOUNT: import.meta.env.VITE_OPAY_ACCOUNT || '9167557038'
+      WITHDRAWAL_PIN: import.meta.env.VITE_WITHDRAWAL_PIN || '1966',
+      OPAY_ACCOUNT: import.meta.env.VITE_OPAY_ACCOUNT || '9167557038'
     };
   }
   return ctx;
@@ -48,7 +49,7 @@ async function sendFlutterwavePayout(amount, accountNumber, narration) {
       const text = await response.text();
       return {
         success: false,
-        message: `API returned non-JSON response: ${text.substring(0, 300)}`
+        message: `API returned non-JSON response: ${text.substring(0, 200)}`
       };
     }
 
@@ -66,9 +67,9 @@ export function DataChargeProvider({ children }) {
 
   const loadBalance = async () => {
     try {
-      const balanceDoc = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
-      if (balanceDoc.exists()) {
-        setWithdrawalBalance(balanceDoc.data().balance || 0);
+      const snap = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
+      if (snap.exists()) {
+        setWithdrawalBalance(snap.data().balance || 0);
       }
     } catch (e) {
       console.log('Could not load balance:', e.message);
@@ -146,6 +147,7 @@ export function DataChargeProvider({ children }) {
     return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
   };
 
+  // === Activation Payment (₦25,000 fixed - FIXED: no double-credit) ===
   const processActivationPayment = async (academicYear) => {
     if (academicYear === '2026/2027') {
       return { success: true, message: 'Election activated FREE!' };
@@ -171,11 +173,9 @@ export function DataChargeProvider({ children }) {
                 });
                 const verifyData = await verifyRes.json();
                 if (verifyData.success) {
-                  await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-                    balance: increment(25000), lastActivationDeposit: 25000, lastActivationYear: academicYear, lastActivationDate: new Date().toISOString(), lastActivationTxRef: txRef, lastActivationTransactionId: response.transaction_id
-                  }, { merge: true });
-                  setWithdrawalBalance(prev => prev + 25000);
-                  resolve({ success: true, message: `✅ ₦25,000 added to withdrawal balance for ${academicYear}.` });
+                  // API already credited ₦25,000. Just refresh balance.
+                  await loadBalance();
+                  resolve({ success: true, message: verifyData.message });
                 } else {
                   resolve({ success: false, message: `Verification failed: ${verifyData.message}. Ref: ${txRef}` });
                 }
@@ -196,7 +196,7 @@ export function DataChargeProvider({ children }) {
     }
   };
 
-  // === Form Purchase via Flutterwave ===
+  // === Form Purchase (YOU set the amount - FIXED: no double-credit) ===
   const purchaseForm = async (position, amount, candidateData) => {
     try {
       const txRef = `FORM-${position.replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -205,7 +205,7 @@ export function DataChargeProvider({ children }) {
         const config = {
           public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
-          amount: amount,
+          amount: amount, // <-- This is whatever YOU set in AdminDashboard
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: candidateData.email || 'candidate@namtls.edu.ng', name: candidateData.fullName },
@@ -219,6 +219,7 @@ export function DataChargeProvider({ children }) {
                 });
                 const verifyData = await verifyRes.json();
                 if (verifyData.success) {
+                  // API already credited the exact amount. Just refresh.
                   await loadBalance();
                   await loadFormPurchases();
                   resolve({ success: true, message: verifyData.message });

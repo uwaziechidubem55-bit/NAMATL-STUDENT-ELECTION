@@ -63,7 +63,53 @@ export default function AdminDashboard() {
       const activationSnap = await getDoc(doc(db, 'settings', 'main'));
       if (activationSnap.exists()) {
         const data = activationSnap.data();
-        setActiveMode(data.activeMode || 'none');
+        let currentMode = data.activeMode || 'none';
+        const now = new Date();
+
+        // ===== AUTO-STOP ELECTION IF END DATE/TIME HAS PASSED =====
+        if (currentMode === 'election' || currentMode === 'both') {
+          const electionSnap = await getDoc(doc(db, 'settings', 'election'));
+          if (electionSnap.exists()) {
+            const electionData = electionSnap.data();
+            if (electionData.endDate && electionData.endTime) {
+              const endDateTime = new Date(electionData.endDate + 'T' + electionData.endTime);
+              if (now >= endDateTime) {
+                console.log('[Auto-Stop] Election end time passed. Auto-stopping election.');
+                // Auto-stop election
+                const newMode = currentMode === 'both' ? 'formPurchase' : 'none';
+                await setDoc(doc(db, 'settings', 'main'), {
+                  activeMode: newMode,
+                  isActive: false
+                }, { merge: true });
+                currentMode = newMode;
+              }
+            }
+          }
+        }
+
+        // ===== AUTO-STOP FORM PURCHASE IF END DATE/TIME HAS PASSED =====
+        if (currentMode === 'formPurchase' || currentMode === 'both') {
+          const fpSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
+          if (fpSnap.exists()) {
+            const fpData = fpSnap.data();
+            if (fpData.closingDate && fpData.closingTime) {
+              const closeDateTime = new Date(fpData.closingDate + 'T' + fpData.closingTime);
+              if (now >= closeDateTime) {
+                console.log('[Auto-Stop] Form purchase end time passed. Auto-stopping form purchase.');
+                const newMode = currentMode === 'both' ? 'election' : 'none';
+                await setDoc(doc(db, 'settings', 'main'), {
+                  activeMode: newMode,
+                }, { merge: true });
+                await setDoc(doc(db, 'settings', 'formPurchase'), {
+                  isActive: false
+                }, { merge: true });
+                currentMode = newMode;
+              }
+            }
+          }
+        }
+
+        setActiveMode(currentMode);
       }
     } catch (e) {
       console.error('Load activation error:', e);
@@ -81,8 +127,33 @@ export default function AdminDashboard() {
       } else if (type === 'formPurchase') {
         newMode = activeMode === 'election' ? 'both' : 'formPurchase';
       }
-      
+
+      // Write to settings/main
       await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
+
+      if (type === 'election') {
+        // Copy election settings into settings/main so StudentDashboard reads them
+        const electionSettings = await getDoc(doc(db, 'settings', 'election'));
+        if (electionSettings.exists()) {
+          const data = electionSettings.data();
+          await setDoc(doc(db, 'settings', 'main'), {
+            isActive: true,
+            startDate: data.startDate || '',
+            startTime: data.startTime || '',
+            endDate: data.endDate || '',
+            endTime: data.endTime || '',
+            year: data.year || ''
+          }, { merge: true });
+        }
+      }
+
+      if (type === 'formPurchase') {
+        // Activate the formPurchase settings so PurchaseForm.jsx sees isActive: true
+        await setDoc(doc(db, 'settings', 'formPurchase'), {
+          isActive: true
+        }, { merge: true });
+      }
+
       setActiveMode(newMode);
       setActivationMsg({ type: 'success', text: `✅ ${type === 'election' ? 'Election' : 'Form Purchase'} activated!` });
       setTimeout(() => setActivationMsg({ type: '', text: '' }), 4000);
@@ -102,8 +173,17 @@ export default function AdminDashboard() {
       } else if (type === 'formPurchase') {
         newMode = activeMode === 'both' ? 'election' : 'none';
       }
-      
+
       await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
+
+      if (type === 'election') {
+        await setDoc(doc(db, 'settings', 'main'), { isActive: false }, { merge: true });
+      }
+
+      if (type === 'formPurchase') {
+        await setDoc(doc(db, 'settings', 'formPurchase'), { isActive: false }, { merge: true });
+      }
+
       setActiveMode(newMode);
       setActivationMsg({ type: 'success', text: `✅ ${type === 'election' ? 'Election' : 'Form Purchase'} stopped. ${type === 'election' ? 'Results now available.' : ''}` });
       setTimeout(() => setActivationMsg({ type: '', text: '' }), 4000);
@@ -217,6 +297,13 @@ export default function AdminDashboard() {
     try {
       if (editingCandidate) {
         await updateDoc(doc(db, 'candidates', editingCandidate.id), { name, position, dept, manifesto });
+        // Upload photo if new one selected
+        if (photo) {
+          const storageRef = ref(storage, `candidates/${editingCandidate.id}_${Date.now()}`);
+          await uploadBytes(storageRef, photo);
+          const photoURL = await getDownloadURL(storageRef);
+          await updateDoc(doc(db, 'candidates', editingCandidate.id), { photo: photoURL });
+        }
       } else {
         const posCount = candidates.filter(c => c.position === position).length;
         if (posCount >= MAX_PER_POSITION) { alert(`Max ${MAX_PER_POSITION} for ${position}`); return; }
@@ -242,6 +329,7 @@ export default function AdminDashboard() {
     setName(c.name); setPosition(c.position); setDept(c.dept);
     setManifesto(c.manifesto || '');
     setPhotoPreview(c.photo || '');
+    setPhoto(null);
   };
 
   const handleDeleteCandidate = async (id) => {
@@ -452,11 +540,15 @@ export default function AdminDashboard() {
         {/* ===================== ACTIVATION VIEW ===================== */}
         {activeView === 'activation' && (
           <div>
-            {/* Status Banner */}
             <div style={cardStyle}>
               <h2 style={{ color: '#003366', marginBottom: '8px' }}>🔘 Activation Control</h2>
               <p style={{ color: '#666', fontSize: '14px', marginBottom: '20px' }}>
                 Control what appears on the StudentDashboard and Form Purchase page.
+                {activeMode !== 'none' && (
+                  <span style={{ display: 'block', marginTop: '8px', fontSize: '13px', color: '#2563eb', background: '#f0f7ff', padding: '8px 12px', borderRadius: '6px' }}>
+                    ⏰ Auto-stop enabled: When end date/time passes, it stops automatically.
+                  </span>
+                )}
               </p>
 
               {activationMsg.text && (
@@ -469,7 +561,6 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Current Mode Display */}
               <div style={{
                 textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px',
                 marginBottom: '24px'
@@ -483,12 +574,12 @@ export default function AdminDashboard() {
                   {activeMode === 'none' && '🔴 Nothing Active'}
                   {activeMode === 'election' && '🟢 Election Voting Active'}
                   {activeMode === 'formPurchase' && '🟢 Form Purchase Active'}
-                  {activeMode === 'both' && '🟢 Election Voting + Form Purchase Active'}
+                  {activeMode === 'both' && '🟢 Election + Form Purchase Active'}
                 </div>
               </div>
             </div>
 
-            {/* Election Activation Card */}
+            {/* Election Card */}
             <div style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                 <div style={{
@@ -502,6 +593,11 @@ export default function AdminDashboard() {
                       ? 'Voting is LIVE on StudentDashboard'
                       : 'Students cannot vote right now'}
                   </p>
+                  {settings.endDate && settings.endTime && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                      Auto-stops: {settings.endDate} at {settings.endTime}
+                    </p>
+                  )}
                 </div>
                 <div style={{
                   padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
@@ -512,7 +608,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Prerequisites */}
               <div style={{
                 padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', marginBottom: '20px',
                 fontSize: '13px', color: '#666'
@@ -536,7 +631,6 @@ export default function AdminDashboard() {
               </div>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                {/* Activation Button */}
                 <button
                   onClick={() => handleActivate('election')}
                   disabled={activationLoading || (activeMode === 'election' || activeMode === 'both') || candidates.length === 0}
@@ -549,24 +643,22 @@ export default function AdminDashboard() {
                 >
                   {activationLoading ? '⏳...' : '🔘 Activate'}
                 </button>
-
-                {/* Activation Toggle Button */}
                 <button
                   onClick={() => handleToggleStop('election')}
                   disabled={activationLoading || !(activeMode === 'election' || activeMode === 'both')}
                   style={{
-                    ...btnWarning,
+                    ...btnDanger,
                     opacity: (activationLoading || !(activeMode === 'election' || activeMode === 'both')) ? 0.5 : 1,
                     cursor: (activationLoading || !(activeMode === 'election' || activeMode === 'both')) ? 'not-allowed' : 'pointer',
                     padding: '14px 32px', fontSize: '15px'
                   }}
                 >
-                  {activationLoading ? '⏳...' : '🔘 Toggle (Stop)'}
+                  {activationLoading ? '⏳...' : '⏹️ Stop Election'}
                 </button>
               </div>
             </div>
 
-            {/* Form Purchase Activation Card */}
+            {/* Form Purchase Card */}
             <div style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                 <div style={{
@@ -580,6 +672,11 @@ export default function AdminDashboard() {
                       ? 'Forms are available for purchase'
                       : 'Form purchase is closed'}
                   </p>
+                  {fpClosingDate && fpClosingTime && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                      Auto-stops: {fpClosingDate} at {fpClosingTime}
+                    </p>
+                  )}
                 </div>
                 <div style={{
                   padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
@@ -590,7 +687,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Prerequisites */}
               <div style={{
                 padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', marginBottom: '20px',
                 fontSize: '13px', color: '#666'
@@ -614,7 +710,6 @@ export default function AdminDashboard() {
               </div>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                {/* Activation Button */}
                 <button
                   onClick={() => handleActivate('formPurchase')}
                   disabled={activationLoading || (activeMode === 'formPurchase' || activeMode === 'both') || fpPositions.length === 0}
@@ -627,19 +722,17 @@ export default function AdminDashboard() {
                 >
                   {activationLoading ? '⏳...' : '🔘 Activate'}
                 </button>
-
-                {/* Activation Toggle Button */}
                 <button
                   onClick={() => handleToggleStop('formPurchase')}
                   disabled={activationLoading || !(activeMode === 'formPurchase' || activeMode === 'both')}
                   style={{
-                    ...btnWarning,
+                    ...btnDanger,
                     opacity: (activationLoading || !(activeMode === 'formPurchase' || activeMode === 'both')) ? 0.5 : 1,
                     cursor: (activationLoading || !(activeMode === 'formPurchase' || activeMode === 'both')) ? 'not-allowed' : 'pointer',
                     padding: '14px 32px', fontSize: '15px'
                   }}
                 >
-                  {activationLoading ? '⏳...' : '🔘 Toggle (Stop)'}
+                  {activationLoading ? '⏳...' : '⏹️ Stop Form Purchase'}
                 </button>
               </div>
             </div>
@@ -649,13 +742,23 @@ export default function AdminDashboard() {
         {/* Candidates */}
         {activeView === 'candidates' && (
           <div style={cardStyle}>
-            <h2 style={{ color: '#003366', marginBottom: '16px' }}>👥 Manage Candidates</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ color: '#003366', margin: 0 }}>👥 Manage Candidates</h2>
+              <span style={{ fontSize: '12px', color: '#888' }}>
+                {candidates.filter(c => c.paidForm).length} from form purchases | {candidates.length} total
+              </span>
+            </div>
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
-              <h3 style={{ margin: '0 0 12px 0', color: '#003366' }}>{editingCandidate ? '✏️ Edit' : '➕ Add'}</h3>
+              <h3 style={{ margin: '0 0 12px 0', color: '#003366' }}>{editingCandidate ? '✏️ Edit Candidate (Add photo & manifesto)' : '➕ Add Candidate Manually'}</h3>
+              {editingCandidate && editingCandidate.paidForm && (
+                <p style={{ fontSize: '13px', color: '#16a34a', marginBottom: '12px', background: '#d1fae5', padding: '8px 12px', borderRadius: '6px' }}>
+                  ✅ This candidate purchased a form. Name, position, and department are already filled. Just add a manifesto and photo below.
+                </p>
+              )}
               <input placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
               <input placeholder="Position" value={position} onChange={e => setPosition(e.target.value)} style={inputStyle} />
               <input placeholder="Department" value={dept} onChange={e => setDept(e.target.value)} style={inputStyle} />
-              <textarea placeholder="Manifesto" value={manifesto} onChange={e => setManifesto(e.target.value)} style={{...inputStyle, minHeight: '80px'}} />
+              <textarea placeholder="Manifesto (required for form purchasers)" value={manifesto} onChange={e => setManifesto(e.target.value)} style={{...inputStyle, minHeight: '80px'}} />
               <input type="file" accept="image/*" onChange={e => { const f = e.target.files[0]; if(f) { setPhoto(f); setPhotoPreview(URL.createObjectURL(f)); }}} />
               {photoPreview && <img src={photoPreview} alt="" style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover', margin: '8px 0' }} />}
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
@@ -672,6 +775,8 @@ export default function AdminDashboard() {
                       <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
                       <th style={{ padding: '12px', textAlign: 'left' }}>Position</th>
                       <th style={{ padding: '12px', textAlign: 'center' }}>Votes</th>
+                      <th style={{ padding: '12px', textAlign: 'center' }}>Source</th>
+                      <th style={{ padding: '12px', textAlign: 'center' }}>Photo</th>
                       <th style={{ padding: '12px', textAlign: 'center' }}>Action</th>
                     </tr>
                   </thead>
@@ -682,6 +787,20 @@ export default function AdminDashboard() {
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{c.name}</td>
                         <td style={{ padding: '12px', color: '#666' }}>{c.position}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>{c.votes || 0}</td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          {c.paidForm ? (
+                            <span style={{ background: '#d1fae5', color: '#16a34a', padding: '2px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>Form Purchase</span>
+                          ) : (
+                            <span style={{ background: '#f0f7ff', color: '#2563eb', padding: '2px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>Manual</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          {c.photo ? (
+                            <img src={c.photo} alt="" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <span style={{ color: '#dc2626', fontSize: '12px' }}>❌ No photo</span>
+                          )}
+                        </td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           <button onClick={() => handleEditCandidate(c)} style={{ padding: '6px 14px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', marginRight: '8px', fontSize: '13px' }}>Edit</button>
                           <button onClick={() => handleDeleteCandidate(c.id)} style={{ padding: '6px 14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Del</button>
@@ -699,6 +818,17 @@ export default function AdminDashboard() {
         {activeView === 'results' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>📈 Election Results</h2>
+            {activeMode === 'election' || activeMode === 'both' ? (
+              <p style={{ color: '#f59e0b', background: '#fef3c7', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold' }}>
+                ⏳ Election is still active. Results will auto-appear once election ends.
+              </p>
+            ) : (
+              candidates.length > 0 && (
+                <p style={{ color: '#16a34a', background: '#d1fae5', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold' }}>
+                  ✅ Election ended — final results displayed below.
+                </p>
+              )
+            )}
             {candidates.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No candidates yet</p> : (
               <>
                 <div style={{ overflowX: 'auto' }}>

@@ -1,6 +1,6 @@
 // /api/flutterwave-webhook.js
-import { setDoc, doc, increment } from 'firebase/firestore';
-import { db } from '../src/firebase';  // FIXED PATH
+import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
+import { db } from '../src/firebase';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -22,14 +22,25 @@ export default async function handler(req, res) {
       const amount = payload.data.amount;
       const tx_ref = payload.data.tx_ref;
       const transaction_id = payload.data.id;
-      const academicYear = tx_ref.split('-')[2];
 
       if (Number(amount) < 25000) {
-        console.log(`Payment rejected: Amount N${amount} is less than 25000`);
-        return res.status(400).json({ message: 'Amount less than 25000' });
+        console.log(`Webhook: Skipping payment under ₦25,000 (₦${amount})`);
+        return res.status(200).json({ status: 'skipped - below threshold' });
       }
 
-      console.log(`Payment received for ${academicYear}: N${amount}`);
+      // DEDUP CHECK: Skip if already processed
+      const activationsSnap = await getDoc(doc(db, 'finances', 'activations'));
+      if (activationsSnap.exists()) {
+        const activations = activationsSnap.data();
+        for (const year in activations) {
+          if (activations[year].transaction_id === transaction_id) {
+            console.log(`Webhook: Transaction ${transaction_id} already processed. Skipping.`);
+            return res.status(200).json({ status: 'skipped - already processed' });
+          }
+        }
+      }
+
+      console.log(`Webhook: Crediting ₦${amount} from transaction ${transaction_id}`);
 
       await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
         balance: increment(amount),
@@ -37,6 +48,7 @@ export default async function handler(req, res) {
         lastPaymentAt: new Date().toISOString()
       }, { merge: true });
 
+      const academicYear = tx_ref?.split('-')[2] || 'unknown';
       await setDoc(doc(db, 'finances', 'activations'), {
         [academicYear]: {
           paid: true,
@@ -47,7 +59,7 @@ export default async function handler(req, res) {
         }
       }, { merge: true });
 
-      console.log(`${academicYear} activated successfully`);
+      console.log(`Webhook: ${academicYear} activated successfully`);
     }
 
     return res.status(200).json({ status: 'success' });

@@ -126,7 +126,7 @@ export default function PurchaseForm() {
   return (
     <div style={page}>
       <div style={{ textAlign: 'center', marginBottom: '32px', paddingTop: '20px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 4px 0', color: '#1e40af' }}>🏛️ NAMTLS STUDENT E-VOTING</h1>
+        <h1 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 4px 0', color: '#1e40af' }}>🏛️ NAMATL STUDENT E-VOTING</h1>
         <p style={{ fontSize: '14px', opacity: 0.7, margin: '0 0 16px 0' }}>Form Purchase Portal</p>
         <Link to="/" style={{ color: '#1e40af', fontSize: '14px', padding: '8px 20px', border: '1px solid #1e40af', borderRadius: '8px', textDecoration: 'none', fontWeight: '500' }}>← Back to Home</Link>
       </div>

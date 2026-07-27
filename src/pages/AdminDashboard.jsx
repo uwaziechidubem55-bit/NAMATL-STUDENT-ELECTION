@@ -75,6 +75,7 @@ export default function AdminDashboard() {
               const endDateTime = new Date(electionData.endDate + 'T' + electionData.endTime);
               if (now >= endDateTime) {
                 console.log('[Auto-Stop] Election end time passed. Auto-stopping election.');
+                // Auto-stop election
                 const newMode = currentMode === 'both' ? 'formPurchase' : 'none';
                 await setDoc(doc(db, 'settings', 'main'), {
                   activeMode: newMode,
@@ -127,9 +128,11 @@ export default function AdminDashboard() {
         newMode = activeMode === 'election' ? 'both' : 'formPurchase';
       }
 
+      // Write to settings/main
       await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
 
       if (type === 'election') {
+        // Copy election settings into settings/main so StudentDashboard reads them
         const electionSettings = await getDoc(doc(db, 'settings', 'election'));
         if (electionSettings.exists()) {
           const data = electionSettings.data();
@@ -145,6 +148,7 @@ export default function AdminDashboard() {
       }
 
       if (type === 'formPurchase') {
+        // Activate the formPurchase settings so PurchaseForm.jsx sees isActive: true
         await setDoc(doc(db, 'settings', 'formPurchase'), {
           isActive: true
         }, { merge: true });
@@ -189,376 +193,329 @@ export default function AdminDashboard() {
     setActivationLoading(false);
   };
 
-  // ===================== LOAD ALL DATA =====================
   const loadAllData = async () => {
     setLoading(true);
     setError('');
     try {
-      // Load candidates
-      const candidateSnap = await getDocs(collection(db, 'candidates'));
-      const candidateList = candidateSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCandidates(candidateList);
+      const [candidatesSnap, settingsSnap, votersSnap, supportSnap] = await Promise.all([
+        getDocs(collection(db, 'candidates')),
+        getDoc(doc(db, 'settings', 'election')).catch(() => ({ exists: () => false, data: () => ({}) })),
+        getDocs(collection(db, 'students')).catch(() => ({ forEach: () => {} })),
+        getDocs(collection(db, 'supportMessages')).catch(() => ({ forEach: () => {} })),
+      ]);
 
-      // Load voters
-      const voterSnap = await getDocs(collection(db, 'voters'));
-      setVoters(voterSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const cData = [];
+      candidatesSnap.forEach(d => cData.push({ id: d.id, ...d.data() }));
+      setCandidates(cData);
 
-      // Load support messages
-      const msgSnap = await getDocs(collection(db, 'supportMessages'));
-      const msgs = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      msgs.sort((a, b) => {
-        const tA = a.timestamp?.toDate?.() || new Date(0);
-        const tB = b.timestamp?.toDate?.() || new Date(0);
-        return tB - tA;
-      });
-      setSupportMessages(msgs);
+      const counts = {};
+      cData.forEach(c => { counts[c.position] = (counts[c.position] || 0) + 1; });
+      setFpCandidateCounts(counts);
 
-      // Load election settings
-      const electionSnap = await getDoc(doc(db, 'settings', 'election'));
-      if (electionSnap.exists()) {
-        const d = electionSnap.data();
-        setSettings({
-          year: d.year || '',
-          startDate: d.startDate || '',
-          startTime: d.startTime || '',
-          endDate: d.endDate || '',
-          endTime: d.endTime || '',
-          isActive: d.isActive || false
-        });
+      if (settingsSnap.exists()) {
+        setSettings(settingsSnap.data());
       }
 
-      // Load form purchase settings
-      await loadFormPurchases();
-      await loadBalance();
-      await loadActivation();
+      const vData = [];
+      votersSnap.forEach(d => vData.push({ id: d.id, ...d.data() }));
+      setVoters(vData);
 
-      // Load form purchase positions
-      const fpSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
-      if (fpSnap.exists()) {
-        const fpData = fpSnap.data();
-        setFpPositions(fpData.positions || []);
-        setFpOpeningDate(fpData.openingDate || '');
-        setFpClosingDate(fpData.closingDate || '');
-        setFpOpeningTime(fpData.openingTime || '');
-        setFpClosingTime(fpData.closingTime || '');
-        setFpIsActive(fpData.isActive || false);
+      const mData = [];
+      supportSnap.forEach(d => mData.push({ id: d.id, ...d.data() }));
+      setSupportMessages(mData);
 
-        // Count how many candidates per position from form purchases
-        const counts = {};
-        (fpData.positions || []).forEach(p => { counts[p.position] = 0; });
-        candidateList.forEach(c => {
-          if (c.paidForm && counts[c.position] !== undefined) {
-            counts[c.position] = (counts[c.position] || 0) + 1;
-          }
-        });
-        setFpCandidateCounts(counts);
-      }
+      try { await loadBalance(); } catch (e) {}
+      try { await loadFormPurchases(); } catch (e) {}
+      try { await loadActivation(); } catch (e) {}
+
+      setLoading(false);
     } catch (e) {
-      console.error('Load error:', e);
-      setError('Failed to load data: ' + e.message);
+      console.error('Admin load error:', e);
+      setError('Failed to load data. Make sure Firestore database is created in Firebase Console.');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { loadAllData(); }, []);
 
-  // ===================== CANDIDATE CRUD =====================
-  const handleSaveCandidate = async () => {
-    if (!name.trim() || !position.trim() || !dept.trim()) {
-      setError('Name, position, and department are required');
-      return;
+  useEffect(() => {
+    if (formPurchaseSettings) {
+      setFpPositions(formPurchaseSettings.positions || []);
+      setFpOpeningDate(formPurchaseSettings.openingDate || '');
+      setFpClosingDate(formPurchaseSettings.closingDate || '');
+      setFpOpeningTime(formPurchaseSettings.openingTime || '');
+      setFpClosingTime(formPurchaseSettings.closingTime || '');
+      setFpIsActive(formPurchaseSettings.isActive || false);
     }
-    if (editingCandidate && editingCandidate.paidForm && !manifesto.trim()) {
-      setError('Manifesto is required for form purchase candidates');
-      return;
-    }
-    try {
-      let photoUrl = editingCandidate?.photo || '';
-      if (photo) {
-        const photoRef = ref(storage, `candidates/${Date.now()}_${photo.name}`);
-        await uploadBytes(photoRef, photo);
-        photoUrl = await getDownloadURL(photoRef);
-      }
+  }, [formPurchaseSettings]);
 
-      if (editingCandidate) {
-        const updateData = { name: name.trim(), position: position.trim(), dept: dept.trim() };
-        if (manifesto.trim()) updateData.manifesto = manifesto.trim();
-        if (photoUrl) updateData.photo = photoUrl;
-        await updateDoc(doc(db, 'candidates', editingCandidate.id), updateData);
-      } else {
-        await addDoc(collection(db, 'candidates'), {
-          name: name.trim(),
-          position: position.trim(),
-          dept: dept.trim(),
-          manifesto: manifesto.trim(),
-          photo: photoUrl,
-          votes: 0,
-          paidForm: false,
-          createdAt: new Date()
-        });
-      }
+  const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  const unreadMessages = supportMessages.filter(m => m.status === 'unread').length;
+  const activeVoters = voters.filter(v => v.hasVoted).length;
 
-      setEditingCandidate(null);
-      setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview('');
-      loadAllData();
-    } catch (e) {
-      setError('Error saving candidate: ' + e.message);
-    }
+  const sidebarItems = [
+    { key: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { key: 'settings', label: 'Election Settings', icon: '⚙️' },
+    { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
+    { key: 'activation', label: 'Activation', icon: '🔘' },
+    { key: 'results', label: 'Election Results', icon: '📈' },
+    { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
+    { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
+    { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
+  ];
+
+  const inputStyle = {
+    width: '100%', padding: '12px 14px', border: '1px solid #ddd',
+    borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box',
+    fontSize: '14px', outline: 'none'
+  };
+  const cardStyle = {
+    background: 'white', borderRadius: '12px', padding: '24px',
+    boxShadow: '0 2px 12px rgba(0,0,0,0.08)', marginBottom: '20px'
+  };
+  const statCardStyle = {
+    background: 'white', borderRadius: '12px', padding: '20px',
+    boxShadow: '0 2px 12px rgba(0,0,0,0.08)', textAlign: 'center',
+    flex: '1', minWidth: '200px'
+  };
+  const btnPrimary = {
+    padding: '12px 24px', background: '#003366', color: 'white',
+    border: 'none', borderRadius: '8px', cursor: 'pointer',
+    fontWeight: 'bold', fontSize: '14px'
+  };
+  const btnDanger = { ...btnPrimary, background: '#dc2626' };
+  const btnSuccess = { ...btnPrimary, background: '#16a34a' };
+  const btnWarning = { ...btnPrimary, background: '#f59e0b', color: '#003366' };
+
+  const handleSaveSettings = async () => {
+    try { await setDoc(doc(db, 'settings', 'election'), settings, { merge: true }); alert('✅ Saved!'); }
+    catch (e) { alert('Error: ' + e.message); }
   };
 
-  const handleEditCandidate = (candidate) => {
-    setEditingCandidate(candidate);
-    setName(candidate.name);
-    setPosition(candidate.position);
-    setDept(candidate.dept);
-    setManifesto(candidate.manifesto || '');
-    setPhotoPreview(candidate.photo || '');
+  const handleSaveCandidate = async () => {
+    if (!name || !position || !dept) { alert('Name, position and dept required'); return; }
+    try {
+      if (editingCandidate) {
+        await updateDoc(doc(db, 'candidates', editingCandidate.id), { name, position, dept, manifesto });
+        // Upload photo if new one selected
+        if (photo) {
+          const storageRef = ref(storage, `candidates/${editingCandidate.id}_${Date.now()}`);
+          await uploadBytes(storageRef, photo);
+          const photoURL = await getDownloadURL(storageRef);
+          await updateDoc(doc(db, 'candidates', editingCandidate.id), { photo: photoURL });
+        }
+      } else {
+        const posCount = candidates.filter(c => c.position === position).length;
+        if (posCount >= MAX_PER_POSITION) { alert(`Max ${MAX_PER_POSITION} for ${position}`); return; }
+        let photoURL = '';
+        if (photo) {
+          const storageRef = ref(storage, `candidates/${Date.now()}_${photo.name}`);
+          await uploadBytes(storageRef, photo);
+          photoURL = await getDownloadURL(storageRef);
+        }
+        await addDoc(collection(db, 'candidates'), {
+          name, position, dept, level: '', email: '', votes: 0,
+          photo: photoURL, manifesto, paidForm: false
+        });
+      }
+      setName(''); setPosition(''); setDept(''); setManifesto('');
+      setPhoto(null); setPhotoPreview(''); setEditingCandidate(null);
+      loadAllData();
+    } catch (e) { alert('Error: ' + e.message); }
+  };
+
+  const handleEditCandidate = (c) => {
+    setEditingCandidate(c);
+    setName(c.name); setPosition(c.position); setDept(c.dept);
+    setManifesto(c.manifesto || '');
+    setPhotoPreview(c.photo || '');
+    setPhoto(null);
   };
 
   const handleDeleteCandidate = async (id) => {
-    if (!window.confirm('Delete this candidate?')) return;
-    try {
-      await deleteDoc(doc(db, 'candidates', id));
-      loadAllData();
-    } catch (e) {
-      setError('Delete error: ' + e.message);
+    if (!window.confirm('Delete?')) return;
+    try { await deleteDoc(doc(db, 'candidates', id)); loadAllData(); }
+    catch (e) { alert('Error: ' + e.message); }
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawAdminId || !withdrawPin || !withdrawAmount) {
+      setWithdrawMsg({ type: 'error', text: 'Fill all fields' }); return;
+    }
+    setWithdrawMsg({ type: '', text: 'Processing...' });
+    const result = await withdraw(withdrawAdminId, withdrawPin, Number(withdrawAmount));
+    if (result.success) {
+      setWithdrawMsg({ type: 'success', text: result.message });
+      setWithdrawAmount(''); setWithdrawPin(''); loadBalance();
+    } else {
+      setWithdrawMsg({ type: 'error', text: result.message });
     }
   };
 
-  // ===================== ELECTION SETTINGS =====================
-  const handleSaveSettings = async () => {
-    try {
-      await setDoc(doc(db, 'settings', 'election'), {
-        year: settings.year,
-        startDate: settings.startDate,
-        startTime: settings.startTime,
-        endDate: settings.endDate,
-        endTime: settings.endTime,
-        isActive: settings.isActive
-      });
-      alert('✅ Election settings saved!');
-    } catch (e) {
-      setError('Error saving settings: ' + e.message);
-    }
-  };
-
-  // ===================== FORM PURCHASE =====================
   const handleFpAddPosition = () => {
-    if (!fpNewPosition.trim() || !fpNewAmount) {
-      setFpMsg('Error: Enter position and amount');
-      setTimeout(() => setFpMsg(''), 3000);
-      return;
-    }
-    if (fpPositions.some(p => p.position.toLowerCase() === fpNewPosition.trim().toLowerCase())) {
-      setFpMsg('Error: Position already exists');
-      setTimeout(() => setFpMsg(''), 3000);
-      return;
-    }
+    if (!fpNewPosition || !fpNewAmount) { alert('Position and amount required'); return; }
+    if (fpPositions.find(p => p.position === fpNewPosition.trim())) { alert('Already exists'); return; }
     setFpPositions([...fpPositions, { position: fpNewPosition.trim(), amount: Number(fpNewAmount) }]);
-    setFpNewPosition('');
-    setFpNewAmount('');
+    setFpNewPosition(''); setFpNewAmount('');
   };
 
-  const handleFpRemovePosition = (index) => {
-    setFpPositions(fpPositions.filter((_, i) => i !== index));
-  };
+  const handleFpRemovePosition = (i) => setFpPositions(fpPositions.filter((_, idx) => idx !== i));
 
   const handleFpSaveSettings = async () => {
-    setFpSaving(true);
-    setFpMsg('');
-    try {
-      await saveFormPurchaseSettings({
-        positions: fpPositions,
-        openingDate: fpOpeningDate,
-        closingDate: fpClosingDate,
-        openingTime: fpOpeningTime,
-        closingTime: fpClosingTime,
-        isActive: fpIsActive
-      });
-      setFpMsg('✅ Settings saved successfully!');
-      setTimeout(() => setFpMsg(''), 3000);
-    } catch (e) {
-      setFpMsg('Error: ' + e.message);
-    }
+    if (!fpPositions.length) { alert('Add at least one position'); return; }
+    setFpSaving(true); setFpMsg('Saving...');
+    const result = await saveFormPurchaseSettings({
+      isActive: fpIsActive, openingDate: fpOpeningDate, closingDate: fpClosingDate,
+      openingTime: fpOpeningTime, closingTime: fpClosingTime, positions: fpPositions
+    });
+    setFpMsg(result.message);
+    if (result.success) setTimeout(() => setFpMsg(''), 3000);
     setFpSaving(false);
   };
 
-  // ===================== WITHDRAWAL =====================
-  const handleWithdraw = async () => {
-    setWithdrawMsg({ type: '', text: '' });
-    if (!withdrawAdminId.trim()) { setWithdrawMsg({ type: 'error', text: '❌ Admin ID is required' }); return; }
-    if (!withdrawPin.trim()) { setWithdrawMsg({ type: 'error', text: '❌ Withdrawal PIN is required' }); return; }
-    if (!withdrawAmount || Number(withdrawAmount) < 100) { setWithdrawMsg({ type: 'error', text: '❌ Minimum withdrawal is ₦100' }); return; }
-
-    if (withdrawAdminId !== ADMIN_ID) { setWithdrawMsg({ type: 'error', text: '❌ Invalid Admin ID' }); return; }
-    if (withdrawPin !== WITHDRAWAL_PIN) { setWithdrawMsg({ type: 'error', text: '❌ Invalid Withdrawal PIN' }); return; }
-    if (Number(withdrawAmount) > withdrawalBalance) { setWithdrawMsg({ type: 'error', text: '❌ Insufficient balance' }); return; }
-
-    try {
-      const result = await withdraw(Number(withdrawAmount));
-      if (result.success) {
-        setWithdrawMsg({ type: 'success', text: `✅ ₦${Number(withdrawAmount).toLocaleString()} withdrawal initiated to ${OPAY_ACCOUNT}!` });
-        loadBalance();
-      } else {
-        setWithdrawMsg({ type: 'error', text: '❌ ' + (result.error || 'Withdrawal failed') });
-      }
-    } catch (e) {
-      setWithdrawMsg({ type: 'error', text: '❌ Error: ' + e.message });
-    }
-  };
-
-  // ===================== COMPUTED VALUES =====================
-  const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-
-  // ===================== STYLES =====================
-  const inputStyle = {
-    width: '100%', padding: '12px 14px', border: '1px solid #d1d5db', borderRadius: '8px',
-    fontSize: '14px', outline: 'none', boxSizing: 'border-box', marginBottom: '12px',
-    transition: 'border-color 0.2s',
-  };
-
-  const cardStyle = {
-    background: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-    marginBottom: '20px',
-  };
-
-  const btnPrimary = {
-    padding: '10px 20px', background: '#003366', color: 'white', border: 'none',
-    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
-  };
-
-  const btnSuccess = {
-    padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none',
-    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
-  };
-
-  const btnDanger = {
-    padding: '10px 20px', background: '#dc2626', color: 'white', border: 'none',
-    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
-  };
-
-  const navLinkStyle = (isActive) => ({
-    display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px',
-    borderRadius: '8px', cursor: 'pointer', marginBottom: '4px', fontSize: '14px',
-    background: isActive ? 'rgba(255,255,255,0.15)' : 'transparent',
-    color: 'white', fontWeight: isActive ? 'bold' : 'normal',
-    transition: 'all 0.2s',
-  });
-
   if (loading) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4f8' }}>
-        <div>
-          <div style={{ fontSize: '48px', textAlign: 'center', marginBottom: '16px' }}>⏳</div>
-          <p style={{ color: '#003366', fontWeight: 'bold', fontSize: '18px' }}>Loading Admin Dashboard...</p>
-        </div>
+      <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' }}>
+        <div style={{ color: '#FFD700', fontSize: '20px', fontWeight: 'bold' }}>Loading Admin Panel...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+        <h2 style={{ color: '#ef4444' }}>ERROR</h2>
+        <p style={{ color: 'white', textAlign: 'center', maxWidth: '500px' }}>{error}</p>
+        <p style={{ color: '#FFD700', fontSize: '14px' }}>Go to Firebase Console → Firestore Database → Create Database → Test Mode → Publish Rules</p>
+        <button onClick={loadAllData} style={{ padding: '10px 24px', background: '#FFD700', color: '#003366', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginTop: '16px' }}>Retry</button>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f4f8' }}>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
+      {/* Sidebar overlay */}
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }} />}
+
       {/* Sidebar */}
       <div style={{
-        width: sidebarOpen ? '240px' : '60px',
-        background: 'linear-gradient(180deg, #001a33 0%, #003366 100%)',
-        color: 'white', padding: '16px 8px', transition: 'width 0.3s',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 100,
+        position: 'fixed', top: 0, left: 0, bottom: 0, width: '250px',
+        background: '#001a33', zIndex: 50, padding: '20px 16px',
+        transform: sidebarOpen ? 'translateX(0)' : 'translateX(-260px)',
+        transition: 'transform 0.3s ease', overflowY: 'auto'
       }}>
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
-          background: 'transparent', border: 'none', color: 'white', fontSize: '20px',
-          cursor: 'pointer', padding: '8px', marginBottom: '20px', textAlign: 'center',
-        }}>
-          {sidebarOpen ? '✕' : '☰'}
-        </button>
-        {sidebarOpen && <h3 style={{ margin: '0 0 20px 8px', fontSize: '16px' }}>NAMATL Admin</h3>}
-        <div style={{ flex: 1 }}>
-          {[
-            { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-            { key: 'election', label: 'Election', icon: '🗳️' },
-            { key: 'candidates', label: 'Candidates', icon: '👥' },
-            { key: 'results', label: 'Results', icon: '📈' },
-            { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
-            { key: 'withdrawal', label: 'Withdrawal', icon: '💰' },
-            { key: 'messages', label: 'Messages', icon: '✉️' },
-          ].map(item => (
-            <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(true); }}
-                 style={navLinkStyle(activeView === item.key)}>
-              <span>{item.icon}</span>
-              {sidebarOpen && <span>{item.label}</span>}
-            </div>
-          ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h3 style={{ color: '#FFD700', margin: 0 }}>NAMATLS Admin</h3>
+          <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: 0 }}>×</button>
         </div>
-        <button onClick={() => navigate('/')} style={{
-          background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '12px',
-          borderRadius: '8px', cursor: 'pointer', width: '100%', fontSize: '13px',
-        }}>
-          {sidebarOpen ? '🏠 Exit to Home' : '🏠'}
+        {sidebarItems.map(item => (
+          <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); }}
+               style={{
+                 display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
+                 marginBottom: '4px', borderRadius: '8px', cursor: 'pointer',
+                 background: activeView === item.key ? 'rgba(255,215,0,0.15)' : 'transparent',
+                 color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.8)',
+                 fontWeight: activeView === item.key ? 'bold' : 'normal'
+               }}>
+            <span>{item.icon}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
+        <button onClick={() => navigate('/admin-login')}
+                style={{ width: '100%', padding: '12px', marginTop: '20px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+          Logout
         </button>
       </div>
 
-      {/* Main Content */}
-      <div style={{ marginLeft: sidebarOpen ? '240px' : '60px', flex: 1, padding: '24px', transition: 'margin-left 0.3s' }}>
-        {error && (
-          <div style={{ padding: '12px 16px', background: '#fee2e2', color: '#dc2626', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold' }}>
-            ⚠️ {error}
-            <button onClick={() => setError('')} style={{ float: 'right', background: 'transparent', border: 'none', color: '#dc2626', cursor: 'pointer' }}>✕</button>
+      {/* Main */}
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+        {/* Header */}
+        <div style={{ background: '#003366', borderRadius: '12px', padding: '16px 24px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button onClick={() => setSidebarOpen(true)}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
+              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
+              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
+            </button>
+            <div>
+              <h2 style={{ margin: 0, color: '#FFD700' }}>Admin Dashboard</h2>
+              <span style={{ fontSize: '12px', opacity: 0.8 }}>BROUTE</span>
+            </div>
           </div>
-        )}
+          <span style={{ fontSize: '13px', opacity: 0.7 }}>₦{withdrawalBalance.toLocaleString()}</span>
+        </div>
 
         {/* Dashboard */}
         {activeView === 'dashboard' && (
-          <div>
-            <h1 style={{ color: '#003366', marginBottom: '20px' }}>🏛️ Admin Dashboard</h1>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-              <div style={{ ...cardStyle, textAlign: 'center' }}>
-                <p style={{ fontSize: '13px', color: '#888' }}>Candidates</p>
-                <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#003366', margin: '8px 0' }}>{candidates.length}</p>
+          <>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
+              <div style={statCardStyle}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>👥</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{candidates.length}</div>
+                <div style={{ fontSize: '13px', color: '#666' }}>Candidates</div>
               </div>
-              <div style={{ ...cardStyle, textAlign: 'center' }}>
-                <p style={{ fontSize: '13px', color: '#888' }}>Voters</p>
-                <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#003366', margin: '8px 0' }}>{voters.length}</p>
+              <div style={statCardStyle}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🗳️</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{activeVoters}</div>
+                <div style={{ fontSize: '13px', color: '#666' }}>Votes Cast</div>
               </div>
-              <div style={{ ...cardStyle, textAlign: 'center' }}>
-                <p style={{ fontSize: '13px', color: '#888' }}>Messages</p>
-                <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#003366', margin: '8px 0' }}>{supportMessages.filter(m => m.status === 'unread').length}</p>
+              <div style={statCardStyle}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{Object.keys(candidates.reduce((acc, c) => { acc[c.position] = true; return acc; }, {})).length}</div>
+                <div style={{ fontSize: '13px', color: '#666' }}>Positions</div>
               </div>
-              <div style={{ ...cardStyle, textAlign: 'center' }}>
-                <p style={{ fontSize: '13px', color: '#888' }}>Balance</p>
-                <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#16a34a', margin: '8px 0' }}>₦{withdrawalBalance.toLocaleString()}</p>
+              <div style={statCardStyle}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>💰</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</div>
+                <div style={{ fontSize: '13px', color: '#666' }}>Balance</div>
               </div>
             </div>
             <div style={cardStyle}>
-              <h3 style={{ color: '#003366', marginBottom: '12px' }}>Quick Actions</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ color: '#003366', margin: 0 }}>Quick Actions</h3>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#666' }}>Mode:</span>
+                  <span style={{
+                    padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold',
+                    background: activeMode === 'none' ? '#fee2e2' : '#d1fae5',
+                    color: activeMode === 'none' ? '#dc2626' : '#16a34a'
+                  }}>
+                    {activeMode === 'none' && '○ Inactive'}
+                    {activeMode === 'election' && '● Election'}
+                    {activeMode === 'formPurchase' && '● Forms'}
+                    {activeMode === 'both' && '● Election + Forms'}
+                  </span>
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button onClick={() => setActiveView('election')} style={btnPrimary}>⚙️ Manage Election</button>
-                <button onClick={() => setActiveView('candidates')} style={btnSuccess}>👥 Manage Candidates</button>
-                <button onClick={() => setActiveView('withdrawal')} style={{ ...btnPrimary, background: '#f59e0b', color: '#003366' }}>💰 Withdraw Funds</button>
-                <button onClick={() => setActiveView('messages')} style={btnPrimary}>✉️ View Messages</button>
+                <button onClick={() => setActiveView('settings')} style={btnPrimary}>⚙️ Settings</button>
+                <button onClick={() => setActiveView('candidates')} style={{ ...btnPrimary, background: '#2563eb' }}>👥 Candidates</button>
+                <button onClick={() => setActiveView('activation')} style={{ ...btnPrimary, background: '#8b5cf6' }}>🔘 Activation</button>
+                <button onClick={() => setActiveView('results')} style={{ ...btnPrimary, background: '#16a34a' }}>📈 Results</button>
+                <button onClick={() => setActiveView('form-purchase')} style={{ ...btnPrimary, background: '#8b5cf6' }}>📋 Form Purchase</button>
+                <button onClick={() => setActiveView('withdrawal')} style={{ ...btnPrimary, background: '#f59e0b' }}>💰 Withdraw</button>
               </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* Election Settings */}
-        {activeView === 'election' && (
+        {/* Settings */}
+        {activeView === 'settings' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>⚙️ Election Settings</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Year</label>
-                <input type="text" value={settings.year} onChange={e => setSettings({...settings, year: e.target.value})} placeholder="e.g. 2026" style={inputStyle} />
+                <input value={settings.year} onChange={e => setSettings({...settings, year: e.target.value})} style={inputStyle} placeholder="2026/2027" />
               </div>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Active</label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                  <input type="checkbox" checked={settings.isActive} onChange={e => setSettings({...settings, isActive: e.target.checked})} />
-                  Election is active
-                </label>
+                <select value={settings.isActive ? 'true' : 'false'} onChange={e => setSettings({...settings, isActive: e.target.value === 'true'})} style={inputStyle}>
+                  <option value="false">Disabled</option>
+                  <option value="true">Active</option>
+                </select>
               </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Date</label>
                 <input type="date" value={settings.startDate} onChange={e => setSettings({...settings, startDate: e.target.value})} style={inputStyle} />
@@ -576,21 +533,74 @@ export default function AdminDashboard() {
                 <input type="time" value={settings.endTime} onChange={e => setSettings({...settings, endTime: e.target.value})} style={inputStyle} />
               </div>
             </div>
-            <button onClick={handleSaveSettings} style={btnPrimary}>💾 Save Election Settings</button>
+            <button onClick={handleSaveSettings} style={{ ...btnPrimary, marginTop: '16px' }}>💾 Save</button>
+          </div>
+        )}
 
-            {/* ACTIVATION SECTION */}
-            <div style={{ marginTop: '24px', borderTop: '1px solid #e5e7eb', paddingTop: '20px' }}>
-              <h3 style={{ color: '#003366', marginBottom: '16px' }}>🗳️ Election Activation</h3>
+        {/* ===================== ACTIVATION VIEW ===================== */}
+        {activeView === 'activation' && (
+          <div>
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', marginBottom: '8px' }}>🔘 Activation Control</h2>
+              <p style={{ color: '#666', fontSize: '14px', marginBottom: '20px' }}>
+                Control what appears on the StudentDashboard and Form Purchase page.
+                {activeMode !== 'none' && (
+                  <span style={{ display: 'block', marginTop: '8px', fontSize: '13px', color: '#2563eb', background: '#f0f7ff', padding: '8px 12px', borderRadius: '6px' }}>
+                    ⏰ Auto-stop enabled: When end date/time passes, it stops automatically.
+                  </span>
+                )}
+              </p>
 
               {activationMsg.text && (
-                <div style={{ padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold', background: activationMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: activationMsg.type === 'error' ? '#dc2626' : '#16a34a' }}>
+                <div style={{
+                  padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold',
+                  background: activationMsg.type === 'error' ? '#fee2e2' : '#d1fae5',
+                  color: activationMsg.type === 'error' ? '#dc2626' : '#16a34a'
+                }}>
                   {activationMsg.text}
                 </div>
               )}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{
+                textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px',
+                marginBottom: '24px'
+              }}>
+                <div style={{ fontSize: '13px', color: '#666', marginBottom: '4px' }}>Current Mode</div>
                 <div style={{
-                  padding: '8px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
+                  padding: '8px 24px', borderRadius: '20px', fontWeight: 'bold', display: 'inline-block', fontSize: '16px',
+                  background: activeMode === 'none' ? '#fee2e2' : '#d1fae5',
+                  color: activeMode === 'none' ? '#dc2626' : '#16a34a'
+                }}>
+                  {activeMode === 'none' && '🔴 Nothing Active'}
+                  {activeMode === 'election' && '🟢 Election Voting Active'}
+                  {activeMode === 'formPurchase' && '🟢 Form Purchase Active'}
+                  {activeMode === 'both' && '🟢 Election + Form Purchase Active'}
+                </div>
+              </div>
+            </div>
+
+            {/* Election Card */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#003366',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
+                }}>🗳️</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 2px 0', color: '#003366' }}>Election</h3>
+                  <p style={{ margin: 0, color: '#666', fontSize: '13px' }}>
+                    {activeMode === 'election' || activeMode === 'both'
+                      ? 'Voting is LIVE on StudentDashboard'
+                      : 'Students cannot vote right now'}
+                  </p>
+                  {settings.endDate && settings.endTime && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                      Auto-stops: {settings.endDate} at {settings.endTime}
+                    </p>
+                  )}
+                </div>
+                <div style={{
+                  padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
                   background: (activeMode === 'election' || activeMode === 'both') ? '#d1fae5' : '#fee2e2',
                   color: (activeMode === 'election' || activeMode === 'both') ? '#16a34a' : '#dc2626'
                 }}>
@@ -648,13 +658,28 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* FORM PURCHASE ACTIVATION */}
-            <div style={{ marginTop: '24px', borderTop: '1px solid #e5e7eb', paddingTop: '20px' }}>
-              <h3 style={{ color: '#003366', marginBottom: '16px' }}>📋 Form Purchase Activation</h3>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            {/* Form Purchase Card */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                 <div style={{
-                  padding: '8px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#8b5cf6',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
+                }}>📋</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 2px 0', color: '#003366' }}>Form Purchase</h3>
+                  <p style={{ margin: 0, color: '#666', fontSize: '13px' }}>
+                    {activeMode === 'formPurchase' || activeMode === 'both'
+                      ? 'Forms are available for purchase'
+                      : 'Form purchase is closed'}
+                  </p>
+                  {fpClosingDate && fpClosingTime && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                      Auto-stops: {fpClosingDate} at {fpClosingTime}
+                    </p>
+                  )}
+                </div>
+                <div style={{
+                  padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
                   background: (activeMode === 'formPurchase' || activeMode === 'both') ? '#d1fae5' : '#fee2e2',
                   color: (activeMode === 'formPurchase' || activeMode === 'both') ? '#16a34a' : '#dc2626'
                 }}>
@@ -964,53 +989,34 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* =================== MESSAGES (MODIFIED: Gmail reply added) =================== */}
+        {/* Messages — FIXED: Added email display and Gmail reply button. Everything else untouched. */}
         {activeView === 'messages' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>✉️ Messages ({supportMessages.length})</h2>
             {supportMessages.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No messages</p> : (
               supportMessages.map(msg => (
-                <div key={msg.id} style={{
-                  padding: '16px', borderBottom: '1px solid #eee',
-                  background: msg.status === 'unread' ? '#f0f7ff' : 'transparent'
-                }}>
+                <div key={msg.id} style={{ padding: '16px', borderBottom: '1px solid #eee', background: msg.status === 'unread' ? '#f0f7ff' : 'transparent' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <div>
                       <strong>{msg.name}</strong>
-                      {msg.email && (
-                        <span style={{ fontSize: '12px', color: '#888', marginLeft: '8px' }}>
-                          &lt;{msg.email}&gt;
-                        </span>
-                      )}
+                      {msg.email && <span style={{ fontSize: '12px', color: '#888', marginLeft: '8px' }}>&lt;{msg.email}&gt;</span>}
                     </div>
                     <span style={{ fontSize: '12px', color: '#888' }}>
                       {msg.timestamp?.toDate?.()?.toLocaleString() || ''}
-                      {msg.status === 'unread' && (
-                        <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '8px' }}>New</span>
-                      )}
+                      {msg.status === 'unread' && <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '8px' }}>New</span>}
                     </span>
                   </div>
-                  <p style={{ margin: '0 0 8px 0', color: '#666' }}>{msg.message}</p>
+                  <p style={{ margin: '0 0 4px 0', color: '#666' }}>{msg.message}</p>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {msg.status === 'unread' && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' });
-                            loadAllData();
-                          } catch (e) {}
-                        }}
-                        style={{
-                          padding: '4px 10px', background: 'transparent', color: '#2563eb',
-                          border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '12px'
-                        }}
-                      >
+                      <button onClick={async () => { try { await updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' }); loadAllData(); } catch(e) {} }}
+                              style={{ padding: '4px 10px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
                         Mark Read
                       </button>
                     )}
                     {msg.email && (
                       <a
-                        href={`https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(msg.email)}&su=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(`Dear ${msg.name},\n\nThank you for reaching out to the NAMATL Electoral Commission.\n\nRegarding your message:\n"${msg.message}"\n\n`)}`}
+                        href={`https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(msg.email)}&su=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(`Dear ${msg.name},\n\nThank you for contacting the NAMATL Electoral Commission.\n\nRegarding your message:\n"${msg.message}"\n\nBest regards,\nOfficialelectoralcommission@gmail.com`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{

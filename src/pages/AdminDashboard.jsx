@@ -989,7 +989,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Messages */}
+       {/* Messages */}
       {activeView === 'messages' && (
         <div style={cardStyles}>
           <h2 style={{ color: '#003366', marginBottom: '16px' }}>💬 Messages ({supportMessages.length})</h2>

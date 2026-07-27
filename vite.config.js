@@ -7,11 +7,22 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    //  ADD THIS CONFIGURATION BLOCK TO SPLIT PACKAGES
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Bundles all third-party libraries from node_modules into a separate 'vendor' file
+          // 📡 Split Firebase database SDK out
+          if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) {
+            return 'firebase';
+          }
+          // 💳 Split Flutterwave payments out
+          if (id.includes('node_modules/flutterwave-react-v3')) {
+            return 'flutterwave';
+          }
+          // 📄 Split PDF generation tools out
+          if (id.includes('node_modules/jspdf')) {
+            return 'jspdf';
+          }
+          // 📦 Keep remaining small core libraries (React, Router) here
           if (id.includes('node_modules')) {
             return 'vendor';
           }

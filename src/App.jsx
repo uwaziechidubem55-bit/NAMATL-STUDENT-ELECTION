@@ -1,14 +1,16 @@
 // NAMTLS v2.0.1 - FORCE UPDATE - DO NOT REMOVE THIS LINE
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import Landing from './pages/Landing';
-import StudentLogin from './pages/StudentLogin';
-import StudentDashboard from './pages/StudentDashboard';
-import AdminLogin from './pages/AdminLogin';
-import AdminDashboard from './pages/AdminDashboard';
-import Support from './pages/Support';
-import PurchaseForm from './pages/PurchaseForm';
 import { DataChargeProvider } from './context/DataChargeContext';
+
+// ⚡ Dynamic/Lazy Imports for Page Components
+const Landing = lazy(() => import('./pages/Landing'));
+const StudentLogin = lazy(() => import('./pages/StudentLogin'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const Support = lazy(() => import('./pages/Support'));
+const PurchaseForm = lazy(() => import('./pages/PurchaseForm'));
 
 function LoadingScreen() {
   return (
@@ -68,16 +70,19 @@ function App() {
 
   return (
     <DataChargeProvider>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/student-login" element={<StudentLogin />} />
-        <Route path="/student" element={<StudentDashboard />} />
-        <Route path="/admin-login" element={<AdminLogin />} />
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
-        <Route path="/support" element={<Support />} />
-        <Route path="/purchase-form" element={<PurchaseForm />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      {/* 📦 Suspense intercepts the loading gap when a user switches between pages */}
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/student-login" element={<StudentLogin />} />
+          <Route path="/student" element={<StudentDashboard />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="/purchase-form" element={<PurchaseForm />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </DataChargeProvider>
   );
 }

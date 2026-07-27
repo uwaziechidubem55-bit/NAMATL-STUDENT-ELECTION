@@ -7,9 +7,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    //  ADD THIS CONFIGURATION BLOCK TO SPLIT PACKAGES
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Bundles all third-party libraries from node_modules into a separate 'vendor' file
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        },
+      },
+    },
   },
-  // Optional: Only add this if you want to use process.env in code
-  // But the best way is to use import.meta.env directly
   define: {
     'import.meta.env.VITE_FLW_PUBLIC_KEY': JSON.stringify(process.env.VITE_FLW_PUBLIC_KEY || '')
   }

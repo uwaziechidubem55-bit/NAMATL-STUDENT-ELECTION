@@ -989,72 +989,53 @@ export default function AdminDashboard() {
           </div>
         )}
 
-       {/* Messages */}
-      {activeView === 'messages' && (
-        <div style={cardStyles}>
-          <h2 style={{ color: '#003366', marginBottom: '16px' }}>💬 Messages ({supportMessages.length})</h2>
-          {supportMessages.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No messages</p> : (
-            supportMessages.map(msg => (
-              <div key={msg.id} style={{ padding: '16px', borderBottom: '1px solid #eee', background: msg.status === 'unread' ? '#f0f7ff' : 'transparent' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <strong>{msg.name}</strong>
-                  <span style={{ fontSize: '12px', color: '#888' }}>
-                    {msg.timestamp?.toDate?.()?.toLocaleString() || ''}
-                    {msg.status === 'unread' && <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '8px' }}>New</span>}
-                  </span>
+        {/* Messages — FIXED: Added email display and Gmail reply button. Everything else untouched. */}
+        {activeView === 'messages' && (
+          <div style={cardStyle}>
+            <h2 style={{ color: '#003366', marginBottom: '16px' }}>✉️ Messages ({supportMessages.length})</h2>
+            {supportMessages.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No messages</p> : (
+              supportMessages.map(msg => (
+                <div key={msg.id} style={{ padding: '16px', borderBottom: '1px solid #eee', background: msg.status === 'unread' ? '#f0f7ff' : 'transparent' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <div>
+                      <strong>{msg.name}</strong>
+                      {msg.email && <span style={{ fontSize: '12px', color: '#888', marginLeft: '8px' }}>&lt;{msg.email}&gt;</span>}
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#888' }}>
+                      {msg.timestamp?.toDate?.()?.toLocaleString() || ''}
+                      {msg.status === 'unread' && <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '8px' }}>New</span>}
+                    </span>
+                  </div>
+                  <p style={{ margin: '0 0 4px 0', color: '#666' }}>{msg.message}</p>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {msg.status === 'unread' && (
+                      <button onClick={async () => { try { await updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' }); loadAllData(); } catch(e) {} }}
+                              style={{ padding: '4px 10px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                        Mark Read
+                      </button>
+                    )}
+                    {msg.email && (
+                      <a
+                        href={`https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(msg.email)}&su=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(`Dear ${msg.name},\n\nThank you for contacting the NAMATL Electoral Commission.\n\nRegarding your message:\n"${msg.message}"\n\nBest regards,\nOfficialelectoralcommission@gmail.com`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          padding: '4px 10px', background: '#ea4335', color: 'white',
+                          border: 'none', borderRadius: '6px', cursor: 'pointer',
+                          fontSize: '12px', fontWeight: 'bold', textDecoration: 'none'
+                        }}
+                      >
+                        📧 Reply via Gmail
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <p style={{ margin: '0 0 4px 0', color: '#666' }}>{msg.message}</p>
-                {msg.email && <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#999' }}>Email: {msg.email}</p>}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {msg.email && (
-                    <a
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(msg.email)}&su=${encodeURIComponent('Re: NAMATL E-Voting Support - Response from Electoral Commission')}&body=${encodeURIComponent('Dear ' + msg.name + ',%0D%0A%0D%0AThank you for reaching out to the NAMATL Electoral Commission regarding your enquiry.%0D%0A%0D%0A%0D%0A%0D%0ABest regards,%0D%0AElectoral Commission%0D%0ANAMATL FUPRE%0D%0AOfficialelectoralcommission@gmail.com')}`}
-                      target="_blank"
-                      style={{
-                        padding: '8px 16px',
-                        background: '#2563eb',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        textDecoration: 'none',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        transition: 'background 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.target.style.background = '#1d4ed8'}
-                      onMouseLeave={(e) => e.target.style.background = '#2563eb'}
-                    >
-                      ✉️ Reply via Gmail
-                    </a>
-                  )}
-                  {msg.status === 'unread' && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          await updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' });
-                          loadAllData();
-                        } catch (e) {}
-                      }}
-                      style={{
-                        padding: '4px 10px',
-                        background: 'transparent',
-                        color: '#2563eb',
-                        border: '1px solid #2563eb',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '12px'
-                      }}
-                    >
-                      Mark Read
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

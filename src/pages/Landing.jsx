@@ -140,14 +140,37 @@ const containerStyle = {
   const footerStyle = {
     position: 'absolute',
     bottom: '15px',
+    left: '0',
+    right: '0',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    width: '100%'
+  };
+
+  const tickerContentStyle = {
+    display: 'inline-block',
+    paddingLeft: '100%',
+    animation: 'namtlsMarquee 15s linear infinite'
+  };
+
+  const spanStyle = {
+    paddingRight: '60px',
     color: 'rgba(255,255,255,0.5)',
     fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
-    textAlign: 'center',
-    padding: '0 20px'
+    fontWeight: '500',
+    letterSpacing: '0.5px'
   };
 
   return (
     <div style={containerStyle}>
+      
+      {/* Dynamic Keyframe Injection for the Ticker */}
+      <style>{`
+        @keyframes namtlsMarquee {
+          0% { transform: translate3d(0, 0, 0); }
+          100% { transform: translate3d(-100%, 0, 0); }
+        }
+      `}</style>
 
       {/* 3-dots menu */}
       <div
@@ -232,9 +255,13 @@ const containerStyle = {
         Student Login
       </Link>
 
-      <p style={footerStyle}>
-        &copy; {new Date().getFullYear()} NAMATLS FUPRE. All rights reserved.
-      </p>
+      <div style={footerStyle}>
+        <div style={tickerContentStyle}>
+          <span style={spanStyle}>&copy; NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
+          <span style={spanStyle}>&copy; NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
+          <span style={spanStyle}>&copy; NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
+        </div>
+      </div>
 
     </div>
   );

@@ -7,6 +7,16 @@ import { useDataCharge } from '../context/DataChargeContext';
 
 const MAX_PER_POSITION = 5;
 
+// Helper to generate random candidate ID
+const generateCandidateId = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let id = '';
+  for (let i = 0; i < 7; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return 'NAMATL-' + id;
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const {
@@ -51,6 +61,12 @@ export default function AdminDashboard() {
   const [fpSaving, setFpSaving] = useState(false);
   const [fpMsg, setFpMsg] = useState('');
   const [fpCandidateCounts, setFpCandidateCounts] = useState({});
+
+  // ===================== PRINT RESULTS STATE =====================
+  const [electionResults, setElectionResults] = useState([]);
+  const [resultsGenerated, setResultsGenerated] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [printMsg, setPrintMsg] = useState('');
 
   // ===================== ACTIVATION STATE =====================
   const [activeMode, setActiveMode] = useState('none');
@@ -259,6 +275,7 @@ export default function AdminDashboard() {
     { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
     { key: 'activation', label: 'Activation', icon: '🔘' },
     { key: 'results', label: 'Election Results', icon: '📈' },
+    { key: 'print-results', label: 'Print Results', icon: '🖨️' },
     { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
     { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
     { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
@@ -373,6 +390,105 @@ export default function AdminDashboard() {
     setFpSaving(false);
   };
 
+  // ===================== GENERATE & STORE RESULTS =====================
+  const handleGenerateResults = async () => {
+    if (candidates.length === 0) {
+      setPrintMsg('No candidates to generate results for.');
+      return;
+    }
+    setPrintLoading(true);
+    setPrintMsg('Generating results...');
+    setResultsGenerated(false);
+
+    try {
+      // Check if results already exist in Firestore
+      const existingResultsSnap = await getDoc(doc(db, 'electionData', 'results'));
+      let storedCandidateIds = {};
+
+      if (existingResultsSnap.exists()) {
+        storedCandidateIds = existingResultsSnap.data().candidateIds || {};
+      }
+
+      // Count candidates per position for vote points
+      const positionCounts = {};
+      candidates.forEach(c => {
+        positionCounts[c.position] = (positionCounts[c.position] || 0) + 1;
+      });
+
+      // Build results array
+      const results = [];
+      const candidateIds = { ...storedCandidateIds };
+
+      candidates.forEach((c, index) => {
+        // Generate candidate ID if not already stored
+        if (!candidateIds[c.id]) {
+          candidateIds[c.id] = generateCandidateId();
+        }
+
+        const totalInPosition = positionCounts[c.position] || 1;
+        const votes = c.votes || 0;
+        const votePoint = totalInPosition > 0 ? (votes / totalInPosition).toFixed(2) : '0.00';
+
+        results.push({
+          sNo: index + 1,
+          candidateId: candidateIds[c.id],
+          name: c.name,
+          position: c.position,
+          votes: votes,
+          votePoint: votePoint,
+          dept: c.dept || ''
+        });
+      });
+
+      // Sort by position then by votes descending
+      results.sort((a, b) => {
+        if (a.position !== b.position) return a.position.localeCompare(b.position);
+        return b.votes - a.votes;
+      });
+
+      // Re-assign serial numbers after sorting
+      results.forEach((r, i) => { r.sNo = i + 1; });
+
+      // Store in Firestore
+      const year = settings.year || '2026/2027';
+      await setDoc(doc(db, 'electionData', 'results'), {
+        year: year,
+        generatedAt: new Date().toISOString(),
+        candidateIds: candidateIds,
+        results: results,
+        totalPositions: Object.keys(positionCounts).length,
+        totalCandidates: candidates.length,
+        totalVoters: activeVoters
+      }, { merge: true });
+
+      setElectionResults(results);
+      setResultsGenerated(true);
+      setPrintMsg(`✅ Results generated and saved! ${results.length} candidates.`);
+      setTimeout(() => setPrintMsg(''), 4000);
+    } catch (e) {
+      setPrintMsg('❌ Error: ' + e.message);
+    }
+    setPrintLoading(false);
+  };
+
+  // Load existing results when entering print view
+  const loadExistingResults = async () => {
+    setPrintLoading(true);
+    try {
+      const resultsSnap = await getDoc(doc(db, 'electionData', 'results'));
+      if (resultsSnap.exists()) {
+        const data = resultsSnap.data();
+        if (data.results && data.results.length > 0) {
+          setElectionResults(data.results);
+          setResultsGenerated(true);
+        }
+      }
+    } catch (e) {
+      console.error('Load results error:', e);
+    }
+    setPrintLoading(false);
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' }}>
@@ -409,7 +525,7 @@ export default function AdminDashboard() {
           <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: 0 }}>×</button>
         </div>
         {sidebarItems.map(item => (
-          <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); }}
+          <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); if (item.key === 'print-results') loadExistingResults(); }}
                style={{
                  display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
                  marginBottom: '4px', borderRadius: '8px', cursor: 'pointer',
@@ -857,6 +973,190 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* ===================== PRINT RESULTS VIEW ===================== */}
+        {activeView === 'print-results' && (
+          <div>
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', marginBottom: '8px' }}>🖨️ Print Election Results</h2>
+              <p style={{ color: '#666', fontSize: '13px', marginBottom: '16px' }}>
+                Generate and print official election results. Results include auto-generated Candidate IDs and Vote Points.
+              </p>
+              {printMsg && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold',
+                  background: printMsg.includes('Error') ? '#fee2e2' : '#d1fae5',
+                  color: printMsg.includes('Error') ? '#dc2626' : '#16a34a'
+                }}>
+                  {printMsg}
+                </div>
+              )}
+              {!resultsGenerated ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}>
+                  <p style={{ color: '#888', marginBottom: '16px' }}>
+                    {candidates.length === 0
+                      ? 'No candidates available to generate results.'
+                      : `Click below to generate official results for ${candidates.length} candidates across ${Object.keys(candidates.reduce((acc, c) => { acc[c.position] = true; return acc; }, {})).length} positions.`}
+                  </p>
+                  <button
+                    onClick={handleGenerateResults}
+                    disabled={printLoading || candidates.length === 0}
+                    style={{
+                      ...btnPrimary, background: printLoading ? '#999' : '#16a34a',
+                      padding: '14px 40px', fontSize: '16px',
+                      opacity: (printLoading || candidates.length === 0) ? 0.5 : 1,
+                      cursor: (printLoading || candidates.length === 0) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {printLoading ? '⏳ Generating...' : '📊 Generate Results'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <button
+                    onClick={() => window.print()}
+                    style={{ ...btnPrimary, background: '#2563eb', padding: '14px 40px', fontSize: '16px' }}
+                  >
+                    🖨️ Print / Download PDF
+                  </button>
+                  <button
+                    onClick={() => { setResultsGenerated(false); setElectionResults([]); }}
+                    style={{ ...btnDanger, marginLeft: '12px', padding: '14px 24px', fontSize: '14px' }}
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Printable Results Document */}
+            {resultsGenerated && electionResults.length > 0 && (
+              <div id="printableResults">
+                {/* The CSS below ensures only the content inside prints cleanly */}
+                <style>{`
+                  @media print {
+                    body * { visibility: hidden; }
+                    #printableResults, #printableResults * { visibility: visible; }
+                    #printableResults { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+                    @page { margin: 15mm; size: A4 portrait; }
+                  }
+                `}</style>
+                <div style={{
+                  background: '#001a33',
+                  padding: '40px 20px',
+                  borderRadius: '12px',
+                  fontFamily: 'Arial, sans-serif'
+                }}>
+                  <div style={{
+                    background: 'white',
+                    maxWidth: '900px',
+                    margin: '0 auto',
+                    padding: '40px 35px',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
+                  }}>
+                    {/* Logo */}
+                    <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                      <img
+                        src="/logo.png"
+                        alt="NAMATL Logo"
+                        style={{ width: '80px', height: '80px', objectFit: 'contain' }}
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
+
+                    {/* Header */}
+                    <h1 style={{
+                      textAlign: 'center',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      color: '#001a33',
+                      margin: '0 0 4px 0',
+                      lineHeight: '1.4',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px'
+                    }}>
+                      FEDERAL UNIVERSITY OF PETROLEUM RESOURCES EFFURUN
+                    </h1>
+                    <h2 style={{
+                      textAlign: 'center',
+                      fontSize: '15px',
+                      fontWeight: 'bold',
+                      color: '#003366',
+                      margin: '0 0 20px 0',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      NAMATL VOTE RESULTS {settings.year ? `(${settings.year})` : ''}
+                    </h2>
+
+                    <hr style={{ border: '1px solid #003366', marginBottom: '20px' }} />
+
+                    {/* Results Table */}
+                    <table style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: '12px',
+                      marginBottom: '20px'
+                    }}>
+                      <thead>
+                        <tr style={{ background: '#003366', color: 'white' }}>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>S/N</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'left', fontWeight: 'bold' }}>Candidate Name</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'left', fontWeight: 'bold' }}>Position</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>Votes</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>Vote Point</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>Candidate ID</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {electionResults.map((r, idx) => (
+                          <tr key={idx} style={{
+                            background: idx % 2 === 0 ? '#f8f9fa' : 'white',
+                            borderBottom: '1px solid #dee2e6'
+                          }}>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold' }}>{r.sNo}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#003366' }}>{r.name}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#555' }}>{r.position}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{r.votes}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold', color: '#003366' }}>{r.votePoint}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontFamily: 'monospace', fontSize: '11px', color: '#666' }}>{r.candidateId}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* Footer */}
+                    <hr style={{ border: '1px solid #003366', marginBottom: '12px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#666' }}>
+                      <span>Generated: {new Date().toLocaleDateString('en-GB')}</span>
+                      <span>Total Candidates: {electionResults.length}</span>
+                      <span>Academic Year: {settings.year || '2026/2027'}</span>
+                    </div>
+
+                    <div style={{ marginTop: '16px', fontSize: '11px', color: '#888', fontStyle: 'italic' }}>
+                      <p style={{ margin: '2px 0' }}>Vote Point = Candidate's Votes ÷ Total Number of Candidates in that Position</p>
+                    </div>
+
+                    {/* Signature lines */}
+                    <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                      <div style={{ textAlign: 'center', width: '40%' }}>
+                        <div style={{ borderTop: '1px solid #003366', paddingTop: '6px', marginTop: '30px' }}>
+                          Electoral Commission Chairman
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'center', width: '40%' }}>
+                        <div style={{ borderTop: '1px solid #003366', paddingTop: '6px', marginTop: '30px' }}>
+                          Departmental Representative
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Form Purchase */}
         {activeView === 'form-purchase' && (
           <>
@@ -989,7 +1289,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Messages — FIXED: Added email display and Gmail reply button. Everything else untouched. */}
+        {/* Messages */}
         {activeView === 'messages' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>✉️ Messages ({supportMessages.length})</h2>

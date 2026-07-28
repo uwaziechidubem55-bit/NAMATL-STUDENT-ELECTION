@@ -150,11 +150,11 @@ const containerStyle = {
   const tickerContentStyle = {
     display: 'inline-block',
     paddingLeft: '100%',
-    animation: 'namtlsMarquee 15s linear infinite'
+    animation: 'namatlsMarquee 8s linear infinite' // Speed changed from 15s to 8s
   };
 
   const spanStyle = {
-    paddingRight: '60px',
+    paddingRight: '120px', // Space between repeating blocks increased from 60px to 120px
     color: 'rgba(255,255,255,0.5)',
     fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
     fontWeight: '500',
@@ -257,9 +257,9 @@ const containerStyle = {
 
       <div style={footerStyle}>
         <div style={tickerContentStyle}>
-          <span style={spanStyle}>&copy; NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
-          <span style={spanStyle}>&copy; NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
-          <span style={spanStyle}>&copy; NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
+          <span style={spanStyle}>&copy; 2026 NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
+          <span style={spanStyle}>&copy; 2026 NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
+          <span style={spanStyle}>&copy; 2026 NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
         </div>
       </div>
 

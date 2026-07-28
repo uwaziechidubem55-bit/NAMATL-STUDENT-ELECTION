@@ -150,11 +150,11 @@ const containerStyle = {
   const tickerContentStyle = {
     display: 'inline-block',
     paddingLeft: '100%',
-    animation: 'namatlsMarquee 8s linear infinite' // Speed changed from 15s to 8s
+    animation: 'namtlsMarquee 15s linear infinite'
   };
 
   const spanStyle = {
-    paddingRight: '120px', // Space between repeating blocks increased from 60px to 120px
+    paddingRight: '60px',
     color: 'rgba(255,255,255,0.5)',
     fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
     fontWeight: '500',

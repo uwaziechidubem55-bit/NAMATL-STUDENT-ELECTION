@@ -9,6 +9,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png'],
+      filename: 'manifest.webmanifest',       // ← THIS IS THE ONLY NEW LINE
       manifest: {
         name: 'NAMATL Student E-Voting',
         short_name: 'NAMATL Vote',

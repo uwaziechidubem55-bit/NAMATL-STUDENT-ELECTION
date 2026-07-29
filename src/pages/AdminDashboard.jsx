@@ -1316,7 +1316,8 @@ export default function AdminDashboard() {
                     )}
                     {msg.email && (
                       <a
-                        href={`https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(msg.email)}&su=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(`Dear ${msg.name},
+                        href={`mailto:${msg.email}?subject=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(
+`Dear ${msg.name},
 
 Thank you for contacting the NAMATL Electoral Commission.
 
@@ -1333,7 +1334,8 @@ Original message from you:
 Best regards,
 Officialelectoralcommission@gmail.com
 --
-NAMATL Electoral Commission`)}`}
+NAMATL Electoral Commission`
+)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{

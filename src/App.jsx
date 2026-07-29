@@ -3,7 +3,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
 
-// 👇 ADD THIS LINE
+// 👇 ONLY ADDITION — Import the install popup
 import InstallPrompt from './components/InstallPrompt';
 
 // ⚡ Dynamic/Lazy Imports for Page Components
@@ -18,27 +18,25 @@ const PurchaseForm = lazy(() => import('./pages/PurchaseForm'));
 function LoadingScreen() {
   return (
     <div style={{
-      height: '100vh',
+      minHeight: '100vh',
+      background: '#003366',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#003366',
-      color: '#FFD700',
+      color: 'white',
       fontFamily: 'Arial, sans-serif'
     }}>
       <div style={{
-        width: '40px',
-        height: '40px',
-        border: '4px solid #FFD700',
-        borderTopColor: 'transparent',
+        width: '50px',
+        height: '50px',
+        border: '5px solid rgba(255,215,0,0.3)',
+        borderTop: '5px solid #FFD700',
         borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-        marginBottom: '16px'
-      }} />
-      <span style={{ fontSize: '14px', opacity: 0.9 }}>
-        Loading NAMTLS E-Voting Portal v2.0...
-      </span>
+        animation: 'spin 1s linear infinite',
+        marginBottom: '20px'
+      }}></div>
+      <div>Loading NAMTLS E-Voting Portal v2.0...</div>
     </div>
   );
 }
@@ -46,28 +44,19 @@ function LoadingScreen() {
 function NotFound() {
   return (
     <div style={{
-      height: '100vh',
+      minHeight: '100vh',
+      background: '#003366',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#003366',
       color: 'white',
-      fontFamily: 'Arial, sans-serif',
-      textAlign: 'center',
-      padding: '20px'
+      fontFamily: 'Arial, sans-serif'
     }}>
-      <div style={{ fontSize: '48px', marginBottom: '10px' }}>⚠️</div>
-      <h1 style={{ color: '#FFD700', margin: '0 0 4px 0' }}>ERROR 404</h1>
-      <p style={{ color: '#ccc', margin: '0 0 20px 0' }}>Page not found</p>
-      <a href="/" style={{
-        padding: '10px 28px',
-        background: '#FFD700',
-        color: '#003366',
-        textDecoration: 'none',
-        borderRadius: '6px',
-        fontWeight: 'bold'
-      }}>Go Home</a>
+      <h1 style={{ fontSize: '4rem', color: '#FFD700', margin: '0' }}>⚠️</h1>
+      <h1 style={{ color: '#FFD700' }}>ERROR 404</h1>
+      <p>Page not found</p>
+      <a href="/#/" style={{ color: '#FFD700', marginTop: '16px' }}>Go Home</a>
     </div>
   );
 }
@@ -84,21 +73,19 @@ function App() {
 
   return (
     <DataChargeProvider>
+      {/* 👇 ONLY ADDITION — Renders the install popup on every page */}
       <InstallPrompt />
 
+      {/* 📦 Suspense intercepts the loading gap when a user switches between pages */}
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<StudentLogin />} />
-          <Route path="/dashboard" element={<StudentDashboard />} />
-          {/* ★ ALIAS: StudentLogin.jsx navigates to /student after login */}
+          <Route path="/student-login" element={<StudentLogin />} />
           <Route path="/student" element={<StudentDashboard />} />
-          <Route path="/admin" element={<AdminLogin />} />
-          <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          {/* ★ ALIAS: AdminLogin.jsx navigates to /admin-dashboard after login */}
+          <Route path="/admin-login" element={<AdminLogin />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/support" element={<Support />} />
-          <Route path="/purchase" element={<PurchaseForm />} />
+          <Route path="/purchase-form" element={<PurchaseForm />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

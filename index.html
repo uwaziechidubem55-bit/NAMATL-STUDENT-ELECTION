@@ -10,13 +10,13 @@
     <meta property="og:description" content="Official Election Platform for NAMATL FUPRE" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://namatl-student-election.vercel.app" />
-    <!-- 👇 FIX: Force white browser chrome in both light & dark mode -->
+    <!-- 👇 Force white browser chrome (light & dark mode) -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <title>NAMATL Student E-Voting | Official Election Portal</title>
   </head>
-  <!-- 👇 FIX: Body starts white so Chrome doesn't extract blue before React loads -->
+  <!-- 👇 White background so Chrome doesn't turn blue -->
   <body style="background-color:#ffffff;margin:0;">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

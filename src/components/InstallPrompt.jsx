@@ -1,101 +1,154 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [visible, setVisible] = useState(true);
 
+  // Auto-dismiss after 8 seconds
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      // Prevents the browser's default bar layout from popping up out of context
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setIsVisible(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    window.addEventListener('appinstalled', () => {
-      setIsVisible(false);
-      setDeferredPrompt(null);
-    });
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    const timer = setTimeout(() => {
+      setVisible(false);
+    }, 8000);
+    return () => clearTimeout(timer);
   }, []);
 
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`NAMATL App installation preference: ${outcome}`);
-    setDeferredPrompt(null);
-    setIsVisible(false);
+  const handleDismiss = () => {
+    setVisible(false);
   };
 
-  if (!isVisible) return null;
+  if (!visible) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '24px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      backgroundColor: '#ffffff',
-      padding: '16px 20px',
-      borderRadius: '12px',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-      zIndex: 99999,
-      width: '90%',
-      maxWidth: '420px',
-      fontFamily: 'Arial, sans-serif',
-      border: '1px solid #e2e8f0',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '12px'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-        <img src="/logo.png" alt="NAMATL Logo" style={{ width: '42px', height: '42px', objectFit: 'contain' }} />
-        <div style={{ flex: 1 }}>
-          <h4 style={{ margin: 0, color: '#003366', fontSize: '15px', fontWeight: '700' }}>Install Official Portal</h4>
-          <p style={{ margin: '4px 0 0 0', color: '#4a5568', fontSize: '13px', lineHeight: '1.4' }}>
-            Download the NAMTLS portal directly to your device for a stable voting connection.
-          </p>
+    <div style={styles.overlay}>
+      <div style={styles.card}>
+        {/* Close button */}
+        <button
+          onClick={handleDismiss}
+          style={styles.closeBtn}
+          aria-label="Dismiss"
+        >
+          ×
+        </button>
+
+        {/* Content */}
+        <div style={styles.contentRow}>
+          <img
+            src="/logo.png"
+            alt="NAMATL"
+            style={styles.logo}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+          <div style={styles.textBlock}>
+            <h3 style={styles.title}>Install NAMATL Portal</h3>
+            <p style={styles.subtitle}>
+              Get the app for faster voting, offline access & instant updates.
+            </p>
+          </div>
         </div>
-      </div>
-      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-        <button 
-          onClick={() => setIsVisible(false)}
-          style={{
-            background: 'transparent',
-            color: '#718096',
-            border: 'none',
-            padding: '8px 14px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontWeight: '600'
-          }}
-        >
-          Dismiss
-        </button>
-        <button 
-          onClick={handleInstallClick}
-          style={{
-            background: '#003366', // Matches portal brand color
-            color: '#ffffff',
-            border: 'none',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontWeight: '600',
-            boxShadow: '0 2px 4px rgba(0,51,102,0.2)'
-          }}
-        >
-          Install App
-        </button>
+
+        {/* Actions */}
+        <div style={styles.actions}>
+          <button onClick={handleDismiss} style={styles.secondaryBtn}>
+            Maybe Later
+          </button>
+          <button style={styles.primaryBtn}>
+            Install App
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+
+const styles = {
+  overlay: {
+    position: 'fixed',
+    bottom: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 9999,
+    animation: 'slideUp 0.4s ease-out',
+    width: 'calc(100% - 32px)',
+    maxWidth: '420px',
+  },
+  card: {
+    background: '#ffffff',
+    borderRadius: '16px',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
+    padding: '20px',
+    position: 'relative',
+    border: '1px solid rgba(0, 0, 0, 0.06)',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '8px',
+    right: '12px',
+    background: 'none',
+    border: 'none',
+    fontSize: '22px',
+    color: '#999',
+    cursor: 'pointer',
+    lineHeight: 1,
+    padding: '4px 8px',
+    borderRadius: '50%',
+    transition: 'background 0.2s',
+  },
+  contentRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    marginBottom: '16px',
+    marginTop: '4px',
+  },
+  logo: {
+    width: '52px',
+    height: '52px',
+    borderRadius: '12px',
+    objectFit: 'cover',
+    flexShrink: 0,
+    border: '2px solid #003366',
+  },
+  textBlock: {
+    flex: 1,
+  },
+  title: {
+    margin: 0,
+    fontSize: '16px',
+    fontWeight: '700',
+    color: '#003366',
+    lineHeight: '1.3',
+  },
+  subtitle: {
+    margin: '4px 0 0 0',
+    fontSize: '13px',
+    color: '#666',
+    lineHeight: '1.4',
+  },
+  actions: {
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'flex-end',
+  },
+  secondaryBtn: {
+    padding: '10px 18px',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    background: '#f5f5f5',
+    color: '#555',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'background 0.2s',
+  },
+  primaryBtn: {
+    padding: '10px 22px',
+    border: 'none',
+    borderRadius: '8px',
+    background: 'linear-gradient(135deg, #003366, #004080)',
+    color: '#ffffff',
+    fontSize: '13px',
+    fontWeight: '700',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(0, 51, 102, 0.3)',
+    transition: 'transform 0.2s, box-shadow 0.2s',
+  },
+};

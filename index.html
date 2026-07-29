@@ -10,13 +10,21 @@
     <meta property="og:description" content="Official Election Platform for NAMATL FUPRE" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://namatl-student-election.vercel.app" />
-    <!-- 👇 Force white browser chrome (light & dark mode) -->
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: dark)" />
+
+    <!-- 🔴 UNIVERSAL INSTALL POLYFILL — Makes install work on Safari, Firefox, iOS, etc. -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@easy-pwa/beforeinstallprompt-polyfill@1"></script>
+
+    <!-- 🔴 iOS Home Screen icon — required for Safari "Add to Home Screen" -->
+    <link rel="apple-touch-icon" href="/logo.png" />
+
+    <!-- 🔴 PWA Manifest link -->
+    <link rel="manifest" href="/manifest.json" />
+
     <link rel="icon" type="image/png" href="/logo.png" />
     <title>NAMATL Student E-Voting | Official Election Portal</title>
   </head>
-  <!-- 👇 White background so Chrome doesn't turn blue -->
   <body style="background-color:#ffffff;margin:0;">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

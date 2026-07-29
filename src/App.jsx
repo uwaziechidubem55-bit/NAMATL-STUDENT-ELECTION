@@ -84,7 +84,6 @@ function App() {
 
   return (
     <DataChargeProvider>
-      {/* 👇 ADD THIS — renders the install bar at top of every page */}
       <InstallPrompt />
 
       <Suspense fallback={<LoadingScreen />}>
@@ -92,8 +91,12 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<StudentLogin />} />
           <Route path="/dashboard" element={<StudentDashboard />} />
+          {/* ★ ALIAS: StudentLogin.jsx navigates to /student after login */}
+          <Route path="/student" element={<StudentDashboard />} />
           <Route path="/admin" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          {/* ★ ALIAS: AdminLogin.jsx navigates to /admin-dashboard after login */}
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/support" element={<Support />} />
           <Route path="/purchase" element={<PurchaseForm />} />
           <Route path="*" element={<NotFound />} />

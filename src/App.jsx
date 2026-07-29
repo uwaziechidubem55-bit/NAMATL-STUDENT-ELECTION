@@ -15,7 +15,62 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const Support = lazy(() => import('./pages/Support'));
 const PurchaseForm = lazy(() => import('./pages/PurchaseForm'));
 
-// ... (LoadingScreen and NotFound remain unchanged) ...
+function LoadingScreen() {
+  return (
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#003366',
+      color: '#FFD700',
+      fontFamily: 'Arial, sans-serif'
+    }}>
+      <div style={{
+        width: '40px',
+        height: '40px',
+        border: '4px solid #FFD700',
+        borderTopColor: 'transparent',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+        marginBottom: '16px'
+      }} />
+      <span style={{ fontSize: '14px', opacity: 0.9 }}>
+        Loading NAMTLS E-Voting Portal v2.0...
+      </span>
+    </div>
+  );
+}
+
+function NotFound() {
+  return (
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#003366',
+      color: 'white',
+      fontFamily: 'Arial, sans-serif',
+      textAlign: 'center',
+      padding: '20px'
+    }}>
+      <div style={{ fontSize: '48px', marginBottom: '10px' }}>⚠️</div>
+      <h1 style={{ color: '#FFD700', margin: '0 0 4px 0' }}>ERROR 404</h1>
+      <p style={{ color: '#ccc', margin: '0 0 20px 0' }}>Page not found</p>
+      <a href="/" style={{
+        padding: '10px 28px',
+        background: '#FFD700',
+        color: '#003366',
+        textDecoration: 'none',
+        borderRadius: '6px',
+        fontWeight: 'bold'
+      }}>Go Home</a>
+    </div>
+  );
+}
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -29,7 +84,7 @@ function App() {
 
   return (
     <DataChargeProvider>
-      {/* 👇 ADD THIS LINE — renders install popup on every page */}
+      {/* 👇 ADD THIS — renders the install bar at top of every page */}
       <InstallPrompt />
 
       <Suspense fallback={<LoadingScreen />}>

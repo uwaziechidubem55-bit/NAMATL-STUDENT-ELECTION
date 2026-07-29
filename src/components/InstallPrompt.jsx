@@ -4,7 +4,6 @@ export default function InstallPrompt() {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    // Auto-dismiss after 8 seconds
     const timer = setTimeout(() => {
       setVisible(false);
     }, 8000);
@@ -14,61 +13,91 @@ export default function InstallPrompt() {
   if (!visible) return null;
 
   return (
-    <div style={styles.bar}>
-      <img
-        src="/logo.png"
-        alt="NAMATL"
-        style={styles.logo}
-        onError={(e) => { e.target.style.display = 'none'; }}
-      />
-      <span style={styles.name}>NAMATL</span>
-      <button style={styles.installBtn}>Install</button>
+    <div style={styles.wrapper}>
+      <div style={styles.card}>
+        <button onClick={() => setVisible(false)} style={styles.close}>×</button>
+        <div style={styles.row}>
+          <img
+            src="/logo.png"
+            alt="NAMATL"
+            style={styles.logo}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+          <span style={styles.name}>NAMATL</span>
+        </div>
+        <button style={styles.installBtn}>Install</button>
+      </div>
     </div>
   );
 }
 
 const styles = {
-  bar: {
+  wrapper: {
     position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 99999,
     display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '10px 16px',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
+  card: {
     background: '#ffffff',
-    borderBottom: '1px solid #e0e0e0',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
-    animation: 'slideUp 0.35s ease-out',
+    borderRadius: '14px',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+    padding: '16px 20px',
+    width: '280px',
+    marginTop: '80px',
+    textAlign: 'center',
+    border: '1px solid #e8e8e8',
+    pointerEvents: 'auto',
+    animation: 'fadeIn 0.3s ease-out',
+    position: 'relative',
+  },
+  close: {
+    position: 'absolute',
+    top: '4px',
+    right: '8px',
+    background: 'none',
+    border: 'none',
+    fontSize: '20px',
+    color: '#aaa',
+    cursor: 'pointer',
+    lineHeight: 1,
+    padding: '2px 6px',
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    marginBottom: '12px',
   },
   logo: {
     width: '36px',
     height: '36px',
     borderRadius: '8px',
     objectFit: 'cover',
-    flexShrink: 0,
     border: '1px solid #003366',
   },
   name: {
-    flex: 1,
-    fontSize: '15px',
+    fontSize: '16px',
     fontWeight: '700',
     color: '#003366',
-    letterSpacing: '0.3px',
   },
   installBtn: {
-    padding: '8px 20px',
+    padding: '8px 28px',
     border: 'none',
     borderRadius: '8px',
     background: '#000000',
     color: '#ffffff',
-    fontSize: '13px',
+    fontSize: '14px',
     fontWeight: '700',
     cursor: 'pointer',
-    flexShrink: 0,
     boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-    transition: 'transform 0.15s, box-shadow 0.15s',
+    transition: 'transform 0.15s',
   },
 };

@@ -7,26 +7,27 @@ export default function Landing() {
   const [blink, setBlink] = useState(true);
 
   useEffect(() => {
-  // Trigger a super sharp WHITE flash
-  setBlink(true);
-  const timer = setTimeout(() => setBlink(false), 300); // CHANGED: 400ms -> 300ms
-  return () => clearTimeout(timer);
-}, []);
+    // Trigger a super sharp WHITE flash
+    setBlink(true);
+    const timer = setTimeout(() => setBlink(false), 300);
+    return () => clearTimeout(timer);
+  }, []);
 
-const containerStyle = {
-  minHeight: '100vh',
-  background: blink
-    ? 'radial-gradient(circle at center, rgba(255,255,255,0.35) 0%, #003366 60%)' // Sharp White
-    : 'linear-gradient(135deg, #003366 0%, #004080 50%, #003366 100%)',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontFamily: 'Arial, sans-serif',
-  position: 'relative',
-  padding: '20px',
-  transition: 'background 0.12s ease-out' // CHANGED: 0.15s -> 0.12s
-};
+  const containerStyle = {
+    minHeight: '100vh',
+    background: blink
+      ? 'radial-gradient(circle at center, rgba(255,255,255,0.35) 0%, #003366 60%)'
+      : 'linear-gradient(135deg, #003366 0%, #004080 50%, #003366 100%)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'Arial, sans-serif',
+    position: 'relative',
+    padding: '20px',
+    transition: 'background 0.12s ease-out'
+  };
+
   const logoStyle = {
     width: '100px',
     height: '100px',
@@ -137,38 +138,43 @@ const containerStyle = {
     whiteSpace: 'nowrap'
   };
 
-  const footerStyle = {
+  // ===== MODIFIED: LED scrolling footer styles =====
+  const footerWrapperStyle = {
     position: 'absolute',
     bottom: '15px',
-    left: '0',
-    right: '0',
+    width: '100%',
     overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    width: '100%'
-  };
-
-  const tickerContentStyle = {
-    display: 'inline-block',
-    paddingLeft: '100%',
-    animation: 'namtlsMarquee 15s linear infinite'
-  };
-
-  const spanStyle = {
-    paddingRight: '60px',
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
-    fontWeight: '500',
-    letterSpacing: '0.5px'
+    textAlign: 'center'
   };
 
   return (
     <div style={containerStyle}>
-      
-      {/* Dynamic Keyframe Injection for the Ticker */}
+      {/* LED scrolling animation keyframes */}
       <style>{`
-        @keyframes namtlsMarquee {
-          0% { transform: translate3d(0, 0, 0); }
-          100% { transform: translate3d(-100%, 0, 0); }
+        @keyframes ledScroll {
+          0%, 14% {
+            transform: translateX(0);
+          }
+          15%, 72% {
+            transform: translateX(-100%);
+          }
+          73%, 74% {
+            transform: translateX(100%);
+          }
+          75%, 100% {
+            transform: translateX(0);
+          }
+        }
+        .led-footer-text {
+          display: inline-block;
+          white-space: nowrap;
+          animation: ledScroll 14s linear infinite;
+          color: rgba(255,255,255,0.5);
+          font-size: clamp(0.65rem, 2vw, 0.8rem);
+          padding: 0 20px;
+        }
+        .led-footer-text:hover {
+          animation-play-state: paused;
         }
       `}</style>
 
@@ -255,12 +261,11 @@ const containerStyle = {
         Student Login
       </Link>
 
-      <div style={footerStyle}>
-        <div style={tickerContentStyle}>
-          <span style={spanStyle}>&copy; 2026 NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
-          <span style={spanStyle}>&copy; 2026 NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
-          <span style={spanStyle}>&copy; 2026 NAMATLS FUPRE. ALL RIGHTS RESERVED.</span>
-        </div>
+      {/* ===== MODIFIED: LED scrolling footer ===== */}
+      <div style={footerWrapperStyle}>
+        <span className="led-footer-text">
+          &copy; {new Date().getFullYear()} NAMATLS FUPRE. All rights reserved.
+        </span>
       </div>
 
     </div>

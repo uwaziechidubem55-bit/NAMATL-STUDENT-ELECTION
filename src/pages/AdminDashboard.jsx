@@ -17,6 +17,77 @@ const generateCandidateId = () => {
   return 'NAMATL-' + id;
 };
 
+// ===================== AUTO-REPLY GENERATOR =====================
+const generateAutoReply = (msg) => {
+  const text = (msg.message || '').toLowerCase();
+  const name = msg.name || 'Sir/Madam';
+
+  // Determine the type of inquiry
+  const isVoting = /vote|election|ballot|cast|poll/i.test(text);
+  const isLoginCode = /code|pin|access|unique|portal|login|password|otp/i.test(text);
+  const isForm = /form|purchase|buy|pay|registra|fee|price|cost|amount/i.test(text);
+  const isComplaint = /complaint|issue|problem|error|bug|not working|fail|glitch|difficult/i.test(text);
+  const isCandidate = /candidate|contest|run|nomina|stand|position/i.test(text);
+  const isHelp = /help|assist|support|how do|guide|explain|what is|can you|please/i.test(text);
+  const isGeneral = /question|inquiry|info|information|about|regarding/i.test(text);
+  const isPayment = /payment|paid|transaction|flutterwave|receipt|confirm|money/i.test(text);
+  const isResult = /result|score|winner|win|who|count/i.test(text);
+
+  // Common header
+  const header = `Thank you for contacting the NAMATL Electoral Commission.\n\nWe have carefully reviewed your message and provide the following response:\n\n`;
+
+  // Common footer
+  const footer = `\n\nThe Electoral Commission is actively working on your request. We will get back to you with a comprehensive update within 24–48 hours.\n\nShould you have any further questions, please do not hesitate to reach out.\n\nSigned and approved by:\n_______________________________\nComr. D. Uwazie\nSecretary, NAMATL Electoral Commission\n\n_______________________________\nComr. P.Ufot\nChairman, NAMATL Electoral Commission\n\n--\nNAMATL Electoral Commission\nFederal University of Petroleum Resources Effurun`;
+
+  // If message is very short or unclear — use a general response
+  if (text.length < 10) {
+    return `${header}We acknowledge receipt of your message. The NAMATL Electoral Commission appreciates your communication. However, your enquiry appears to require further clarification. Kindly provide more details regarding your issue so that we may assist you appropriately. Alternatively, you may visit the Students' Affairs Division for in-person assistance.${footer}`;
+  }
+
+  // Login/access code related
+  if (isLoginCode) {
+    return `${header}Regarding your request for access to the student voting portal, please be informed that each registered student of the Federal University of Petroleum Resources Effurun is issued unique login credentials linked to their institutional matriculation number.\n\nTo access the portal:\n1. Use your matriculation number as your username\n2. An OTP will be sent to your registered institutional email address\n3. Enter the OTP to complete the login process\n\nIf you are experiencing difficulty logging in, it may be due to an incorrect matriculation number or an unregistered email address. Kindly confirm that your details are correctly entered. For further assistance, the Commission will investigate and provide a resolution promptly.${footer}`;
+  }
+
+  // Voting process related
+  if (isVoting) {
+    return `${header}Thank you for your enquiry regarding the voting process. The NAMATL election is conducted electronically through our secure and transparent e-voting platform.\n\nKey information:\n• Each eligible voter must log in using their unique student credentials\n• Voting is only open during the designated election period as announced\n• Each student is entitled to one vote per position\n• The platform ensures secure, encrypted, and anonymous voting\n• Results are tallied automatically and verified by the Electoral Commission\n\nYour participation in the electoral process is duly noted. If you require any clarification on the voting procedure, please refer to the guidelines available on the portal or contact the Commission directly.${footer}`;
+  }
+
+  // Form purchase related
+  if (isForm) {
+    return `${header}With reference to your message concerning form purchase, the NAMATL Electoral Commission provides the following information:\n\n• Nomination forms are available for purchase through the official e-voting portal\n• Payments are processed securely via Flutterwave (credit/debit cards, bank transfers, USSD)\n• Upon successful payment, your candidacy is automatically registered in the system\n• You will be required to upload your manifesto and passport photograph after payment\n• Each position has a specific fee as listed on the Form Purchase page\n• Maximum of five (5) candidates per position\n\nFor specific pricing and position availability, kindly refer to the Form Purchase section on the portal. The Commission will attend to any further inquiries regarding your transaction.${footer}`;
+  }
+
+  // Candidate/nomination related
+  if (isCandidate) {
+    return `${header}Thank you for your interest in contesting for a position in the NAMATL election. We are pleased to inform you of the nomination process:\n\n1. Purchase the nomination form for your desired position through the official portal\n2. Complete the payment via Flutterwave (secured transaction)\n3. After successful payment, provide your details including:\n   - Full name\n   - Position contested\n   - Department\n   - Manifesto (your vision and plans)\n   - Passport photograph\n4. Your candidacy will be reviewed and approved by the Electoral Commission\n5. You will appear on the ballot paper once approved\n\nWe appreciate your enthusiasm and commitment to student leadership. The Commission encourages all qualified students to participate in the democratic process.${footer}`;
+  }
+
+  // Payment related
+  if (isPayment) {
+    return `${header}Regarding your enquiry about payment, the NAMATL Electoral Commission uses Flutterwave as our secure payment gateway for all form purchases and transactions.\n\nImportant information:\n• All payments are processed in real-time\n• A confirmation receipt is generated upon successful payment\n• If you encountered an issue during payment, please provide the transaction reference number\n• The Commission will verify the transaction and resolve any discrepancies\n• Refunds, if applicable, are processed within 5–7 business days\n\nPlease allow the Commission some time to investigate your transaction. We will provide you with a detailed update regarding the status of your payment.${footer}`;
+  }
+
+  // Results related
+  if (isResult) {
+    return `${header}Thank you for your interest in the election results. The NAMATL Electoral Commission conducts a transparent and verifiable election process.\n\nRegarding results:\n• Results are officially released immediately after the conclusion of the election period\n• Final results are displayed on the Admin Dashboard and are accessible to authorised personnel\n• The results include the total votes cast per candidate, vote points, and official candidate IDs\n• All results are certified by the Electoral Commission before publication\n\nIf the election has not yet concluded, please note that results will only be made available after voting has ended. The Commission will communicate the official results through the appropriate channels.${footer}`;
+  }
+
+  // Complaint related
+  if (isComplaint) {
+    return `${header}We acknowledge receipt of your complaint and sincerely apologise for any inconvenience you may have experienced. The NAMATL Electoral Commission takes all concerns with the utmost seriousness.\n\nYour issue has been logged and escalated to the appropriate technical and administrative team for immediate review. The Commission is committed to:\n• Investigating the matter thoroughly\n• Addressing any technical glitches or administrative errors\n• Ensuring a fair and seamless electoral process for all students\n• Providing you with a detailed resolution within the shortest possible time\n\nWe assure you that the matter will be addressed with the urgency it deserves. Your patience and understanding are highly appreciated.${footer}`;
+  }
+
+  // General help/assistance
+  if (isHelp || isGeneral) {
+    return `${header}We appreciate you reaching out to the NAMATL Electoral Commission for assistance. Below is comprehensive information relevant to your enquiry:\n\nABOUT THE PLATFORM:\nThe NAMATL Student E-Voting system is designed to facilitate a seamless, transparent, and secure voting experience for all students of the Federal University of Petroleum Resources Effurun.\n\nTECHNICAL REQUIREMENTS:\n• Ensure you are using a stable internet connection\n• Use an updated browser (Chrome, Firefox, or Safari recommended)\n• Clear your browser cache if you encounter any display issues\n\nLOGIN ASSISTANCE:\n• Your username is your institutional matriculation number\n• An OTP is sent to your registered institutional email\n• Contact the IT support desk if you do not receive the OTP\n\nFORM PURCHASE:\n• Visit the Purchase Form section on the landing page\n• Follow the payment instructions carefully\n• Contact the Commission if payment is not reflected\n\nShould your question require further clarification, the Commission will follow up with you directly. We are committed to ensuring a smooth electoral experience for all.${footer}`;
+  }
+
+  // Default fallback for any other enquiry
+  return `${header}Thank you for your message. The NAMATL Electoral Commission has noted your enquiry and will review it accordingly. Our team is committed to providing you with a thorough and satisfactory response.\n\nFor your reference, here are some common resources:\n• Student Login Portal: Available on the landing page\n• Form Purchase: Accessible via the Purchase Form link\n• Admin Support: Available through the support channel\n\nPlease allow us some time to process your request, and we will get back to you as soon as possible. For urgent matters, you may also visit the Electoral Commission office at the Students' Affairs Division, FUPRE.${footer}`;
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const {
@@ -1031,7 +1102,6 @@ export default function AdminDashboard() {
             {/* Printable Results Document */}
             {resultsGenerated && electionResults.length > 0 && (
               <div id="printableResults">
-                {/* The CSS below ensures only the content inside prints cleanly */}
                 <style>{`
                   @media print {
                     body * { visibility: hidden; }
@@ -1317,24 +1387,7 @@ export default function AdminDashboard() {
                     {msg.email && (
                       <a
                         href={`mailto:${msg.email}?subject=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(
-`Dear ${msg.name},
-
-Thank you for contacting the NAMATL Electoral Commission.
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ↓ TYPE YOUR REPLY IN THE SPACE BELOW ↓
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-
-Original message from you:
-"${msg.message}"
-
-
-Best regards,
-Officialelectoralcommission@gmail.com
---
-NAMATL Electoral Commission`
+`${generateAutoReply(msg)}`
 )}`}
                         target="_blank"
                         rel="noopener noreferrer"

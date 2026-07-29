@@ -1,26 +1,36 @@
 import { useState, useEffect } from 'react';
 
+// 🚨 Capture the event GLOBALLY before React mounts
+let _deferredPrompt = null;
+let _promptAvailable = false;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  _promptAvailable = true;
+});
+
+window.addEventListener('appinstalled', () => {
+  _deferredPrompt = null;
+  _promptAvailable = false;
+});
+
 export default function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(_deferredPrompt);
   const [visible, setVisible] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [guideContent, setGuideContent] = useState(null);
 
-  // Detect the user's browser / OS for tailored instructions
   const getBrowserInfo = () => {
     const ua = navigator.userAgent || navigator.vendor || window.opera;
     const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
     const isFirefox = /Firefox/.test(ua);
-    const isChrome = /Chrome/.test(ua) && !/Edge/.test(ua) && !/Brave/.test(ua);
-    const isEdge = /Edg/.test(ua);
     const isMac = navigator.platform === 'MacIntel' && !isIOS;
-
-    return { isIOS, isSafari, isFirefox, isChrome, isEdge, isMac, ua };
+    return { isIOS, isSafari, isFirefox, isMac };
   };
 
-  // Platform-specific install guides
   const getGuideContent = () => {
     const { isIOS, isSafari, isFirefox, isMac } = getBrowserInfo();
 
@@ -50,18 +60,6 @@ export default function InstallPrompt() {
       };
     }
 
-    if (isFirefox && isMac) {
-      return {
-        title: 'Install on Firefox (Mac)',
-        steps: [
-          'Firefox does not support full PWA installation on desktop.',
-          'Click the menu (☰) → "Save Page As…" or bookmark this page.',
-          'For the best experience, use Chrome or Edge to install this app.'
-        ],
-        icon: '🦊'
-      };
-    }
-
     if (isSafari && isMac) {
       return {
         title: 'Install on Safari (Mac)',
@@ -75,7 +73,18 @@ export default function InstallPrompt() {
       };
     }
 
-    // Default: Chromium-based (Chrome, Edge, Brave, Opera)
+    if (isFirefox && isMac) {
+      return {
+        title: 'Install on Firefox (Mac)',
+        steps: [
+          'Firefox does not support full PWA installation on desktop.',
+          'Click the menu (☰) → "Save Page As…" or bookmark this page.',
+          'For the best experience, use Chrome or Edge to install this app.'
+        ],
+        icon: '🦊'
+      };
+    }
+
     return {
       title: 'Install NAMATL',
       steps: [
@@ -89,7 +98,7 @@ export default function InstallPrompt() {
   };
 
   useEffect(() => {
-    // Check if already installed (standalone mode)
+    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches ||
         window.matchMedia('(display-mode: fullscreen)').matches ||
         window.matchMedia('(display-mode: minimal-ui)').matches) {
@@ -97,59 +106,71 @@ export default function InstallPrompt() {
       return;
     }
 
-    // Listen for the install prompt (native Chrome + polyfill for others)
+    // If the event already fired before React mounted, show immediately
+    if (_promptAvailable && _deferredPrompt) {
+      setDeferredPrompt(_deferredPrompt);
+      setVisible(true);
+      return;
+    }
+
+    // Fallback listener for late events (Chrome user engagement delay)
     const handler = (e) => {
       e.preventDefault();
+      _deferredPrompt = e;
+      _promptAvailable = true;
       setDeferredPrompt(e);
       setVisible(true);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
 
-    // When app is successfully installed
-    window.addEventListener('appinstalled', () => {
+    // Also listen for appinstalled after mount
+    const installedHandler = () => {
       setIsInstalled(true);
       setVisible(false);
       setDeferredPrompt(null);
-    });
+      _deferredPrompt = null;
+      _promptAvailable = false;
+    };
+    window.addEventListener('appinstalled', installedHandler);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installedHandler);
     };
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
+    const prompt = deferredPrompt || _deferredPrompt;
+    if (!prompt) return;
 
-    // Check if this is a real native prompt or a polyfill
-    const isNativePrompt = typeof deferredPrompt.prompt === 'function';
+    const isNative = typeof prompt.prompt === 'function';
 
     try {
-      if (isNativePrompt) {
-        deferredPrompt.prompt();
-        const result = await deferredPrompt.userChoice;
+      if (isNative) {
+        prompt.prompt();
+        const result = await prompt.userChoice;
         if (result.outcome === 'accepted') {
           setIsInstalled(true);
           setVisible(false);
         }
       } else {
-        // Polyfill fallback — show the guide
         setGuideContent(getGuideContent());
         setShowGuide(true);
       }
     } catch (err) {
-      // If prompt fails (e.g. on iOS or unsupported), show the guide
       setGuideContent(getGuideContent());
       setShowGuide(true);
     }
 
+    _deferredPrompt = null;
+    _promptAvailable = false;
     setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
     setVisible(false);
     setShowGuide(false);
-    setDeferredPrompt(null);
   };
 
   const closeGuide = () => {
@@ -157,10 +178,8 @@ export default function InstallPrompt() {
     setVisible(false);
   };
 
-  // Already installed — show nothing
   if (isInstalled) return null;
 
-  // Show the install guide overlay
   if (showGuide && guideContent) {
     return (
       <div style={styles.overlay}>
@@ -179,10 +198,8 @@ export default function InstallPrompt() {
     );
   }
 
-  // Don't show the prompt button if not ready
   if (!visible) return null;
 
-  // Show the install prompt card
   return (
     <div style={styles.overlay}>
       <div style={styles.card}>

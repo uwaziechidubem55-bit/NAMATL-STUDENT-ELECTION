@@ -138,42 +138,36 @@ export default function Landing() {
     whiteSpace: 'nowrap'
   };
 
-  // ===== MODIFIED: LED scrolling footer styles =====
+  // ===== MODIFIED: Footer wrapper for marquee =====
   const footerWrapperStyle = {
     position: 'absolute',
     bottom: '15px',
+    left: 0,
     width: '100%',
     overflow: 'hidden',
-    textAlign: 'center'
+    whiteSpace: 'nowrap'
   };
 
   return (
     <div style={containerStyle}>
-      {/* LED scrolling animation keyframes */}
+      {/* LED scrolling animation */}
       <style>{`
-        @keyframes ledScroll {
-          0%, 14% {
-            transform: translateX(0);
-          }
-          15%, 72% {
-            transform: translateX(-100%);
-          }
-          73%, 74% {
+        @keyframes walkMarquee {
+          0% {
             transform: translateX(100%);
           }
-          75%, 100% {
-            transform: translateX(0);
+          100% {
+            transform: translateX(-100%);
           }
         }
-        .led-footer-text {
+        .footer-walker {
           display: inline-block;
-          white-space: nowrap;
-          animation: ledScroll 14s linear infinite;
+          padding: 0 40px;
           color: rgba(255,255,255,0.5);
           font-size: clamp(0.65rem, 2vw, 0.8rem);
-          padding: 0 20px;
+          animation: walkMarquee 18s linear infinite;
         }
-        .led-footer-text:hover {
+        .footer-walker:hover {
           animation-play-state: paused;
         }
       `}</style>
@@ -261,10 +255,10 @@ export default function Landing() {
         Student Login
       </Link>
 
-      {/* ===== MODIFIED: LED scrolling footer ===== */}
+      {/* ===== MODIFIED: Walking marquee footer ===== */}
       <div style={footerWrapperStyle}>
-        <span className="led-footer-text">
-          &copy; {new Date().getFullYear()} NAMATLS FUPRE. All rights reserved.
+        <span className="footer-walker">
+          &copy; {new Date().getFullYear()} NAMATLS FUPRE. ALL RIGHTS RESERVED.
         </span>
       </div>
 

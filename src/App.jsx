@@ -2,6 +2,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
+import InstallPrompt from './components/InstallPrompt';
 
 // ⚡ Dynamic/Lazy Imports for Page Components
 const Landing = lazy(() => import('./pages/Landing'));
@@ -83,6 +84,9 @@ function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
+
+      {/* 📱 Non-intrusive home screen invitation layout engine */}
+      <InstallPrompt />
     </DataChargeProvider>
   );
 }

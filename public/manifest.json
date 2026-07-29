@@ -1,0 +1,14 @@
+{
+  "name": "NAMATL Student E-Voting",
+  "short_name": "NAMATL Vote",
+  "description": "Official Election Platform for NAMATL FUPRE",
+  "theme_color": "#003366",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    { "src": "/logo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,10 +1,13 @@
 // NAMTLS v2.0.1 - FORCE UPDATE - DO NOT REMOVE THIS LINE
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
 
 // 👇 ONLY ADDITION — Import the install popup
 import InstallPrompt from './components/InstallPrompt';
+
+// ===== ADD THIS IMPORT =====
+import ErrorBoundary from './components/ErrorBoundary';
 
 // ⚡ Dynamic/Lazy Imports for Page Components
 const Landing = lazy(() => import('./pages/Landing'));
@@ -53,10 +56,14 @@ function NotFound() {
       color: 'white',
       fontFamily: 'Arial, sans-serif'
     }}>
-      <h1 style={{ fontSize: '4rem', color: '#FFD700', margin: '0' }}>⚠️</h1>
-      <h1 style={{ color: '#FFD700' }}>ERROR 404</h1>
+      <h1 style={{fontSize: '4rem',color: '#FFD700',margin: '0'}}>⚠️</h1>
+      <h1 style={{color: '#FFD700'}}>ERROR 404</h1>
       <p>Page not found</p>
-      <a href="/#/" style={{ color: '#FFD700', marginTop: '16px' }}>Go Home</a>
+      {/*
+        FIXED: Changed from <a href="/#/"> to <Link to="/">
+        Prevents full-page reload, keeps React state
+      */}
+      <Link to="/" style={{color: '#FFD700',marginTop: '16px'}}>Go Home</Link>
     </div>
   );
 }
@@ -76,19 +83,26 @@ function App() {
       {/* 👇 ONLY ADDITION — Renders the install popup on every page */}
       <InstallPrompt />
 
-      {/* 📦 Suspense intercepts the loading gap when a user switches between pages */}
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/student-login" element={<StudentLogin />} />
-          <Route path="/student" element={<StudentDashboard />} />
-          <Route path="/admin-login" element={<AdminLogin />} />
-          <Route path="/admin-dashboard" element={<AdminDashboard />} />
-          <Route path="/support" element={<Support />} />
-          <Route path="/purchase-form" element={<PurchaseForm />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
+      {/*
+        ===== FIX: Wrap Routes in ErrorBoundary =====
+        Without this, ANY runtime error in any lazy-loaded page
+        silently kills the entire React tree → blank white page.
+      */}
+      <ErrorBoundary>
+        {/* 📦 Suspense intercepts the loading gap when a user switches between pages */}
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/student-login" element={<StudentLogin />} />
+            <Route path="/student" element={<StudentDashboard />} />
+            <Route path="/admin-login" element={<AdminLogin />} />
+            <Route path="/admin-dashboard" element={<AdminDashboard />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/purchase-form" element={<PurchaseForm />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </DataChargeProvider>
   );
 }

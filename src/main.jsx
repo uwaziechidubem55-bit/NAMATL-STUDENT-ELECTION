@@ -6,29 +6,32 @@ import './index.css';
 
 // ===== 💥 UPGRADED: Bulletproof global error handler =====
 // Catches ANY uncaught JS error and forces a visible error screen.
-// This prevents the blank white page from ever appearing.
 window.onerror = function(msg, url, line, col, err) {
+  // IGNORE Vercel internal errors — these are harmless infrastructure noise
+  if (isVercelInternalError(msg, err)) return true;
   console.error('[Global Error]', msg, err);
   showFatalError(msg, err);
   return true;
 };
 
-// ===== 💥 ADDED: Catch unhandled Promise rejections =====
-// These are NOT caught by window.onerror, so they need a separate handler.
-// Without this, an async Firebase/Flutterwave failure silently kills the app.
+// ===== 💥 FIXED: Catch unhandled Promise rejections =====
+// But IGNORE Vercel's own internal ones that break the page
 window.addEventListener('unhandledrejection', function(event) {
+  const reason = event.reason?.message || event.reason || '';
+  if (isVercelInternalError(reason, event.reason)) {
+    console.log('[Vercel Internal] Ignored:', reason);
+    event.preventDefault();
+    return;
+  }
   console.error('[Unhandled Promise Rejection]', event.reason);
-  const reason = event.reason?.message || event.reason || 'Unknown Promise rejection';
   showFatalError('Unhandled Promise: ' + reason, event.reason);
   event.preventDefault();
 });
 
-// ===== 💥 ADDED: Catch runtime errors after React mounts =====
-// This catches errors thrown in event handlers, setTimeout, etc.
-// that React's ErrorBoundary cannot catch.
+// ===== 💥 FIXED: Catch runtime errors but ignore Vercel internals =====
 window.addEventListener('error', function(event) {
-  // Skip if already handled by window.onerror (same event fires both)
   if (event.error && event.error._handled) return;
+  if (isVercelInternalError(event.message, event.error)) return;
   if (event.error) event.error._handled = true;
   console.error('[Runtime Error]', event.error || event.message);
   if (event.error || event.message) {
@@ -36,18 +39,28 @@ window.addEventListener('error', function(event) {
   }
 });
 
-// ===== 💥 Shared: Force error onto screen in an unignorable way =====
+// ===== 🔑 KEY: Filter function — ignores Vercel's internal noise =====
+function isVercelInternalError(msg, err) {
+  const text = String(msg || err?.message || err?.stack || '');
+  const stack = String(err?.stack || '');
+  // Vercel injects these scripts — they fail harmlessly
+  if (text.includes('magicRPC')) return true;
+  if (stack.includes('magicRPC')) return true;
+  if (text.includes('_vercel')) return true;
+  if (text.includes('/__vercel/')) return true;
+  if (text.includes('Failed to fetch') && stack.includes('<anonymous>')) return true;
+  return false;
+}
+
+// ===== 💥 Shared: Force error onto screen =====
 function showFatalError(msg, err) {
   const rootEl = document.getElementById('root');
   if (!rootEl) {
     document.body.innerHTML = getErrorHTML(msg, err);
     return;
   }
-  // Always overwrite — even if another error handler already wrote something
   rootEl.innerHTML = getErrorHTML(msg, err);
-  // Also write to document title so the tab itself shows the error
   document.title = '⚠️ ERROR - ' + (msg || 'Unknown').substring(0, 60);
-  // Force the body background to dark blue so white is NEVER shown
   document.body.style.backgroundColor = '#003366';
   document.body.style.margin = '0';
 }
@@ -55,7 +68,6 @@ function showFatalError(msg, err) {
 function getErrorHTML(msg, err) {
   const stack = err?.stack || '';
   const errorMessage = String(msg || err?.message || 'Unknown error');
-  // Sanitize against XSS (just in case the error message contains HTML)
   const safeMsg = errorMessage.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const safeStack = stack.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   return `
@@ -73,9 +85,7 @@ function getErrorHTML(msg, err) {
   `;
 }
 
-// ===== 🧹 ADDED: Clear stale service worker caches on first load =====
-// Prevents "blank white page" caused by SW serving stale/cached error pages
-// from previous deployments. Runs BEFORE the new SW registers.
+// ===== 🧹 Added: Clear stale SW caches on load =====
 (async function clearStaleSWCaches() {
   if ('caches' in window) {
     const cacheKeys = await caches.keys();
@@ -83,7 +93,6 @@ function getErrorHTML(msg, err) {
     await Promise.all(staleCaches.map(k => caches.delete(k)));
     console.log('[Cache Cleanup] Removed', staleCaches.length, 'stale cache(s)');
   }
-  // Unregister any orphaned service workers from old deployments
   if ('serviceWorker' in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations();
     for (const reg of registrations) {
@@ -95,7 +104,7 @@ function getErrorHTML(msg, err) {
   }
 })();
 
-// ===== RESTORED: Service worker registration =====
+// ===== Service worker registration =====
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(() => {

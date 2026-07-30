@@ -95,10 +95,10 @@ export default function InstallPrompt() {
       return {
         title: 'Install on Android',
         steps: [
-          'Tap the menu button (three dots) in the top-right corner.',
-          'Tap "Install app" or "Add to Home screen".',
-          'Tap "Install" in the popup.',
-          'Find NAMATL on your home screen!'
+          'Click the "Install App" button again.',
+          'When the system prompt slides up from the bottom, tap "Install".',
+          'The app will download automatically in the background.',
+          'Find NAMATL on your home screen — it opens instantly like a real app!'
         ],
         icon: '📱'
       };
@@ -169,29 +169,34 @@ export default function InstallPrompt() {
   }, []);
 
   const handleInstall = async () => {
+    // 🔑 PRIORITY: Check the active state first, then fallback to global capture cache
     const prompt = deferredPrompt || _deferredPrompt;
 
     if (prompt && typeof prompt.prompt === 'function') {
       try {
-        prompt.prompt();
+        // Trigger native Android / Chrome app store slide-up install sheet
+        await prompt.prompt();
         const result = await prompt.userChoice;
+        
         if (result.outcome === 'accepted') {
           setIsInstalled(true);
           setVisible(false);
           localStorage.removeItem(DISMISSED_KEY);
+          
+          // Clear internal pointers completely
+          _deferredPrompt = null;
+          _promptAvailable = false;
+          setDeferredPrompt(null);
           return;
         }
       } catch (err) {
-        // Fall through to guide
+        console.error('Native prompt delivery failed:', err);
       }
     }
 
+    // If native prompt engine is blocked or missing, fall back to guide
     setGuideContent(getGuideContent());
     setShowGuide(true);
-
-    _deferredPrompt = null;
-    _promptAvailable = false;
-    setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
@@ -293,12 +298,3 @@ export default function InstallPrompt() {
         </p>
 
         <button onClick={handleInstall} style={{
-          padding: '10px 32px', border: 'none', borderRadius: '10px',
-          background: '#003366', color: '#ffffff', fontSize: '15px',
-          fontWeight: '700', cursor: 'pointer',
-          boxShadow: '0 3px 10px rgba(0,51,102,0.3)',
-        }}>Install App</button>
-      </div>
-    </div>
-  );
-}

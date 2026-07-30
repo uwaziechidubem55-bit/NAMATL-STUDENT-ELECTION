@@ -117,7 +117,6 @@ export default function InstallPrompt() {
   };
 
   useEffect(() => {
-    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches ||
         window.matchMedia('(display-mode: fullscreen)').matches ||
         window.matchMedia('(display-mode: minimal-ui)').matches) {
@@ -125,19 +124,16 @@ export default function InstallPrompt() {
       return;
     }
 
-    // Check if user previously dismissed
     if (localStorage.getItem(DISMISSED_KEY)) {
       return;
     }
 
-    // If the event already fired before React mounted, show immediately
     if (_promptAvailable && _deferredPrompt) {
       setDeferredPrompt(_deferredPrompt);
       setVisible(true);
       return;
     }
 
-    // FALLBACK: Show popup after 3 seconds regardless of browser/event.
     const showTimer = setTimeout(() => {
       setVisible(true);
     }, 3000);
@@ -169,21 +165,17 @@ export default function InstallPrompt() {
   }, []);
 
   const handleInstall = async () => {
-    // 🔑 PRIORITY: Check the active state first, then fallback to global capture cache
     const prompt = deferredPrompt || _deferredPrompt;
 
     if (prompt && typeof prompt.prompt === 'function') {
       try {
-        // Trigger native Android / Chrome app store slide-up install sheet
         await prompt.prompt();
         const result = await prompt.userChoice;
-        
+
         if (result.outcome === 'accepted') {
           setIsInstalled(true);
           setVisible(false);
           localStorage.removeItem(DISMISSED_KEY);
-          
-          // Clear internal pointers completely
           _deferredPrompt = null;
           _promptAvailable = false;
           setDeferredPrompt(null);
@@ -194,7 +186,6 @@ export default function InstallPrompt() {
       }
     }
 
-    // If native prompt engine is blocked or missing, fall back to guide
     setGuideContent(getGuideContent());
     setShowGuide(true);
   };
@@ -298,4 +289,13 @@ export default function InstallPrompt() {
         </p>
 
         <button onClick={handleInstall} style={{
-padding: '10px 32px', border: 'none', borderRadius: '10px',background: '#003366', color: '#ffffff', fontSize: '15px',fontWeight: '700', cursor: 'pointer',boxShadow: '0 3px 10px rgba(0,51,102,0.3)',}}>Install App);}
+          padding: '10px 32px', border: 'none', borderRadius: '10px',
+          background: '#003366', color: '#ffffff', fontSize: '15px',
+          fontWeight: '700', cursor: 'pointer', boxShadow: '0 3px 10px rgba(0,51,102,0.3)'
+        }}>
+          Install App
+        </button>
+      </div>
+    </div>
+  ); // <- was missing
+} // <- was missing

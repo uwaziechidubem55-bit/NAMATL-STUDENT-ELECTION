@@ -1,34 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: '/',
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['logo.png'],
-      filename: 'manifest.webmanifest',       // ← THIS IS THE ONLY NEW LINE
-      manifest: {
-        name: 'NAMATL Student E-Voting',
-        short_name: 'NAMATL Vote',
-        description: 'Official Election Platform for NAMATL FUPRE',
-        theme_color: '#003366',
-        background_color: '#ffffff',
-        display: 'standalone',
-        scope: '/',
-        start_url: '/',
-        icons: [
-          { src: 'logo.png', sizes: '192x192', type: 'image/png' },
-          { src: 'logo.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-        ]
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,ico,json}']
-      }
-    })
-  ],
+  plugins: [react()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -55,4 +30,4 @@ export default defineConfig({
       },
     },
   },
-}) 
+})

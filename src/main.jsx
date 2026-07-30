@@ -19,11 +19,19 @@ window.onerror = function(msg, url, line, col, err) {
   return true;
 };
 
-// ===== REMOVED: Broken service worker registration =====
-// The old code tried to register /sw.js which doesn't exist.
-// It silently failed with .catch(() => {}), but on some browsers
-// a stale cached service worker from a previous deploy served
-// broken shell content. Removed entirely.
+// ===== RESTORED: Service worker registration =====
+// sw.js now exists in /public and gets copied to build output.
+// This enables the 'beforeinstallprompt' event in Chrome/Edge/Android
+// AND enables offline caching for the PWA.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(() => {
+      console.log('NAMTLS SW registered');
+    }).catch((err) => {
+      console.warn('NAMTLS SW registration failed:', err.message);
+    });
+  });
+}
 
 const rootElement = document.getElementById('root');
 if (rootElement) {

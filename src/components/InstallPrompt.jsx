@@ -17,6 +17,10 @@ window.addEventListener('appinstalled', () => {
 
 const DISMISSED_KEY = 'namatl_install_dismissed';
 
+// ===== ADDED: Clear dismiss flag on every page load =====
+// Popup shows every visit. Only hidden when app is actually installed.
+localStorage.removeItem(DISMISSED_KEY);
+
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(_deferredPrompt);
   const [visible, setVisible] = useState(false);
@@ -134,13 +138,10 @@ export default function InstallPrompt() {
     }
 
     // FALLBACK: Show popup after 3 seconds regardless of browser/event.
-    // beforeinstallprompt only fires in Chrome/Edge/Android.
-    // This ensures Safari, Firefox, and iOS users also see the prompt.
     const showTimer = setTimeout(() => {
       setVisible(true);
     }, 3000);
 
-    // Listen for the native beforeinstallprompt event
     const handler = (e) => {
       e.preventDefault();
       _deferredPrompt = e;
@@ -151,7 +152,6 @@ export default function InstallPrompt() {
 
     window.addEventListener('beforeinstallprompt', handler);
 
-    // Also listen for appinstalled after mount
     const installedHandler = () => {
       setIsInstalled(true);
       setVisible(false);
@@ -171,7 +171,6 @@ export default function InstallPrompt() {
   const handleInstall = async () => {
     const prompt = deferredPrompt || _deferredPrompt;
 
-    // If we have a native prompt (Chrome/Edge/Android), use it
     if (prompt && typeof prompt.prompt === 'function') {
       try {
         prompt.prompt();
@@ -187,7 +186,6 @@ export default function InstallPrompt() {
       }
     }
 
-    // No native prompt available → show browser-specific install guide
     setGuideContent(getGuideContent());
     setShowGuide(true);
 
@@ -199,7 +197,6 @@ export default function InstallPrompt() {
   const handleDismiss = () => {
     setVisible(false);
     setShowGuide(false);
-    // Remember dismissal so user doesn't see popup again on next page load
     localStorage.setItem(DISMISSED_KEY, Date.now().toString());
   };
 

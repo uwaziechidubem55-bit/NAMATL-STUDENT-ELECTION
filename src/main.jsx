@@ -19,6 +19,28 @@ window.onerror = function(msg, url, line, col, err) {
   return true;
 };
 
+// ===== 🧹 ADDED: Clear stale service worker caches on first load =====
+// Prevents "blank white page" caused by SW serving stale/cached error pages
+// from previous deployments. Runs BEFORE the new SW registers.
+(async function clearStaleSWCaches() {
+  if ('caches' in window) {
+    const cacheKeys = await caches.keys();
+    const staleCaches = cacheKeys.filter(k => k !== 'namatl-vote-v2');
+    await Promise.all(staleCaches.map(k => caches.delete(k)));
+    console.log('[Cache Cleanup] Removed', staleCaches.length, 'stale cache(s)');
+  }
+  // Unregister any orphaned service workers from old deployments
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const reg of registrations) {
+      if (reg.active && reg.active.scriptURL.includes('sw.js')) {
+        await reg.unregister();
+        console.log('[SW Cleanup] Unregistered existing service worker');
+      }
+    }
+  }
+})();
+
 // ===== RESTORED: Service worker registration =====
 // sw.js now exists in /public and gets copied to build output.
 // This enables the 'beforeinstallprompt' event in Chrome/Edge/Android
@@ -37,11 +59,11 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
   root.render(
-        <StrictMode>
-          <HashRouter>
-            <App />
-          </HashRouter>
-        </StrictMode>
+    <StrictMode>
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </StrictMode>
   );
   console.log('NAMTLS E-Voting System v2.0 mounted');
 } else {

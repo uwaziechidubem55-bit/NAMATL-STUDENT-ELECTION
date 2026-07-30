@@ -298,3 +298,4 @@ export default function InstallPrompt() {
         </p>
 
         <button onClick={handleInstall} style={{
+padding: '10px 32px', border: 'none', borderRadius: '10px',background: '#003366', color: '#ffffff', fontSize: '15px',fontWeight: '700', cursor: 'pointer',boxShadow: '0 3px 10px rgba(0,51,102,0.3)',}}>Install App);}

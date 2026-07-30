@@ -1,3 +1,10 @@
+// ===== ADDED: Version bump forces SW update on deploy =====
+// Change this number every time you push an update.
+const CACHE_VERSION = 1;
+
+// Rename your cache to include the version
+
+const CACHE_NAME = 'namatl-vote-v' + CACHE_VERSION;
 const CACHE_NAME = 'namatl-vote-v2';
 const ASSETS = [
   '/',

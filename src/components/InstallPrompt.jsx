@@ -15,6 +15,8 @@ window.addEventListener('appinstalled', () => {
   _promptAvailable = false;
 });
 
+const DISMISSED_KEY = 'namatl_install_dismissed';
+
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(_deferredPrompt);
   const [visible, setVisible] = useState(false);
@@ -51,9 +53,9 @@ export default function InstallPrompt() {
       return {
         title: 'Install on Firefox (Android)',
         steps: [
-          'Tap the three-dot menu (⋮) in the top-right or bottom-right.',
-          'Tap "Install" or "Add to Home Screen".',
-          'Tap "Install" to confirm.',
+          'Tap the menu button (three dots) in the top-right corner.',
+          'Tap "Install" or "Add to Home screen".',
+          'Tap "Install" in the popup.',
           'Firefox will add NAMATL to your home screen.'
         ],
         icon: '🦊'
@@ -85,6 +87,19 @@ export default function InstallPrompt() {
       };
     }
 
+    if (/Android/.test(navigator.userAgent)) {
+      return {
+        title: 'Install on Android',
+        steps: [
+          'Tap the menu button (three dots) in the top-right corner.',
+          'Tap "Install app" or "Add to Home screen".',
+          'Tap "Install" in the popup.',
+          'Find NAMATL on your home screen!'
+        ],
+        icon: '📱'
+      };
+    }
+
     return {
       title: 'Install NAMATL',
       steps: [
@@ -106,6 +121,11 @@ export default function InstallPrompt() {
       return;
     }
 
+    // Check if user previously dismissed
+    if (localStorage.getItem(DISMISSED_KEY)) {
+      return;
+    }
+
     // If the event already fired before React mounted, show immediately
     if (_promptAvailable && _deferredPrompt) {
       setDeferredPrompt(_deferredPrompt);
@@ -113,7 +133,14 @@ export default function InstallPrompt() {
       return;
     }
 
-    // Fallback listener for late events (Chrome user engagement delay)
+    // FALLBACK: Show popup after 3 seconds regardless of browser/event.
+    // beforeinstallprompt only fires in Chrome/Edge/Android.
+    // This ensures Safari, Firefox, and iOS users also see the prompt.
+    const showTimer = setTimeout(() => {
+      setVisible(true);
+    }, 3000);
+
+    // Listen for the native beforeinstallprompt event
     const handler = (e) => {
       e.preventDefault();
       _deferredPrompt = e;
@@ -135,6 +162,7 @@ export default function InstallPrompt() {
     window.addEventListener('appinstalled', installedHandler);
 
     return () => {
+      clearTimeout(showTimer);
       window.removeEventListener('beforeinstallprompt', handler);
       window.removeEventListener('appinstalled', installedHandler);
     };
@@ -142,26 +170,26 @@ export default function InstallPrompt() {
 
   const handleInstall = async () => {
     const prompt = deferredPrompt || _deferredPrompt;
-    if (!prompt) return;
 
-    const isNative = typeof prompt.prompt === 'function';
-
-    try {
-      if (isNative) {
+    // If we have a native prompt (Chrome/Edge/Android), use it
+    if (prompt && typeof prompt.prompt === 'function') {
+      try {
         prompt.prompt();
         const result = await prompt.userChoice;
         if (result.outcome === 'accepted') {
           setIsInstalled(true);
           setVisible(false);
+          localStorage.removeItem(DISMISSED_KEY);
+          return;
         }
-      } else {
-        setGuideContent(getGuideContent());
-        setShowGuide(true);
+      } catch (err) {
+        // Fall through to guide
       }
-    } catch (err) {
-      setGuideContent(getGuideContent());
-      setShowGuide(true);
     }
+
+    // No native prompt available → show browser-specific install guide
+    setGuideContent(getGuideContent());
+    setShowGuide(true);
 
     _deferredPrompt = null;
     _promptAvailable = false;
@@ -171,28 +199,55 @@ export default function InstallPrompt() {
   const handleDismiss = () => {
     setVisible(false);
     setShowGuide(false);
+    // Remember dismissal so user doesn't see popup again on next page load
+    localStorage.setItem(DISMISSED_KEY, Date.now().toString());
   };
 
   const closeGuide = () => {
     setShowGuide(false);
     setVisible(false);
+    localStorage.setItem(DISMISSED_KEY, Date.now().toString());
   };
 
   if (isInstalled) return null;
 
   if (showGuide && guideContent) {
     return (
-      <div style={styles.overlay}>
-        <div style={styles.guideCard}>
-          <button onClick={closeGuide} style={styles.closeBtn}>×</button>
-          <div style={{ fontSize: '40px', marginBottom: '8px' }}>{guideContent.icon}</div>
-          <h3 style={{ margin: '0 0 12px', color: '#003366' }}>{guideContent.title}</h3>
-          <ol style={{ textAlign: 'left', fontSize: '14px', lineHeight: '1.8', color: '#333', paddingLeft: '20px', margin: '0 0 16px' }}>
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 99999, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: 'rgba(0,0,0,0.3)',
+        pointerEvents: 'auto'
+      }}>
+        <div style={{
+          background: '#ffffff', borderRadius: '16px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+          padding: '24px 28px', width: '320px', maxWidth: '90vw',
+          textAlign: 'center', position: 'relative'
+        }}>
+          <button onClick={closeGuide} style={{
+            position: 'absolute', top: '8px', right: '12px',
+            background: 'none', border: 'none', fontSize: '22px',
+            color: '#999', cursor: 'pointer', lineHeight: 1,
+            padding: '4px 8px'
+          }}>×</button>
+
+          <div style={{fontSize: '40px', marginBottom: '8px'}}>{guideContent.icon}</div>
+          <h3 style={{margin: '0 0 16px', color: '#003366'}}>{guideContent.title}</h3>
+
+          <div style={{textAlign: 'left', marginBottom: '16px'}}>
             {guideContent.steps.map((step, i) => (
-              <li key={i}>{step}</li>
+              <p key={i} style={{fontSize: '14px', color: '#444', margin: '0 0 8px', lineHeight: '1.5'}}>
+                <strong>{i + 1}.</strong> {step}
+              </p>
             ))}
-          </ol>
-          <button onClick={closeGuide} style={styles.gotItBtn}>Got it</button>
+          </div>
+
+          <button onClick={closeGuide} style={{
+            padding: '8px 28px', border: 'none', borderRadius: '8px',
+            background: '#003366', color: '#ffffff', fontSize: '14px',
+            fontWeight: '600', cursor: 'pointer'
+          }}>Got it</button>
         </div>
       </div>
     );
@@ -201,106 +256,52 @@ export default function InstallPrompt() {
   if (!visible) return null;
 
   return (
-    <div style={styles.overlay}>
-      <div style={styles.card}>
-        <button onClick={handleDismiss} style={styles.closeBtn}>×</button>
-        <div style={styles.row}>
-          <img src="/logo.png" alt="NAMATL" style={styles.logo} onError={(e) => { e.target.style.display = 'none'; }} />
-          <span style={styles.name}>NAMATL Student Election</span>
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      zIndex: 99999, display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: 'rgba(0,0,0,0.3)',
+      pointerEvents: 'auto'
+    }}>
+      <div style={{
+        background: '#ffffff', borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+        padding: '24px 28px', width: '300px', maxWidth: '90vw',
+        textAlign: 'center', position: 'relative'
+      }}>
+        <button onClick={handleDismiss} style={{
+          position: 'absolute', top: '8px', right: '12px',
+          background: 'none', border: 'none', fontSize: '22px',
+          color: '#999', cursor: 'pointer', lineHeight: 1,
+          padding: '4px 8px'
+        }}>×</button>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '10px', marginBottom: '12px'
+        }}>
+          <img
+            src="/logo.png"
+            alt="NAMATL"
+            style={{
+              width: '40px', height: '40px', borderRadius: '10px',
+              objectFit: 'cover', border: '1px solid #003366'
+            }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+          <span style={{fontSize: '16px', fontWeight: '700', color: '#003366'}}>NAMATL Student Election</span>
         </div>
-        <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#666' }}>
+
+        <p style={{fontSize: '14px', color: '#666', margin: '0 0 16px', lineHeight: '1.4'}}>
           Install this app on your device for the best experience
         </p>
-        <button onClick={handleInstall} style={styles.installBtn}>
-          Install App
-        </button>
+
+        <button onClick={handleInstall} style={{
+          padding: '10px 32px', border: 'none', borderRadius: '10px',
+          background: '#003366', color: '#ffffff', fontSize: '15px',
+          fontWeight: '700', cursor: 'pointer',
+          boxShadow: '0 3px 10px rgba(0,51,102,0.3)',
+        }}>Install App</button>
       </div>
     </div>
   );
 }
-
-const styles = {
-  overlay: {
-    position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 99999,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'rgba(0,0,0,0.3)',
-    pointerEvents: 'auto',
-  },
-  card: {
-    background: '#ffffff',
-    borderRadius: '16px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-    padding: '24px 28px',
-    width: '300px',
-    maxWidth: '90vw',
-    textAlign: 'center',
-    position: 'relative',
-    animation: 'fadeIn 0.3s ease-out',
-  },
-  guideCard: {
-    background: '#ffffff',
-    borderRadius: '16px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-    padding: '24px 28px',
-    width: '320px',
-    maxWidth: '90vw',
-    textAlign: 'center',
-    position: 'relative',
-    animation: 'fadeIn 0.3s ease-out',
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: '8px', right: '12px',
-    background: 'none',
-    border: 'none',
-    fontSize: '22px',
-    color: '#999',
-    cursor: 'pointer',
-    lineHeight: 1,
-    padding: '4px 8px',
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '10px',
-    marginBottom: '12px',
-  },
-  logo: {
-    width: '40px', height: '40px',
-    borderRadius: '10px',
-    objectFit: 'cover',
-    border: '1px solid #003366',
-  },
-  name: {
-    fontSize: '16px',
-    fontWeight: '700',
-    color: '#003366',
-  },
-  installBtn: {
-    padding: '10px 32px',
-    border: 'none',
-    borderRadius: '10px',
-    background: '#003366',
-    color: '#ffffff',
-    fontSize: '15px',
-    fontWeight: '700',
-    cursor: 'pointer',
-    boxShadow: '0 3px 10px rgba(0,51,102,0.3)',
-    transition: 'transform 0.15s, background 0.15s',
-  },
-  gotItBtn: {
-    padding: '8px 28px',
-    border: 'none',
-    borderRadius: '8px',
-    background: '#003366',
-    color: '#ffffff',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-};

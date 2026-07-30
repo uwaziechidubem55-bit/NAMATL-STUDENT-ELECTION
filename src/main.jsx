@@ -85,11 +85,12 @@ function getErrorHTML(msg, err) {
   `;
 }
 
-// ===== 🧹 Added: Clear stale SW caches on load =====
+// ===== 🧹 Updated: Clear stale SW caches on load matching v1 =====
 (async function clearStaleSWCaches() {
   if ('caches' in window) {
     const cacheKeys = await caches.keys();
-    const staleCaches = cacheKeys.filter(k => k !== 'namatl-vote-v2');
+    // Keeps 'namatl-vote-v1' active, deletes anything else (like v2, v0, etc.)
+    const staleCaches = cacheKeys.filter(k => k !== 'namatl-vote-v1');
     await Promise.all(staleCaches.map(k => caches.delete(k)));
     console.log('[Cache Cleanup] Removed', staleCaches.length, 'stale cache(s)');
   }
@@ -125,7 +126,7 @@ if (rootElement) {
       </HashRouter>
     </StrictMode>
   );
-  console.log('NAMTLS E-Voting System v2.0 mounted');
+  console.log('NAMTLS E-Voting System mounted');
 } else {
   document.body.innerHTML = '<h1 style="color:red;text-align:center;margin-top:100px">FATAL: root element missing</h1>';
 }

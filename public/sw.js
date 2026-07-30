@@ -25,6 +25,13 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // 🚫 NEVER cache HTML — always fetch fresh from network
+  if (event.request.mode === 'navigate' || 
+      event.request.headers.get('Accept')?.includes('text/html')) {
+    event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
+    return;
+  }
+  
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

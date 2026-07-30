@@ -1,11 +1,10 @@
 // ===== ADDED: Version bump forces SW update on deploy =====
 // Change this number every time you push an update.
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2; // 👈 Set this to 2 to match your target version
 
 // Rename your cache to include the version
+const CACHE_NAME = 'namatl-vote-v' + CACHE_VERSION; // 👈 Automatically becomes 'namatl-vote-v2'
 
-const CACHE_NAME = 'namatl-vote-v' + CACHE_VERSION;
-const CACHE_NAME = 'namatl-vote-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -38,7 +37,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
     return;
   }
-  
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;

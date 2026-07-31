@@ -1,5 +1,9 @@
-// /api/flutterwave-webhook.js
-import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
+// /api/flutterwave-webhook.js v2
+// 1) charge.completed  -> activation payments (>=25k). FORM- payments are skipped
+//    because verify-form-payment.js already credits them (fixes double-credit).
+// 2) transfer.completed -> withdrawal transfers: finalizes the record + balance
+//    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
+import { setDoc, doc, increment, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../src/firebase';
 
 export default async function handler(req, res) {
@@ -18,13 +22,21 @@ export default async function handler(req, res) {
   const payload = req.body;
 
   try {
+    // ================= CHARGE COMPLETED (activation payments) =================
     if (payload.event === 'charge.completed' && payload.data.status === 'successful') {
       const amount = payload.data.amount;
-      const tx_ref = payload.data.tx_ref;
+      const tx_ref = payload.data.tx_ref || '';
       const transaction_id = payload.data.id;
 
+      // FORM purchases are credited by /api/verify-form-payment.
+      // Skipping them here prevents DOUBLE-CREDITING large form sales.
+      if (String(tx_ref).startsWith('FORM-')) {
+        console.log(`Webhook: Skipping form payment ${tx_ref} (credited by verify-form-payment)`);
+        return res.status(200).json({ status: 'skipped - form payment' });
+      }
+
       if (Number(amount) < 25000) {
-        console.log(`Webhook: Skipping payment under ₦25,000 (₦${amount})`);
+        console.log(`Webhook: Skipping payment under N25,000 (N${amount})`);
         return res.status(200).json({ status: 'skipped - below threshold' });
       }
 
@@ -40,7 +52,7 @@ export default async function handler(req, res) {
         }
       }
 
-      console.log(`Webhook: Crediting ₦${amount} from transaction ${transaction_id}`);
+      console.log(`Webhook: Crediting N${amount} from transaction ${transaction_id}`);
 
       await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
         balance: increment(amount),
@@ -60,6 +72,52 @@ export default async function handler(req, res) {
       }, { merge: true });
 
       console.log(`Webhook: ${academicYear} activated successfully`);
+    }
+
+    // ================= TRANSFER COMPLETED (withdrawals) =================
+    if (payload.event === 'transfer.completed') {
+      const status = String(payload.data?.status || '').toLowerCase();
+      const reference = payload.data?.reference || '';
+      const transferId = payload.data?.id || '';
+      const amount = Number(payload.data?.amount || 0);
+
+      console.log(`Webhook: transfer.completed ${reference} -> ${status}`);
+
+      if (!reference) {
+        return res.status(200).json({ status: 'skipped - no reference' });
+      }
+
+      const recordRef = doc(db, 'finances', 'withdrawals', reference);
+
+      if (status === 'successful') {
+        // Finalize EXACTLY ONCE (atomic) - also deducts the balance
+        await runTransaction(db, async (tx) => {
+          const cur = await tx.get(recordRef);
+          if (cur.exists() && cur.data().status === 'successful') return; // already done
+          tx.set(recordRef, {
+            reference,
+            flutterwaveId: transferId ? String(transferId) : (cur.exists() ? cur.data().flutterwaveId : ''),
+            amount: amount || (cur.exists() ? Number(cur.data().amount || 0) : 0),
+            status: 'successful',
+            verifiedAt: new Date().toISOString()
+          }, { merge: true });
+          const balRef = doc(db, 'finances', 'withdrawalBalance');
+          tx.set(balRef, {
+            balance: increment(-(amount || (cur.exists() ? Number(cur.data().amount || 0) : 0))),
+            totalWithdrawn: increment(amount || (cur.exists() ? Number(cur.data().amount || 0) : 0)),
+            lastWithdrawalAt: new Date().toISOString(),
+            lastWithdrawalRef: reference,
+            pendingWithdrawal: null
+          }, { merge: true });
+        });
+        console.log(`Webhook: Withdrawal ${reference} CONFIRMED and balance updated`);
+      }
+
+      if (status === 'failed') {
+        await setDoc(recordRef, { status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
+        await setDoc(doc(db, 'finances', 'withdrawalBalance'), { pendingWithdrawal: null }, { merge: true });
+        console.log(`Webhook: Withdrawal ${reference} FAILED - cleared pending lock`);
+      }
     }
 
     return res.status(200).json({ status: 'success' });

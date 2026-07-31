@@ -10,7 +10,21 @@ export default function StudentDashboard() {
   const [settings, setSettings] = useState({});
   const [hasVoted, setHasVoted] = useState(false);
   const [student, setStudent] = useState(null);
+  const [currentTime, setCurrentTime] = useState(''); // ← ADDED
   const navigate = useNavigate();
+
+  // ← ADDED: Real-time clock
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      setCurrentTime(`${hours}:${minutes}`);
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 🌅 Greeting helper — based on current local time
   const getGreeting = () => {
@@ -191,7 +205,6 @@ export default function StudentDashboard() {
     marginBottom: '12px',
   };
 
-  // ⬇ UPDATED: Manifesto now fills available space like a login/input bar
   const manifestoStyle = {
     fontSize: '14px',
     color: '#cbd5e1',
@@ -269,7 +282,7 @@ export default function StudentDashboard() {
         {/* 🌅 Greeting — top corner (added only) */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', padding: '12px 24px 0' }}>
           <div style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0f172a', padding: '8px 18px', borderRadius: '999px', fontWeight: '700', fontSize: '15px', boxShadow: '0 2px 10px rgba(251,191,36,0.35)' }}>
-            {getGreeting()}, {student.name}
+            {getGreeting()} · {currentTime} {/* ← CHANGED */}
           </div>
         </div>
 
@@ -298,7 +311,7 @@ export default function StudentDashboard() {
       {/* 🌅 Greeting — top corner (added only) */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', padding: '12px 24px 0' }}>
         <div style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0f172a', padding: '8px 18px', borderRadius: '999px', fontWeight: '700', fontSize: '15px', boxShadow: '0 2px 10px rgba(251,191,36,0.35)' }}>
-          {getGreeting()}, {student.name}
+          {getGreeting()} · {currentTime} {/* ← CHANGED */}
         </div>
       </div>
 

@@ -117,6 +117,7 @@ export default function AdminDashboard() {
   const [withdrawPin, setWithdrawPin] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMsg, setWithdrawMsg] = useState({ type: '', text: '' });
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
 
   const [voters, setVoters] = useState([]);
   const [supportMessages, setSupportMessages] = useState([]);
@@ -426,17 +427,76 @@ export default function AdminDashboard() {
     catch (e) { alert('Error: ' + e.message); }
   };
 
+  // ===================== WITHDRAW (v2: auto-confirm via /api/check-transfer) =====================
   const handleWithdraw = async () => {
     if (!withdrawAdminId || !withdrawPin || !withdrawAmount) {
       setWithdrawMsg({ type: 'error', text: 'Fill all fields' }); return;
     }
+    if (withdrawBusy) return;
+    setWithdrawBusy(true);
     setWithdrawMsg({ type: '', text: 'Processing...' });
-    const result = await withdraw(withdrawAdminId, withdrawPin, Number(withdrawAmount));
-    if (result.success) {
-      setWithdrawMsg({ type: 'success', text: result.message });
-      setWithdrawAmount(''); setWithdrawPin(''); loadBalance();
-    } else {
-      setWithdrawMsg({ type: 'error', text: result.message });
+    try {
+      const result = await withdraw(withdrawAdminId, withdrawPin, Number(withdrawAmount));
+
+      // Plain failure (bad PIN, insufficient balance, Flutterwave rejected)
+      if (!result.success && !result.reference) {
+        setWithdrawMsg({ type: 'error', text: result.message || 'Withdrawal failed' });
+        setWithdrawBusy(false);
+        return;
+      }
+
+      // ✅ Fully confirmed by Flutterwave already
+      if (result.success && !result.reference) {
+        setWithdrawMsg({ type: 'success', text: result.message });
+        setWithdrawAmount(''); setWithdrawPin('');
+        loadBalance();
+        setWithdrawBusy(false);
+        return;
+      }
+
+      // ⏳ Unverified / pending — Flutterwave accepted the transfer but hasn't
+      // confirmed it yet. Poll /api/check-transfer (which asks Flutterwave
+      // DIRECTLY using the secret key) until it confirms, then show success.
+      const ref = result.reference;
+      const id = result.flutterwaveId;
+      setWithdrawMsg({ type: 'info', text: '⏳ ' + (result.message || 'Transfer accepted. Confirming with Flutterwave...') });
+
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const checkRes = await fetch('/api/check-transfer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reference: ref, transferId: id })
+          });
+          const check = await checkRes.json();
+          if (check.verified) {
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'success', text: '✅ ' + (check.message || 'Withdrawal confirmed!') });
+            setWithdrawAmount(''); setWithdrawPin('');
+            loadBalance();
+            setWithdrawBusy(false);
+          } else if (check.status === 'failed') {
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'error', text: '❌ ' + (check.message || 'Transfer failed') });
+            setWithdrawBusy(false);
+          } else if (attempts >= 36) { // ~3 minutes of polling
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'info', text: '⏳ Still processing on Flutterwave. The webhook will confirm it automatically — watch your balance.' });
+            setWithdrawBusy(false);
+          }
+        } catch (e) {
+          if (attempts >= 36) {
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'info', text: '⚠️ Could not reach server. The webhook will still confirm it automatically.' });
+            setWithdrawBusy(false);
+          }
+        }
+      }, 5000);
+    } catch (e) {
+      setWithdrawMsg({ type: 'error', text: '⚠️ Network error: ' + e.message });
+      setWithdrawBusy(false);
     }
   };
 
@@ -1336,9 +1396,9 @@ export default function AdminDashboard() {
               <input placeholder="Admin ID" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} style={inputStyle} />
               <input type="password" placeholder="Withdrawal PIN" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} style={inputStyle} />
               <input type="number" placeholder="Amount (₦)" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={inputStyle} />
-              <button onClick={handleWithdraw} style={{ ...btnPrimary, width: '100%', padding: '14px', background: '#f59e0b', color: '#003366', fontSize: '16px' }}>💸 Withdraw</button>
+              <button onClick={handleWithdraw} disabled={withdrawBusy} style={{ ...btnPrimary, width: '100%', padding: '14px', background: '#f59e0b', color: '#003366', fontSize: '16px', opacity: withdrawBusy ? 0.6 : 1, cursor: withdrawBusy ? 'not-allowed' : 'pointer' }}>{withdrawBusy ? '⏳ Checking Flutterwave...' : '💸 Withdraw'}</button>
               {withdrawMsg.text && (
-                <div style={{ padding: '12px', borderRadius: '8px', marginTop: '16px', fontWeight: 'bold', background: withdrawMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: withdrawMsg.type === 'error' ? '#dc2626' : '#16a34a' }}>{withdrawMsg.text}</div>
+                <div style={{ padding: '12px', borderRadius: '8px', marginTop: '16px', fontWeight: 'bold', background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#fef3c7' : '#d1fae5', color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#b45309' : '#16a34a' }}>{withdrawMsg.text}</div>
               )}
             </div>
             <div style={cardStyle}>

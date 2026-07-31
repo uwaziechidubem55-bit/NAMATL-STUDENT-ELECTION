@@ -1,3 +1,11 @@
+// Auto-activate new versions immediately
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
 // ===== ADDED: Version bump forces SW update on deploy =====
 // Change this number every time you push an update.
 const CACHE_VERSION = 2; // 👈 Set this to 2 to match your target version

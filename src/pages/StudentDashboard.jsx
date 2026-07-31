@@ -12,11 +12,19 @@ export default function StudentDashboard() {
   const [student, setStudent] = useState(null);
   const navigate = useNavigate();
 
+  // 🌅 Greeting helper — based on current local time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
         const savedStudent = JSON.parse(localStorage.getItem('studentSession'));
-        
+
         if (!savedStudent || !savedStudent.matric) {
           setError('No student data. Please Login.');
           setLoading(false);
@@ -55,7 +63,7 @@ export default function StudentDashboard() {
         const votedKey = 'voted_' + savedStudent.matric;
         const votedStatus = localStorage.getItem(votedKey) === 'true';
         setHasVoted(votedStatus);
-        
+
       } catch (e) {
         console.error('Fatal error:', e);
         setError('Error: ' + e.message);
@@ -278,6 +286,13 @@ export default function StudentDashboard() {
   // ── Voting Open ──
   return (
     <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif", paddingBottom: '60px' }}>
+
+      {/* 🌅 Greeting — top corner (added only) */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', padding: '12px 24px 0' }}>
+        <div style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0f172a', padding: '8px 18px', borderRadius: '999px', fontWeight: '700', fontSize: '15px', boxShadow: '0 2px 10px rgba(251,191,36,0.35)' }}>
+          {getGreeting()}, {student.name}
+        </div>
+      </div>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: '#1e293b', borderBottom: '1px solid #334155', position: 'sticky', top: 0, zIndex: 10 }}>

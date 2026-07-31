@@ -265,6 +265,14 @@ export default function StudentDashboard() {
   if (!isVotingOpen) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+
+        {/* 🌅 Greeting — top corner (added only) */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', padding: '12px 24px 0' }}>
+          <div style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#0f172a', padding: '8px 18px', borderRadius: '999px', fontWeight: '700', fontSize: '15px', boxShadow: '0 2px 10px rgba(251,191,36,0.35)' }}>
+            {getGreeting()}, {student.name}
+          </div>
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#fbbf24' }}>NAMATL E-VOTING</h2>
           <button onClick={handleLogout} style={{ padding: '8px 20px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Logout</button>

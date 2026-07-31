@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { calculateFormCharges } from '../utils/flutterwaveCostCalculator';
 
-export default function PurchaseForm() {
+export default function PurchaseForm({
+  position: propPosition,
+  adminPrice: propAdminPrice,
+  candidateData: propCandidateData,
+  onSuccess: propOnSuccess
+} = {}) {
   const [settings, setSettings] = useState(null);
   const [selectedPosition, setSelectedPosition] = useState(null);
   const [formData, setFormData] = useState({ fullName: '', department: '', level: '', email: '' });
@@ -74,18 +80,24 @@ export default function PurchaseForm() {
     setSuccessMsg('');
   };
 
+  // Admin-set price for the currently selected position (prop overrides Firestore amount)
+  const adminSetPrice = Number(propAdminPrice ?? selectedPosition?.amount ?? 0);
+  // Single source of truth for what the candidate is charged
+  const charges = selectedPosition ? calculateFormCharges(adminSetPrice) : null;
+
   const handlePay = async () => {
-    if (!formData.fullName.trim() ||!formData.department.trim() ||!formData.level.trim()) {
+    if (!formData.fullName.trim() || !formData.department.trim() || !formData.level.trim()) {
       alert('Fill all required fields'); return;
     }
     setSubmitting(true);
     try {
+      const priceToCharge = calculateFormCharges(adminSetPrice);
       const txRef = 'FORM-' + selectedPosition.position.replace(/\s+/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
       const FLW = (await import('flutterwave-react-v3')).default;
       const checkout = new FLW({
         public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
         tx_ref: txRef,
-        amount: selectedPosition.amount,
+        amount: priceToCharge.displayPrice, // ← candidate pays displayPrice
         currency: 'NGN',
         payment_options: 'card,ussd,transfer,banktransfer',
         customer: { email: formData.email || 'candidate@namtls.edu.ng', name: formData.fullName },
@@ -97,13 +109,24 @@ export default function PurchaseForm() {
               body: JSON.stringify({
                 transaction_id: response.transaction_id,
                 position: selectedPosition.position,
-                amount: selectedPosition.amount,
+                amount: adminSetPrice,               // admin price (unchanged contract)
+                totalPaid: priceToCharge.displayPrice, // additive, safe
                 candidateData: formData
               })
             });
             const verifyData = await verifyRes.json();
             if (verifyData.success) {
               setSuccessMsg(verifyData.message);
+              // ✅ Success callback — admin receives EXACTLY the admin-set price
+              if (typeof propOnSuccess === 'function') {
+                propOnSuccess({
+                  adminReceives: adminSetPrice,
+                  position: propPosition || selectedPosition.position,
+                  candidateData: propCandidateData || formData,
+                  totalCustomerPays: priceToCharge.displayPrice,
+                  transaction_id: response.transaction_id
+                });
+              }
               setSelectedPosition(null);
               setFormData({ fullName: '', department: '', level: '', email: '' });
               loadData();
@@ -120,52 +143,77 @@ export default function PurchaseForm() {
   const page = { minHeight: '100vh', background: '#f5f7fa', color: '#1e293b', fontFamily: 'system-ui, sans-serif', padding: '20px', maxWidth: '600px', margin: '0 auto' };
   const card = { background: '#ffffff', borderRadius: '12px', padding: '20px', marginBottom: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' };
   const input = { width: '100%', padding: '12px 16px', marginBottom: '12px', background: '#ffffff', color: '#1e293b', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' };
+  const breakdownBox = { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px 16px', marginBottom: '16px' };
+  const breakdownTitle = { fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' };
+  const breakdownRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '14px', color: '#334155' };
 
-  if (loading) return <div style={page}><div style={{ textAlign: 'center', paddingTop: '100px' }}><h2>⏳ Loading...</h2><p style={{ opacity: 0.6 }}>Connecting to server...</p></div></div>;
+  if (loading) return (
+    <div style={page}>
+      <h2>⏳ Loading...</h2>
+      <p>Connecting to server...</p>
+    </div>
+  );
 
   return (
     <div style={page}>
-      <div style={{ textAlign: 'center', marginBottom: '32px', paddingTop: '20px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 4px 0', color: '#1e40af' }}>🏛️ NAMATL STUDENTS E-VOTING</h1>
-        <p style={{ fontSize: '14px', opacity: 0.7, margin: '0 0 16px 0' }}>Form Purchase Portal</p>
-        <Link to="/" style={{ color: '#1e40af', fontSize: '14px', padding: '8px 20px', border: '1px solid #1e40af', borderRadius: '8px', textDecoration: 'none', fontWeight: '500' }}>← Back to Home</Link>
+      <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '4px' }}>🏛️ NAMATL STUDENTS E-VOTING</h1>
+        <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Form Purchase Portal</p>
       </div>
+      <Link to="/" style={{ color: '#2563eb', fontSize: '14px', textDecoration: 'none' }}>← Back to Home</Link>
 
       {error && (
-        <div style={{...card, textAlign: 'center', borderColor: '#fecaca', background: '#fef2f2' }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px', color: '#dc2626' }}>⛔</div>
-          <p style={{ fontSize: '15px', color: '#dc2626', fontWeight: '500', margin: '0 0 12px 0' }}>{error}</p>
-          <button onClick={loadData} style={{ background: '#1e40af', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', marginRight: '8px' }}>🔄 Retry</button>
-          <Link to="/" style={{ color: '#1e40af', fontSize: '13px', display: 'inline-block' }}>← Back to Home</Link>
+        <div style={{ ...card, border: '1px solid #fecaca', background: '#fef2f2' }}>
+          <div style={{ color: '#dc2626', fontSize: '15px' }}>
+            ⛔ {error}
+          </div>
+          <button onClick={loadData} style={{ marginTop: '10px', padding: '8px 18px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>🔄 Retry</button>
+          <Link to="/" style={{ display: 'inline-block', marginLeft: '10px', color: '#64748b', fontSize: '14px' }}>← Back to Home</Link>
         </div>
       )}
 
       {successMsg && (
-        <div style={{...card, textAlign: 'center', borderColor: '#bbf7d0', background: '#f0fdf4' }}>
-          <p style={{ color: '#16a34a', margin: 0 }}>✅ {successMsg}</p>
+        <div style={{ ...card, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+          <div style={{ color: '#15803d', fontSize: '15px' }}>✅ {successMsg}</div>
         </div>
       )}
 
-      {!error && settings &&!selectedPosition && (
+      {!error && settings && !selectedPosition && (
         <>
-          <div style={{...card, textAlign: 'center', borderColor: '#bfdbfe' }}>
-            <p style={{ fontSize: '13px', opacity: 0.7, margin: '0 0 4px 0' }}>📅 {settings.openingDate} - {settings.closingDate}</p>
-            {settings.positions?.length > 0 && <p style={{ fontSize: '12px', opacity: 0.5, margin: 0 }}>{settings.positions.length} position(s) | Max 5 per position</p>}
+          <div style={{ ...card, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+            📅 {settings.openingDate} - {settings.closingDate}
+            {settings.positions?.length > 0 && (
+              <div style={{ color: '#64748b', fontSize: '13px', marginTop: '4px' }}>
+                {settings.positions.length} position(s) | Max 5 per position
+              </div>
+            )}
           </div>
-          <h2 style={{ fontSize: '18px', marginBottom: '16px', fontWeight: '600' }}>📋 Select a Position</h2>
+
+          <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '12px' }}>📋 Select a Position</h2>
           {settings.positions?.map((pos, i) => {
             const count = getCount(pos.position);
             const full = count >= 5;
             return (
-              <div key={i} onClick={() => handleSelect(pos)}
-                style={{...card, cursor: full? 'not-allowed' : 'pointer', border: full? '1px solid #fecaca' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: full? 0.6 : 1 }}>
+              <div
+                key={i}
+                onClick={() => handleSelect(pos)}
+                style={{
+                  ...card,
+                  cursor: full ? 'not-allowed' : 'pointer',
+                  border: full ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  opacity: full ? 0.6 : 1
+                }}
+              >
                 <div>
-                  <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1e40af', fontWeight: '600' }}>{pos.position}</h3>
-                  <p style={{ margin: 0, fontSize: '13px', opacity: 0.6 }}>{count}/5 taken</p>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>{pos.position}</h3>
+                  <div style={{ color: '#94a3b8', fontSize: '13px' }}>{count}/5 taken</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ margin: '0', fontSize: '18px', fontWeight: 'bold', color: '#16a34a' }}>₦{Number(pos.amount).toLocaleString()}</p>
-                  {full && <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600' }}>FULL</span>}
+                  <div style={{ fontWeight: '700', fontSize: '16px' }}>₦{Number(pos.amount).toLocaleString()}</div>
+                  {full && <span style={{ color: '#dc2626', fontSize: '12px', fontWeight: '700' }}>FULL</span>}
                 </div>
               </div>
             );
@@ -173,25 +221,53 @@ export default function PurchaseForm() {
         </>
       )}
 
-      {!error && settings && selectedPosition && (
+      {!error && settings && selectedPosition && charges && (
         <div>
-          <button onClick={() => setSelectedPosition(null)} style={{ background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', marginBottom: '16px' }}>← Back</button>
-          <div style={card}>
-            <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: '600' }}>✍️ Fill Your Details for <span style={{ color: '#1e40af' }}>{selectedPosition.position}</span></h2>
-            <p style={{ margin: '0 0 20px 0', fontSize: '14px', opacity: 0.6 }}>Amount: <strong style={{ color: '#16a34a' }}>₦{Number(selectedPosition.amount).toLocaleString()}</strong></p>
-            <input placeholder="Full Name *" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} style={input} disabled={submitting} />
-            <input placeholder="Department *" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} style={input} disabled={submitting} />
-            <input placeholder="Level (e.g. 200) *" value={formData.level} onChange={e => setFormData({...formData, level: e.target.value})} style={input} disabled={submitting} />
-            <input placeholder="Email (optional)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={input} disabled={submitting} />
-            <button onClick={handlePay} disabled={submitting} style={{ padding: '14px 24px', background: '#1e40af', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: submitting? 'not-allowed' : 'pointer', width: '100%', opacity: submitting? 0.5 : 1 }}>
-              {submitting? '⏳ Processing...' : `💳 Pay ₦${Number(selectedPosition.amount).toLocaleString()}`}
-            </button>
+          <button
+            onClick={() => setSelectedPosition(null)}
+            style={{ background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', marginBottom: '16px' }}
+          >← Back</button>
+
+          <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px' }}>✍️ Fill Your Details for {selectedPosition.position}</h2>
+
+          {/* 💳 Payment breakdown — shown BEFORE payment */}
+          <div style={breakdownBox}>
+            <div style={breakdownTitle}>💳 Payment Breakdown</div>
+            <div style={breakdownRow}>
+              <span>Form Price</span>
+              <span>₦{charges.breakdown['Form Price'].toLocaleString()}</span>
+            </div>
+            <div style={breakdownRow}>
+              <span>VAT</span>
+              <span>₦{charges.breakdown.VAT.toLocaleString()}</span>
+            </div>
+            <div style={breakdownRow}>
+              <span>Service Charge</span>
+              <span>₦{charges.breakdown['Service Charge'].toLocaleString()}</span>
+            </div>
+            <div style={{ ...breakdownRow, borderTop: '1px solid #cbd5e1', paddingTop: '10px', fontWeight: '700', fontSize: '16px' }}>
+              <span>Total Amount</span>
+              <span>₦{charges.totalCustomerPays.toLocaleString()}</span>
+            </div>
           </div>
+
+          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
+
+          <button
+            onClick={handlePay}
+            disabled={submitting}
+            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+          >
+            {submitting ? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
+          </button>
         </div>
       )}
 
-      <div style={{ textAlign: 'center', marginTop: '40px' }}>
-        <p style={{ opacity: 0.4, fontSize: '12px' }}>NAMATL Students E-voting © {new Date().getFullYear()}</p>
+      <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px', marginTop: '24px' }}>
+        NAMATL Students E-voting © {new Date().getFullYear()}
       </div>
     </div>
   );

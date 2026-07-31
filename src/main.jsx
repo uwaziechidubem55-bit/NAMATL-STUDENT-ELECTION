@@ -105,14 +105,21 @@ function getErrorHTML(msg, err) {
   }
 })();
 
-// ===== Service worker registration =====
+// ===== Service worker registration — auto-update on every Vercel push =====
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(() => {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
       console.log('NAMTLS SW registered');
-    }).catch((err) => {
+      // Force re-check for a freshly deployed sw.js on every load
+      await reg.update();
+    } catch (err) {
       console.warn('NAMTLS SW registration failed:', err.message);
-    });
+    }
+  });
+  // New SW took control → reload once so the UI matches the new build
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
   });
 }
 

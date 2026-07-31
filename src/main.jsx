@@ -85,23 +85,16 @@ function getErrorHTML(msg, err) {
   `;
 }
 
-// ===== 🧹 Updated: Clear stale SW caches on load matching v1 =====
+// ===== 🧹 Updated: Clear stale SW caches on load, keeps ALL 'namatl-vote-v*' =====
+// (unregister loop REMOVED — it fought the auto-update flow and caused reload loops;
+//  whitelist now matches sw.js which uses 'namatl-vote-v' + CACHE_VERSION)
 (async function clearStaleSWCaches() {
   if ('caches' in window) {
     const cacheKeys = await caches.keys();
-    // Keeps 'namatl-vote-v1' active, deletes anything else (like v2, v0, etc.)
-    const staleCaches = cacheKeys.filter(k => k !== 'namatl-vote-v1');
+    // Keeps 'namatl-vote-v1', 'namatl-vote-v2', ... active, deletes anything else
+    const staleCaches = cacheKeys.filter(k => !k.startsWith('namatl-vote-v'));
     await Promise.all(staleCaches.map(k => caches.delete(k)));
     console.log('[Cache Cleanup] Removed', staleCaches.length, 'stale cache(s)');
-  }
-  if ('serviceWorker' in navigator) {
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    for (const reg of registrations) {
-      if (reg.active && reg.active.scriptURL.includes('sw.js')) {
-        await reg.unregister();
-        console.log('[SW Cleanup] Unregistered existing service worker');
-      }
-    }
   }
 })();
 

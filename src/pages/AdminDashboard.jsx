@@ -56,7 +56,7 @@ const generateAutoReply = (msg) => {
 
   // Form purchase related
   if (isForm) {
-    return `${header}With reference to your message concerning form purchase, the NAMATL Electoral Commission provides the following information:\n\n• Nomination forms are available for purchase through the official e-voting portal\n• Payments are processed securely via Flutterwave (credit/debit cards, bank transfers, USSD)\n• Upon successful payment, your candidacy is automatically registered in the system\n• You will be required to upload your manifesto and passport photograph after payment\n• Each position has a specific fee as listed on the Form Purchase page\n• Maximum of five (5) candidates per position\n\nFor specific pricing and position availability, kindly refer to the Form Purchase section on the portal. The Commission will attend to any further inquiries regarding your transaction.${footer}`;
+    return `${header}With reference to your message concerning form purchase, the NAMATL Electoral Commission provides the following information:\n\n• Nomination forms are available for purchase through the official e-voting portal\n• Payments are processed securely via Flutterwave (credit/debit cards, bank transfers, USSD)\n• After payment, the Commission reviews your details and registers you as a candidate\n• You will be required to upload your manifesto and passport photograph after payment\n• Each position has a specific fee as listed on the Form Purchase page\n• Maximum of five (5) candidates per position\n\nFor specific pricing and position availability, kindly refer to the Form Purchase section on the portal. The Commission will attend to any further inquiries regarding your transaction.${footer}`;
   }
 
   // Candidate/nomination related
@@ -1024,7 +1024,7 @@ export default function AdminDashboard() {
               <h3 style={{ margin: '0 0 12px 0', color: '#003366' }}>{editingCandidate ? '✏️ Edit Candidate (Add photo & manifesto)' : '➕ Add Candidate Manually'}</h3>
               {editingCandidate && editingCandidate.paidForm && (
                 <p style={{ fontSize: '13px', color: '#16a34a', marginBottom: '12px', background: '#d1fae5', padding: '8px 12px', borderRadius: '6px' }}>
-                  ✅ This candidate purchased a form. Name, position, and department are already filled. Just add a manifesto and photo below.
+                  ✅ This candidate purchased a form. Enter their name, position, and department, then add a manifesto and photo below.
                 </p>
               )}
               <input placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />

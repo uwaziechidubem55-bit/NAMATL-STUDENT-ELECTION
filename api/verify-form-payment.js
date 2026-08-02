@@ -1,7 +1,7 @@
 // NAMTLS Form Purchase Verification API — v4 (auto-fill removed, purchase record only)
 // Server-side price validation + replay protection added.
 import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
-import { db } from '../src/firebase';
+import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,6 +14,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
+try {
+    if (missingFirebaseEnv.length) {
+      return res.status(500).json({ success: false, message: 'Server Firebase env missing: ' + missingFirebaseEnv.join(', ') });
+    }
+    const db = getDb();
   try {
     const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
     if (!secretKey) {

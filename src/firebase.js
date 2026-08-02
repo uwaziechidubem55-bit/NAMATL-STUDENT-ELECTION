@@ -1,1 +1,16 @@
-import { initializeApp } from "firebase/app";import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";import { getStorage } from "firebase/storage";// Security fix: removed the hardcoded fallback values that were in the repo.// If any VITE_FIREBASE_* var is missing, the app fails loudly instead of// silently using the public fallback project.const required = { apiKey: import.meta.env.VITE_FIREBASE_API_KEY, authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID, storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET, messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID, appId: import.meta.env.VITE_FIREBASE_APP_ID,};const missing = Object.entries(required).filter(([, v]) => !v);if (missing.length > 0) { throw new Error( 'Firebase env vars missing: ' + missing.map(([k]) => k).join(', ') + '. Add them to your .env file and to Vercel (Project Settings → Environment Variables).' );}const firebaseConfig = required;const app = initializeApp(firebaseConfig);export const db = getFirestore(app);export const storage = getStorage(app);try { enableIndexedDbPersistence(db).catch(() => {});} catch (e) {}
+import { initializeApp } from "firebase/app";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+
+if (typeof window !== "undefined") {
+  enableIndexedDbPersistence(db).catch(() => {});
+}

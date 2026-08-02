@@ -1,5 +1,6 @@
-// NAMTLS Form Purchase Verification API — v3 (auto-fill removed, purchase record only)
-import { setDoc, doc, increment, addDoc, collection } from 'firebase/firestore';
+// NAMTLS Form Purchase Verification API — v4 (auto-fill removed, purchase record only)
+// Server-side price validation + replay protection added.
+import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
 import { db } from '../src/firebase';
 
 export default async function handler(req, res) {
@@ -7,9 +8,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: 'Use POST' });
   }
 
-  const { transaction_id, position, amount, candidateData } = req.body;
+  const { transaction_id, position, candidateData } = req.body;
 
-  if (!transaction_id || !position || !amount || !candidateData) {
+  if (!transaction_id || !position || !candidateData) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
@@ -38,20 +39,42 @@ export default async function handler(req, res) {
 
     const paidAmount = data.data.amount;
 
-    // 2. Verify amount matches
-    if (Number(paidAmount) < Number(amount)) {
-      return res.status(400).json({ success: false, message: `Paid N${paidAmount} but required N${amount}` });
+    // 2. Server-side price validation — the admin-set price comes from
+    //    Firestore settings, NEVER from the client body.
+    const settingsSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
+    let adminPrice = 0;
+    if (settingsSnap.exists()) {
+      const positions = settingsSnap.data().positions || [];
+      const match = positions.find(p => p.position === position);
+      if (!match) {
+        return res.status(400).json({ success: false, message: `Position "${position}" is not configured for purchase` });
+      }
+      adminPrice = Number(match.amount) || 0;
+    }
+    if (adminPrice <= 0) {
+      return res.status(400).json({ success: false, message: 'Could not determine the official price for this position' });
+    }
+    if (Number(paidAmount) < adminPrice) {
+      return res.status(400).json({ success: false, message: `Paid N${paidAmount} but N${adminPrice} required` });
     }
 
-    // 3. Credit withdrawal balance
+    // 3. Replay protection — the Flutterwave transaction_id IS the receipt doc ID.
+    //    Firestore doc IDs are unique, so the same payment can never be credited twice.
+    const receiptRef = doc(db, 'formPurchases', String(transaction_id));
+    const existingReceipt = await getDoc(receiptRef);
+    if (existingReceipt.exists()) {
+      return res.status(409).json({ success: false, message: 'This transaction has already been processed' });
+    }
+
+    // 4. Credit withdrawal balance
     await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
       balance: increment(Number(paidAmount)),
       totalReceived: increment(Number(paidAmount)),
       lastPaymentAt: new Date().toISOString()
     }, { merge: true });
 
-    // 4. Save purchase record — this is what the Admin Purchase List reads from
-    await addDoc(collection(db, 'formPurchases'), {
+    // 5. Save purchase record — this is what the Admin Purchase List reads from
+    await setDoc(receiptRef, {
       position,
       amount: Number(paidAmount),
       fullName: candidateData.fullName,
@@ -59,6 +82,7 @@ export default async function handler(req, res) {
       level: candidateData.level,
       email: candidateData.email || 'Not provided',
       status: 'paid',
+      transaction_id: String(transaction_id),
       paidAt: new Date().toISOString()
     });
 

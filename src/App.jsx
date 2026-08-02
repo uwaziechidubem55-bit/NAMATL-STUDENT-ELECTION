@@ -2,7 +2,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // 👇 ONLY ADDITION — Import the install popup
 import InstallPrompt from './components/InstallPrompt';

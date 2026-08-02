@@ -1,12 +1,12 @@
-// NAMTLS DataCharge v4.2 - FIXED: No hardcoded credentials, no double-credit
+// NAMTLS DataCharge v4.3 - FIXED: secrets removed from bundle, server-side auth only
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, increment, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// ===== READ FROM ENVIRONMENT VARIABLES =====
-const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || 'Admin@Namatls128756BC';
-const WITHDRAWAL_PIN = import.meta.env.VITE_WITHDRAWAL_PIN || '1966';
-const OPAY_ACCOUNT = import.meta.env.VITE_OPAY_ACCOUNT || '9167557038';
+// ===== READ FROM ENVIRONMENT VARIABLES (display-only values; real validation is server-side) =====
+const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || '';
+const WITHDRAWAL_PIN = import.meta.env.VITE_WITHDRAWAL_PIN || '';
+const OPAY_ACCOUNT = import.meta.env.VITE_OPAY_ACCOUNT || '';
 
 const DataChargeContext = createContext();
 
@@ -24,15 +24,15 @@ export function useDataCharge() {
       loadFormPurchases: async () => {},
       formPurchaseSettings: null,
       formPurchases: [],
-      ADMIN_ID: import.meta.env.VITE_ADMIN_ID || 'Admin@Namatls128756BC',
-      WITHDRAWAL_PIN: import.meta.env.VITE_WITHDRAWAL_PIN || '1966',
-      OPAY_ACCOUNT: import.meta.env.VITE_OPAY_ACCOUNT || '9167557038'
+      ADMIN_ID: import.meta.env.VITE_ADMIN_ID || '',
+      WITHDRAWAL_PIN: import.meta.env.VITE_WITHDRAWAL_PIN || '',
+      OPAY_ACCOUNT: import.meta.env.VITE_OPAY_ACCOUNT || ''
     };
   }
   return ctx;
 }
 
-async function sendFlutterwavePayout(amount, accountNumber, narration) {
+async function sendFlutterwavePayout(amount, accountNumber, narration, adminId, pin) {
   try {
     const response = await fetch('/api/withdraw', {
       method: 'POST',
@@ -40,7 +40,9 @@ async function sendFlutterwavePayout(amount, accountNumber, narration) {
       body: JSON.stringify({
         amount,
         accountNumber,
-        narration: narration || 'NAMTLS E-Voting Withdrawal'
+        narration: narration || 'NAMTLS E-Voting Withdrawal',
+        adminId,
+        pin
       })
     });
 
@@ -111,13 +113,13 @@ export function DataChargeProvider({ children }) {
     loadFormPurchaseSettings();
   }, []);
 
+  // === WITHDRAW (server-side auth + fixed beneficiary + server balance check) ===
   const withdraw = async (adminId, pin, amount) => {
-    if (adminId !== ADMIN_ID) return { success: false, message: 'Invalid Admin ID' };
-    if (pin !== WITHDRAWAL_PIN) return { success: false, message: 'Invalid Withdrawal PIN' };
     if (amount <= 0) return { success: false, message: 'Invalid withdrawal amount' };
-    if (amount > withdrawalBalance) return { success: false, message: `Insufficient balance. Available: ₦${withdrawalBalance.toLocaleString()}` };
 
-    const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS E-Voting withdrawal to Opay ${OPAY_ACCOUNT}`);
+    // Admin ID, PIN, beneficiary account and balance are all validated
+    // SERVER-SIDE in /api/withdraw — never trusted from the browser.
+    const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS E-Voting withdrawal to Opay ${OPAY_ACCOUNT}`, adminId, pin);
     if (!transferResult.success) return transferResult;
     if (transferResult.warning || transferResult.unverified) {
       return { success: false, message: transferResult.message, reference: transferResult.reference || '' };

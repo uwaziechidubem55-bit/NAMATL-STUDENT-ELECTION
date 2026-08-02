@@ -1,11 +1,10 @@
-// NAMTLS DataCharge v4.3 - FIXED: secrets removed from bundle, server-side auth only
+// NAMTLS DataCharge v4.3.1 - FIXED: closing tag typo (DataChainContext -> DataChargeContext)
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, increment, collection, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 // ===== READ FROM ENVIRONMENT VARIABLES (display-only values; real validation is server-side) =====
 const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || '';
-const WITHDRAWAL_PIN = import.meta.env.VITE_WITHDRAWAL_PIN || '';
 const OPAY_ACCOUNT = import.meta.env.VITE_OPAY_ACCOUNT || '';
 
 const DataChargeContext = createContext();
@@ -25,7 +24,6 @@ export function useDataCharge() {
       formPurchaseSettings: null,
       formPurchases: [],
       ADMIN_ID: import.meta.env.VITE_ADMIN_ID || '',
-      WITHDRAWAL_PIN: import.meta.env.VITE_WITHDRAWAL_PIN || '',
       OPAY_ACCOUNT: import.meta.env.VITE_OPAY_ACCOUNT || ''
     };
   }
@@ -259,9 +257,9 @@ export function DataChargeProvider({ children }) {
       purchaseForm,
       saveFormPurchaseSettings, loadFormPurchases,
       formPurchaseSettings, formPurchases,
-      ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT
+      ADMIN_ID, OPAY_ACCOUNT
     }}>
       {children}
-    </DataChainContext.Provider>
+    </DataChargeContext.Provider>
   );
 }

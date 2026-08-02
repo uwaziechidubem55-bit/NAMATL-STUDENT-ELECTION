@@ -1466,140 +1466,141 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* ===================== WITHDRAWAL (REDESIGNED — look only) ===================== */}
-        {activeView === 'withdrawal' && (
-          <div>
-            {/* Balance hero banner */}
-            <div style={{
-              background: 'linear-gradient(135deg, #003366 0%, #001a33 100%)',
-              borderRadius: '16px', padding: '28px 32px', marginBottom: '20px',
-              color: 'white', position: 'relative', overflow: 'hidden'
-            }}>
-              <div style={{ position: 'absolute', top: -50, right: -40, width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,215,0,0.07)' }} />
-              <div style={{ position: 'absolute', bottom: -70, left: -30, width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,215,0,0.05)' }} />
-              <div style={{ fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8, marginBottom: '6px' }}>Available Balance</div>
-              <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#FFD700', marginBottom: '14px' }}>₦{withdrawalBalance.toLocaleString()}</div>
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px', opacity: 0.92 }}>
-                <span>🏦 Beneficiary: <strong>{OPAY_ACCOUNT}</strong> (Opay)</span>
-                <span>Min: ₦100</span>
-                <span>Max: ₦1,000,000</span>
-                <span>🕐 Processing: 1–5 mins</span>
-              </div>
-            </div>
+        {/* ===================== WITHDRAWAL (fixed — no undefined identifiers) ===================== */}
+{activeView === 'withdrawal' && (
+  <div>
+    {/* Balance hero banner */}
+    <div style={{
+      background: 'linear-gradient(135deg, #003366 0%, #001a33 100%)',
+      borderRadius: '16px', padding: '28px 32px', marginBottom: '20px',
+      color: 'white', position: 'relative', overflow: 'hidden'
+    }}>
+      <div style={{ position: 'absolute', top: -50, right: -40, width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,215,0,0.07)' }} />
+      <div style={{ position: 'absolute', bottom: -70, left: -30, width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,215,0,0.05)' }} />
+      <div style={{ fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8, marginBottom: '6px' }}>Available Balance</div>
+      <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#FFD700', marginBottom: '14px' }}>₦{withdrawalBalance.toLocaleString()}</div>
+      <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px', opacity: 0.92 }}>
+        <span>🏦 Beneficiary: <strong>{OPAY_ACCOUNT}</strong> (Opay)</span>
+        <span>Min: ₦100</span>
+        <span>Max: ₦1,000,000</span>
+        <span>🕐 Processing: 1–5 mins</span>
+      </div>
+    </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
-              {/* Withdraw form */}
-              <div style={cardStyle}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <h2 style={{ color: '#003366', margin: 0 }}>💸 Withdraw Funds</h2>
-            </div>
-              <p style={{ fontSize: '13px', color: '#666', marginBottom: '20px' }}>
-                Funds are sent to your registered Opay account after Flutterwave confirmation.
-              </p>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
+      {/* Withdraw form */}
+      <div style={cardStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <h2 style={{ color: '#003366', margin: 0 }}>💸 Withdraw Funds</h2>
+        </div>
+        <p style={{ fontSize: '13px', color: '#666', marginBottom: '20px' }}>
+          Funds are sent to your registered Opay account after Flutterwave confirmation.
+        </p>
 
-              <label style={labelStyle}>🛡️ Admin ID</label>
-              <input placeholder="Enter Admin ID" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} style={inputStyle} />
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>🛡️ Admin ID</label>
+        <input placeholder="Enter Admin ID" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} style={inputStyle} />
 
-              <label style={labelStyle}>🔒 Withdrawal PIN</label>
-              <input type="password" placeholder="Enter withdrawal PIN" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} style={inputStyle} />
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>🔒 Withdrawal PIN</label>
+        <input type="password" placeholder="Enter withdrawal PIN" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} style={inputStyle} />
 
-              <label style={labelStyle}>💵 Amount (₦)</label>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                <input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
-                <button
-                  onClick={() => setWithdrawAmount(String(withdrawalBalance))}
-                  disabled={withdrawBusy || withdrawalBalance <= 0}
-                  style={{
-                    padding: '0 16px', background: '#eef2ff', color: '#4338ca',
-                    border: '1px solid #c7d2fe', borderRadius: '8px', cursor: 'pointer',
-                    fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap',
-                    opacity: (withdrawBusy || withdrawalBalance <= 0) ? 0.5 : 1
-                  }}
-                >
-                  ⚡ All
-                </button>
-              </div>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '-4px 0 14px 0' }}>
-                Min ₦100 · Max ₦1,000,000 per transfer
-              </p>
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>💵 Amount (₦)</label>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+          <button
+            onClick={() => setWithdrawAmount(String(withdrawalBalance))}
+            disabled={withdrawBusy || withdrawalBalance <= 0}
+            style={{
+              padding: '0 16px', background: '#eef2ff', color: '#4338ca',
+              border: '1px solid #c7d2fe', borderRadius: '8px', cursor: 'pointer',
+              fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap',
+              opacity: (withdrawBusy || withdrawalBalance <= 0) ? 0.5 : 1
+            }}
+          >
+            ⚡ All
+          </button>
+        </div>
+        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '-4px 0 14px 0' }}>
+          Min ₦100 · Max ₦1,000,000 per transfer
+        </p>
 
-              <button
-                onClick={handleWithdraw}
-                disabled={withdrawBusy}
-                style={{
-                  width: '100%', padding: '15px', background: '#f59e0b', color: '#003366',
-                  border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px',
-                  opacity: withdrawBusy ? 0.6 : 1,
-                  cursor: withdrawBusy ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 4px 12px rgba(245,158,11,0.35)'
-                }}
-              >
-                {withdrawBusy ? '⏳ Checking Flutterwave...' : '💸 Process Withdrawal'}
-              </button>
+        <button
+          onClick={handleWithdraw}
+          disabled={withdrawBusy}
+          style={{
+            width: '100%', padding: '15px', background: '#f59e0b', color: '#003366',
+            border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px',
+            opacity: withdrawBusy ? 0.6 : 1,
+            cursor: withdrawBusy ? 'not-allowed' : 'pointer',
+            boxShadow: '0 4px 12px rgba(245,158,11,0.35)'
+          }}
+        >
+          {withdrawBusy ? '⏳ Checking Flutterwave...' : '💸 Process Withdrawal'}
+        </button>
 
-              {withdrawMsg.text && (
-                <div style={{
-                  padding: '12px 14px', borderRadius: '8px', marginTop: '16px',
-                  fontWeight: 'bold', fontSize: '13px',
-                  background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#fef3c7' : '#d1fae5',
-                  color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#b45309' : '#16a34a'
-                }}>
-                  {withdrawMsg.text}
-                </div>
-              )}
-            </div>
-
-            {/* Sidebar: Account Summary / Security / How it works */}
-            <div>
-              <div style={cardStyle}>
-                <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>📋 Account Summary</h3>
-                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#888', fontSize: '13px' }}>Available Balance</span>
-                  <strong style={{ color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</strong>
-                </div>
-                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#888', fontSize: '13px' }}>Beneficiary</span>
-                  <strong style={{ wordBreak: 'break-all', textAlign: 'right' }}>{OPAY_ACCOUNT}</strong>
-                </div>
-                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#888', fontSize: '13px' }}>Bank</span>
-                  <strong>Opay</strong>
-                </div>
-                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#888', fontSize: '13px' }}>Admin ID</span>
-                  <strong style={{ wordBreak: 'break-all', textAlign: 'right', fontSize: '13px' }}>{ADMIN_ID}</strong>
-                </div>
-                <div style={{ padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#888', fontSize: '13px' }}>Candidates</span>
-                  <strong>{candidates.length}</strong>
-                </div>
-              </div>
-
-              <div style={{ ...cardStyle, background: '#fefce8', border: '1px solid #fde68a' }}>
-                <h3 style={{ color: '#92400e', margin: '0 0 8px 0', fontSize: '15px' }}>🛡️ Security Notice</h3>
-                <p style={{ fontSize: '13px', color: '#78350f', margin: 0, lineHeight: '1.6' }}>
-                  Withdrawals require your Admin ID and PIN. Funds are only released after Flutterwave confirms the transfer. Keep your PIN private.
-                </p>
-              </div>
-
-              <div style={cardStyle}>
-                <h3 style={{ color: '#003366', margin: '0 0 14px 0' }}>ℹ️ How It Works</h3>
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>1</div>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter your Admin ID and withdrawal PIN.</p>
-                </div>
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>2</div>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter the amount (min ₦100, max ₦1,000,000) and submit.</p>
-                </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>3</div>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Your balance updates automatically once Flutterwave confirms the transfer.</p>
-                </div>
-              </div>
-            </div>
+        {withdrawMsg.text && (
+          <div style={{
+            padding: '12px 14px', borderRadius: '8px', marginTop: '16px',
+            fontWeight: 'bold', fontSize: '13px',
+            background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#fef3c7' : '#d1fae5',
+            color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#b45309' : '#16a34a'
+          }}>
+            {withdrawMsg.text}
           </div>
         )}
+      </div>
+
+      {/* Sidebar: Account Summary / Security / How it works */}
+      <div>
+        <div style={cardStyle}>
+          <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>📋 Account Summary</h3>
+          <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#888', fontSize: '13px' }}>Available Balance</span>
+            <strong style={{ color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</strong>
+          </div>
+          <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#888', fontSize: '13px' }}>Beneficiary</span>
+            <strong style={{ wordBreak: 'break-all', textAlign: 'right' }}>{OPAY_ACCOUNT}</strong>
+          </div>
+          <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#888', fontSize: '13px' }}>Bank</span>
+            <strong>Opay</strong>
+          </div>
+          <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#888', fontSize: '13px' }}>Admin ID</span>
+            <strong style={{ wordBreak: 'break-all', textAlign: 'right', fontSize: '13px' }}>{ADMIN_ID}</strong>
+          </div>
+          <div style={{ padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#888', fontSize: '13px' }}>Candidates</span>
+            <strong>{candidates.length}</strong>
+          </div>
+        </div>
+
+        <div style={{ ...cardStyle, background: '#fefce8', border: '1px solid #fde68a' }}>
+          <h3 style={{ color: '#92400e', margin: '0 0 8px 0', fontSize: '15px' }}>🛡️ Security Notice</h3>
+          <p style={{ fontSize: '13px', color: '#78350f', margin: 0, lineHeight: '1.6' }}>
+            Withdrawals require your Admin ID and PIN. Funds are only released after Flutterwave confirms the transfer. Keep your PIN private.
+          </p>
+        </div>
+
+        <div style={cardStyle}>
+          <h3 style={{ color: '#003366', margin: '0 0 14px 0' }}>ℹ️ How It Works</h3>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>1</div>
+            <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter your Admin ID and withdrawal PIN.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>2</div>
+            <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter the amount (min ₦100, max ₦1,000,000) and submit.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>3</div>
+            <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Your balance updates automatically once Flutterwave confirms the transfer.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
         {/* Messages */}
         {activeView === 'messages' && (

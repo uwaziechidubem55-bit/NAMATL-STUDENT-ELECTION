@@ -1,6 +1,7 @@
 // NAMTLS Withdrawal API v5 - admin auth + fixed beneficiary validated SERVER-SIDE
 import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../src/firebase';
+import { verifyToken } from './_session.js';
 
 export const config = { maxDuration: 60 };
 
@@ -12,6 +13,17 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
+// ================== SESSION AUTH (security fix — requires admin login) ==================
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!process.env.SERVER_SESSION_SECRET) {
+      return res.status(500).json({ success: false, message: 'Server session secret not configured.' });
+    }
+    const session = verifyToken(token, process.env.SERVER_SESSION_SECRET);
+    if (!session || session.role !== 'admin') {
+      return res.status(401).json({ success: false, message: 'Unauthorized: please log in as admin again.' });
+    }
+    // ================== END SESSION AUTH ==================
 
   try {
     const { amount, accountNumber, narration, adminId, pin } = req.body;

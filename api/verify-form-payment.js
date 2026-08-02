@@ -1,5 +1,5 @@
-// NAMTLS Form Purchase Verification API
-import { setDoc, doc, increment, getDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+// NAMTLS Form Purchase Verification API — v3 (auto-fill removed, purchase record only)
+import { setDoc, doc, increment, addDoc, collection } from 'firebase/firestore';
 import { db } from '../src/firebase';
 
 export default async function handler(req, res) {
@@ -43,18 +43,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: `Paid N${paidAmount} but required N${amount}` });
     }
 
-    // 3. Check 5-candidate limit
-    const candidatesSnap = await getDocs(collection(db, 'candidates'));
-    const positionCount = candidatesSnap.docs.filter(d => d.data().position === position).length;
-
-    // 4. Credit withdrawal balance
+    // 3. Credit withdrawal balance
     await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
       balance: increment(Number(paidAmount)),
       totalReceived: increment(Number(paidAmount)),
       lastPaymentAt: new Date().toISOString()
     }, { merge: true });
 
-    // 5. Save purchase record
+    // 4. Save purchase record — this is what the Admin Purchase List reads from
     await addDoc(collection(db, 'formPurchases'), {
       position,
       amount: Number(paidAmount),
@@ -66,31 +62,12 @@ export default async function handler(req, res) {
       paidAt: new Date().toISOString()
     });
 
-    // 6. Add to candidates (if under limit)
-    if (positionCount < 5) {
-      await addDoc(collection(db, 'candidates'), {
-        name: candidateData.fullName,
-        position: position,
-        dept: candidateData.department,
-        level: candidateData.level,
-        email: candidateData.email || '',
-        votes: 0,
-        photo: '',
-        manifesto: 'Form purchased on ' + new Date().toLocaleDateString(),
-        paidForm: true,
-        paidAt: new Date().toISOString()
-      });
-    } else {
-      return res.status(200).json({
-        success: true,
-        warning: true,
-        message: `N${Number(paidAmount).toLocaleString()} credited! But ${position} already has 5 candidates. Candidate NOT added.`
-      });
-    }
+    // ❌ NO AUTO-FILL — candidates are no longer created here.
+    // Admin registers candidates manually from the Purchase List.
 
     return res.status(200).json({
       success: true,
-      message: `N${Number(paidAmount).toLocaleString()} credited! ${candidateData.fullName} registered for ${position}.`
+      message: `N${Number(paidAmount).toLocaleString()} credited! ${candidateData.fullName}'s ${position} form received.`
     });
 
   } catch (error) {

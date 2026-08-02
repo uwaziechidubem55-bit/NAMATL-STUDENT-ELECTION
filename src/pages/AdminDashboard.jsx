@@ -341,6 +341,26 @@ export default function AdminDashboard() {
   const unreadMessages = supportMessages.filter(m => m.status === 'unread').length;
   const activeVoters = voters.filter(v => v.hasVoted).length;
 
+  // ===================== PURCHASE LIST (grouped by position, President on top) =====================
+  const purchaseGroups = (() => {
+    const groups = {};
+    (formPurchases || []).forEach(p => {
+      const key = p.position || 'Unknown Position';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    const positionKeys = Object.keys(groups);
+    if (positionKeys.length === 0) return [];
+    const presidentKey = positionKeys.find(k => k.toLowerCase() === 'president');
+    const orderedKeys = [];
+    if (presidentKey) orderedKeys.push(presidentKey);
+    fpPositions.forEach(x => {
+      if (groups[x.position] && !orderedKeys.includes(x.position)) orderedKeys.push(x.position);
+    });
+    positionKeys.filter(k => !orderedKeys.includes(k)).sort((a, b) => a.localeCompare(b)).forEach(k => orderedKeys.push(k));
+    return orderedKeys.map(pos => ({ position: pos, purchases: groups[pos] }));
+  })();
+
   const sidebarItems = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'settings', label: 'Election Settings', icon: '⚙️' },
@@ -349,6 +369,7 @@ export default function AdminDashboard() {
     { key: 'results', label: 'Election Results', icon: '📈' },
     { key: 'print-results', label: 'Print Results', icon: '🖨️' },
     { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
+    { key: 'purchase-list', label: 'Purchase List', icon: '🛒' },
     { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
     { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
   ];
@@ -375,6 +396,10 @@ export default function AdminDashboard() {
   const btnDanger = { ...btnPrimary, background: '#dc2626' };
   const btnSuccess = { ...btnPrimary, background: '#16a34a' };
   const btnWarning = { ...btnPrimary, background: '#f59e0b', color: '#003366' };
+  const labelStyle = {
+    display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569',
+    textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '6px'
+  };
 
   const handleSaveSettings = async () => {
     try { await setDoc(doc(db, 'settings', 'election'), settings, { merge: true }); alert('✅ Saved!'); }
@@ -1287,6 +1312,65 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* ===================== PURCHASE LIST VIEW ===================== */}
+        {activeView === 'purchase-list' && (
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ color: '#003366', margin: 0 }}>🛒 Purchase List</h2>
+              <span style={{ fontSize: '12px', color: '#888' }}>
+                {formPurchases.length} total purchase(s) | Max 5 per position
+              </span>
+            </div>
+            <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>
+              All students who purchased forms — exactly as they filled it on the Form Purchase page. Use this list to register candidates manually.
+            </p>
+            {formPurchases.length === 0 ? (
+              <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>No purchases yet</p>
+            ) : (
+              purchaseGroups.map((group, gi) => (
+                <div key={gi} style={{ marginBottom: '28px', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                  <div style={{ background: '#003366', color: '#FFD700', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: '15px' }}>🏛️ {group.position}</strong>
+                    <span style={{ fontSize: '12px', opacity: 0.85 }}>{group.purchases.length} purchaser(s)</span>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f0f7ff', color: '#003366' }}>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>S/N</th>
+                          <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Name</th>
+                          <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Department</th>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Level</th>
+                          <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Email</th>
+                          <th style={{ padding: '10px', textAlign: 'right', borderBottom: '1px solid #ddd' }}>Amount</th>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Date</th>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.purchases.map((p, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '10px', textAlign: 'center' }}>{i + 1}</td>
+                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.fullName || p.name || '—'}</td>
+                            <td style={{ padding: '10px', color: '#666' }}>{p.department || p.dept || '—'}</td>
+                            <td style={{ padding: '10px', textAlign: 'center', color: '#666' }}>{p.level || '—'}</td>
+                            <td style={{ padding: '10px', color: '#666' }}>{p.email || 'Not provided'}</td>
+                            <td style={{ padding: '10px', textAlign: 'right', color: '#16a34a', fontWeight: 'bold' }}>₦{Number(p.amount).toLocaleString()}</td>
+                            <td style={{ padding: '10px', textAlign: 'center', fontSize: '13px', color: '#888' }}>{p.paidAt ? new Date(p.paidAt).toLocaleString() : '—'}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' }}>
+                              <span style={{ background: '#d1fae5', color: '#16a34a', padding: '2px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' }}>Paid</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
         {/* Form Purchase */}
         {activeView === 'form-purchase' && (
           <>
@@ -1382,38 +1466,136 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {/* Withdrawal */}
+        {/* ===================== WITHDRAWAL (REDESIGNED — look only) ===================== */}
         {activeView === 'withdrawal' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', marginBottom: '16px' }}>💰 Withdraw Funds</h2>
-              <p style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>Balance</p>
-              <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#16a34a', margin: '0 0 20px 0' }}>₦{withdrawalBalance.toLocaleString()}</p>
-              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
-                <p style={{ fontSize: '13px', color: '#888', margin: '0 0 4px 0' }}>Beneficiary</p>
-                <p style={{ fontWeight: 'bold', margin: 0 }}>{OPAY_ACCOUNT} (Opay)</p>
+          <div>
+            {/* Balance hero banner */}
+            <div style={{
+              background: 'linear-gradient(135deg, #003366 0%, #001a33 100%)',
+              borderRadius: '16px', padding: '28px 32px', marginBottom: '20px',
+              color: 'white', position: 'relative', overflow: 'hidden'
+            }}>
+              <div style={{ position: 'absolute', top: -50, right: -40, width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,215,0,0.07)' }} />
+              <div style={{ position: 'absolute', bottom: -70, left: -30, width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,215,0,0.05)' }} />
+              <div style={{ fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8, marginBottom: '6px' }}>Available Balance</div>
+              <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#FFD700', marginBottom: '14px' }}>₦{withdrawalBalance.toLocaleString()}</div>
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px', opacity: 0.92 }}>
+                <span>🏦 Beneficiary: <strong>{OPAY_ACCOUNT}</strong> (Opay)</span>
+                <span>Min: ₦100</span>
+                <span>Max: ₦1,000,000</span>
+                <span>🕐 Processing: 1–5 mins</span>
               </div>
-              <input placeholder="Admin ID" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} style={inputStyle} />
-              <input type="password" placeholder="Withdrawal PIN" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} style={inputStyle} />
-              <input type="number" placeholder="Amount (₦)" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={inputStyle} />
-              <button onClick={handleWithdraw} disabled={withdrawBusy} style={{ ...btnPrimary, width: '100%', padding: '14px', background: '#f59e0b', color: '#003366', fontSize: '16px', opacity: withdrawBusy ? 0.6 : 1, cursor: withdrawBusy ? 'not-allowed' : 'pointer' }}>{withdrawBusy ? '⏳ Checking Flutterwave...' : '💸 Withdraw'}</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
+              {/* Withdraw form */}
+              <div style={cardStyle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <h2 style={{ color: '#003366', margin: 0 }}>💸 Withdraw Funds</h2>
+            </div>
+              <p style={{ fontSize: '13px', color: '#666', marginBottom: '20px' }}>
+                Funds are sent to your registered Opay account after Flutterwave confirmation.
+              </p>
+
+              <label style={labelStyle}>🛡️ Admin ID</label>
+              <input placeholder="Enter Admin ID" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} style={inputStyle} />
+
+              <label style={labelStyle}>🔒 Withdrawal PIN</label>
+              <input type="password" placeholder="Enter withdrawal PIN" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} style={inputStyle} />
+
+              <label style={labelStyle}>💵 Amount (₦)</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+                <button
+                  onClick={() => setWithdrawAmount(String(withdrawalBalance))}
+                  disabled={withdrawBusy || withdrawalBalance <= 0}
+                  style={{
+                    padding: '0 16px', background: '#eef2ff', color: '#4338ca',
+                    border: '1px solid #c7d2fe', borderRadius: '8px', cursor: 'pointer',
+                    fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap',
+                    opacity: (withdrawBusy || withdrawalBalance <= 0) ? 0.5 : 1
+                  }}
+                >
+                  ⚡ All
+                </button>
+              </div>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '-4px 0 14px 0' }}>
+                Min ₦100 · Max ₦1,000,000 per transfer
+              </p>
+
+              <button
+                onClick={handleWithdraw}
+                disabled={withdrawBusy}
+                style={{
+                  width: '100%', padding: '15px', background: '#f59e0b', color: '#003366',
+                  border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px',
+                  opacity: withdrawBusy ? 0.6 : 1,
+                  cursor: withdrawBusy ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 12px rgba(245,158,11,0.35)'
+                }}
+              >
+                {withdrawBusy ? '⏳ Checking Flutterwave...' : '💸 Process Withdrawal'}
+              </button>
+
               {withdrawMsg.text && (
-                <div style={{ padding: '12px', borderRadius: '8px', marginTop: '16px', fontWeight: 'bold', background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#fef3c7' : '#d1fae5', color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#b45309' : '#16a34a' }}>{withdrawMsg.text}</div>
+                <div style={{
+                  padding: '12px 14px', borderRadius: '8px', marginTop: '16px',
+                  fontWeight: 'bold', fontSize: '13px',
+                  background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#fef3c7' : '#d1fae5',
+                  color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#b45309' : '#16a34a'
+                }}>
+                  {withdrawMsg.text}
+                </div>
               )}
             </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', marginBottom: '12px' }}>Quick Info</h3>
-              <div style={{ padding: '14px', borderBottom: '1px solid #eee' }}>
-                <span style={{ color: '#888', fontSize: '13px' }}>Admin ID</span>
-                <p style={{ fontWeight: 'bold', margin: '4px 0 0', wordBreak: 'break-all' }}>{ADMIN_ID}</p>
+
+            {/* Sidebar: Account Summary / Security / How it works */}
+            <div>
+              <div style={cardStyle}>
+                <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>📋 Account Summary</h3>
+                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#888', fontSize: '13px' }}>Available Balance</span>
+                  <strong style={{ color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</strong>
+                </div>
+                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#888', fontSize: '13px' }}>Beneficiary</span>
+                  <strong style={{ wordBreak: 'break-all', textAlign: 'right' }}>{OPAY_ACCOUNT}</strong>
+                </div>
+                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#888', fontSize: '13px' }}>Bank</span>
+                  <strong>Opay</strong>
+                </div>
+                <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#888', fontSize: '13px' }}>Admin ID</span>
+                  <strong style={{ wordBreak: 'break-all', textAlign: 'right', fontSize: '13px' }}>{ADMIN_ID}</strong>
+                </div>
+                <div style={{ padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#888', fontSize: '13px' }}>Candidates</span>
+                  <strong>{candidates.length}</strong>
+                </div>
               </div>
-              <div style={{ padding: '14px', borderBottom: '1px solid #eee' }}>
-                <span style={{ color: '#888', fontSize: '13px' }}>PIN</span>
-                <p style={{ fontWeight: 'bold', margin: '4px 0 0' }}>****</p>
+
+              <div style={{ ...cardStyle, background: '#fefce8', border: '1px solid #fde68a' }}>
+                <h3 style={{ color: '#92400e', margin: '0 0 8px 0', fontSize: '15px' }}>🛡️ Security Notice</h3>
+                <p style={{ fontSize: '13px', color: '#78350f', margin: 0, lineHeight: '1.6' }}>
+                  Withdrawals require your Admin ID and PIN. Funds are only released after Flutterwave confirms the transfer. Keep your PIN private.
+                </p>
               </div>
-              <div style={{ padding: '14px' }}>
-                <span style={{ color: '#888', fontSize: '13px' }}>Candidates</span>
-                <p style={{ fontWeight: 'bold', margin: '4px 0 0' }}>{candidates.length}</p>
+
+              <div style={cardStyle}>
+                <h3 style={{ color: '#003366', margin: '0 0 14px 0' }}>ℹ️ How It Works</h3>
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>1</div>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter your Admin ID and withdrawal PIN.</p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>2</div>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter the amount (min ₦100, max ₦1,000,000) and submit.</p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>3</div>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Your balance updates automatically once Flutterwave confirms the transfer.</p>
+                </div>
               </div>
             </div>
           </div>

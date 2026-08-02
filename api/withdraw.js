@@ -1,4 +1,4 @@
-// NAMTLS Withdrawal API v4 - pending-record + duplicate-send protection + transferId always returned
+// NAMTLS Withdrawal API v5 - admin auth + fixed beneficiary validated SERVER-SIDE
 import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../src/firebase';
 
@@ -14,9 +14,25 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
 
   try {
-    const { amount, accountNumber, narration } = req.body;
+    const { amount, accountNumber, narration, adminId, pin } = req.body;
     if (!amount || !accountNumber) {
       return res.status(400).json({ success: false, message: 'Amount and account number are required' });
+    }
+
+    // ===== ADMIN AUTH — server-side only, never trusted from the browser =====
+    const expectedAdminId = process.env.ADMIN_ID || '';
+    const expectedPin = process.env.WITHDRAWAL_PIN || '';
+    if (!expectedAdminId || !expectedPin) {
+      return res.status(500).json({ success: false, message: 'Withdrawal credentials not configured on server' });
+    }
+    if (adminId !== expectedAdminId || pin !== expectedPin) {
+      return res.status(401).json({ success: false, message: 'Invalid Admin ID or PIN' });
+    }
+
+    // ===== FIXED BENEFICIARY — only ever pays the configured Opay account =====
+    const expectedAccount = process.env.OPAY_ACCOUNT || '';
+    if (!expectedAccount || String(accountNumber) !== String(expectedAccount)) {
+      return res.status(403).json({ success: false, message: 'Unauthorized beneficiary account' });
     }
 
     const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
@@ -41,6 +57,15 @@ export default async function handler(req, res) {
         message: `A withdrawal is already processing (Ref: ${pending.reference}). Confirm it first — checking Flutterwave now...`,
         reference: pending.reference,
         flutterwaveId: pending.flutterwaveId || null
+      });
+    }
+
+    // ===== SERVER-SIDE BALANCE CHECK =====
+    const currentBalance = balanceSnap.exists() ? Number(balanceSnap.data().balance || 0) : 0;
+    if (withdrawalAmount > currentBalance) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient balance. Available: ₦${currentBalance.toLocaleString()}`
       });
     }
 
@@ -169,7 +194,7 @@ export default async function handler(req, res) {
           });
         }
       } catch (pollError) {
-        console.log(`[NAMTLS] Poll error on attempt ${attempts}: ${pollError.message}`);
+        console.log(`[NAMATLS] Poll error on attempt ${attempts}: ${pollError.message}`);
         continue;
       }
     }
@@ -187,7 +212,7 @@ export default async function handler(req, res) {
     });
 
   } catch (e) {
-    console.error('[NAMTLS] Server error:', e.message);
+    console.error('[NAMATLS] Server error:', e.message);
     return res.status(500).json({
       success: false,
       message: `Server Error: ${e.message}. Check function logs.`

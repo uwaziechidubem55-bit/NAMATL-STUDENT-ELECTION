@@ -1,6 +1,6 @@
 // NAMTLS Withdrawal API v5 - admin auth + fixed beneficiary validated SERVER-SIDE
 import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase/firestore';
-import { db } from '../src/firebase';
+import { db } from '../src/firebase.js';
 import { verifyToken } from './_session.js';
 
 export const config = { maxDuration: 60 };

@@ -4,7 +4,7 @@
 // 2) transfer.completed -> withdrawal transfers: finalizes the record + balance
 //    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
 import { setDoc, doc, increment, getDoc, runTransaction } from 'firebase/firestore';
-import { db } from '../src/firebase';
+import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -21,6 +21,11 @@ export default async function handler(req, res) {
 
   const payload = req.body;
 
+try {
+    if (missingFirebaseEnv.length) {
+      return res.status(500).json({ success: false, message: 'Server Firebase env missing: ' + missingFirebaseEnv.join(', ') });
+    }
+    const db = getDb();
   try {
     // ================= CHARGE COMPLETED (activation payments) =================
     if (payload.event === 'charge.completed' && payload.data.status === 'successful') {

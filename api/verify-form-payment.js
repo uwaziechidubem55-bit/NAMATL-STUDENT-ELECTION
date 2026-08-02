@@ -8,18 +8,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: 'Use POST' });
   }
 
-  const { transaction_id, position, candidateData } = req.body;
+  const { transaction_id, position, candidateData } = req.body || {};
 
   if (!transaction_id || !position || !candidateData) {
     return res.status(400).json({ success: false, message: 'Missing required fields' });
   }
 
-try {
+  try {
     if (missingFirebaseEnv.length) {
       return res.status(500).json({ success: false, message: 'Server Firebase env missing: ' + missingFirebaseEnv.join(', ') });
     }
     const db = getDb();
-  try {
+
     const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
     if (!secretKey) {
       return res.status(500).json({ success: false, message: 'Flutterwave secret key not set in environment variables' });
@@ -44,8 +44,7 @@ try {
 
     const paidAmount = data.data.amount;
 
-    // 2. Server-side price validation — the admin-set price comes from
-    //    Firestore settings, NEVER from the client body.
+    // 2. Server-side price validation — admin-set price from Firestore, never from the client
     const settingsSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
     let adminPrice = 0;
     if (settingsSnap.exists()) {
@@ -63,8 +62,7 @@ try {
       return res.status(400).json({ success: false, message: `Paid N${paidAmount} but N${adminPrice} required` });
     }
 
-    // 3. Replay protection — the Flutterwave transaction_id IS the receipt doc ID.
-    //    Firestore doc IDs are unique, so the same payment can never be credited twice.
+    // 3. Replay protection — transaction_id IS the receipt doc ID (unique)
     const receiptRef = doc(db, 'formPurchases', String(transaction_id));
     const existingReceipt = await getDoc(receiptRef);
     if (existingReceipt.exists()) {
@@ -78,7 +76,7 @@ try {
       lastPaymentAt: new Date().toISOString()
     }, { merge: true });
 
-    // 5. Save purchase record — this is what the Admin Purchase List reads from
+    // 5. Save purchase record
     await setDoc(receiptRef, {
       position,
       amount: Number(paidAmount),
@@ -90,9 +88,6 @@ try {
       transaction_id: String(transaction_id),
       paidAt: new Date().toISOString()
     });
-
-    // ❌ NO AUTO-FILL — candidates are no longer created here.
-    // Admin registers candidates manually from the Purchase List.
 
     return res.status(200).json({
       success: true,

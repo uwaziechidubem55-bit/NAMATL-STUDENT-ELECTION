@@ -1,19 +1,31 @@
-// NAMTLS Withdrawal API v5 - admin auth + fixed beneficiary validated SERVER-SIDE
+// NAMTLS Withdrawal API v6 — admin auth + server-safe Firebase init.
 import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase/firestore';
-import { db } from '../src/firebase';
+import { getDb, missingFirebaseEnv } from './_firebase.js';
 import { verifyToken } from './_session.js';
 
 export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
-// ================== SESSION AUTH (security fix — requires admin login) ==================
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, message: 'Method not allowed' });
+  }
+
+  try {
+    // ---- Firebase (inside try so config errors return JSON, not a crash) ----
+    if (missingFirebaseEnv.length) {
+      return res.status(500).json({
+        success: false,
+        message: 'Server Firebase env missing: ' + missingFirebaseEnv.join(', '),
+      });
+    }
+    const db = getDb();
+
+    // ---- Session auth ----
     const authHeader = req.headers.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     if (!process.env.SERVER_SESSION_SECRET) {
@@ -23,75 +35,67 @@ export default async function handler(req, res) {
     if (!session || session.role !== 'admin') {
       return res.status(401).json({ success: false, message: 'Unauthorized: please log in as admin again.' });
     }
-    // ================== END SESSION AUTH ==================
 
-  try {
-    const { amount, accountNumber, narration, adminId, pin } = req.body;
+    // ---- Body + admin PIN check ----
+    const { amount, accountNumber, narration, adminId, pin } = req.body || {};
     if (!amount || !accountNumber) {
       return res.status(400).json({ success: false, message: 'Amount and account number are required' });
     }
 
-    // ===== ADMIN AUTH — server-side only, never trusted from the browser =====
     const expectedAdminId = process.env.ADMIN_ID || '';
     const expectedPin = process.env.WITHDRAWAL_PIN || '';
     if (!expectedAdminId || !expectedPin) {
       return res.status(500).json({ success: false, message: 'Withdrawal credentials not configured on server' });
     }
     if (adminId !== expectedAdminId || pin !== expectedPin) {
-      return res.status(401).json({ success: false, message: 'Invalid Admin ID or PIN' });
+      return res.status(401).json({ success: false, message: 'Invalid admin ID or withdrawal PIN' });
     }
 
-    // ===== FIXED BENEFICIARY — only ever pays the configured Opay account =====
-    const expectedAccount = process.env.OPAY_ACCOUNT || '';
-    if (!expectedAccount || String(accountNumber) !== String(expectedAccount)) {
-      return res.status(403).json({ success: false, message: 'Unauthorized beneficiary account' });
-    }
-
-    const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
+    // ---- Flutterwave secret (aligned with the verify endpoints) ----
+    const FLUTTERWAVE_SECRET =
+      process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET;
     if (!FLUTTERWAVE_SECRET) {
       return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel env vars' });
     }
 
     const withdrawalAmount = Number(amount);
-    if (withdrawalAmount < 100) return res.status(400).json({ success: false, message: 'Minimum withdrawal is 100' });
-    if (withdrawalAmount > 1000000) return res.status(400).json({ success: false, message: 'Maximum withdrawal is 1,000,000' });
+    if (!withdrawalAmount || withdrawalAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid amount' });
+    }
 
-    // ===== DUPLICATE-SEND PROTECTION =====
-    // If a previous withdrawal is still unconfirmed on Flutterwave, refuse a new
-    // transfer instead of sending the money twice.
+    // ---- Balance + pending lock ----
     const balanceDoc = doc(db, 'finances', 'withdrawalBalance');
     const balanceSnap = await getDoc(balanceDoc);
+
     const pending = balanceSnap.exists() ? balanceSnap.data().pendingWithdrawal : null;
-    if (pending && ['processing', 'queued', 'pending', 'new'].includes(String(pending.status || '').toLowerCase())) {
-      return res.status(409).json({
+    if (pending && pending.status && pending.status !== 'failed') {
+      return res.status(400).json({
         success: false,
         unverified: true,
         message: `A withdrawal is already processing (Ref: ${pending.reference}). Confirm it first — checking Flutterwave now...`,
         reference: pending.reference,
-        flutterwaveId: pending.flutterwaveId || null
+        flutterwaveId: pending.flutterwaveId || null,
       });
     }
 
-    // ===== SERVER-SIDE BALANCE CHECK =====
     const currentBalance = balanceSnap.exists() ? Number(balanceSnap.data().balance || 0) : 0;
     if (withdrawalAmount > currentBalance) {
       return res.status(400).json({
         success: false,
-        message: `Insufficient balance. Available: ₦${currentBalance.toLocaleString()}`
+        message: `Insufficient balance. Available: ₦${currentBalance.toLocaleString()}`,
       });
     }
 
     const OPAY_BANK_CODE = '100004';
     const reference = `NAMTLS-WD-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
 
-    // ===== Save the record FIRST (source of truth for webhook/check-transfer) =====
     const recordRef = doc(db, 'finances', 'withdrawals', reference);
     await setDoc(recordRef, {
       reference,
       amount: withdrawalAmount,
-      accountNumber: accountNumber.toString(),
+      accountNumber: String(accountNumber),
       status: 'processing',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     });
 
     console.log(`[NAMTLS] Initiating transfer: N${withdrawalAmount} to ${accountNumber} (${reference})`);
@@ -99,18 +103,19 @@ export default async function handler(req, res) {
     const transferResponse = await fetch('https://api.flutterwave.com/v3/transfers', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${FLUTTERWAVE_SECRET}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${FLUTTERWAVE_SECRET}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         account_bank: OPAY_BANK_CODE,
-        account_number: accountNumber.toString(),
+        account_number: String(accountNumber),
         amount: withdrawalAmount,
         narration: narration || 'NAMTLS E-Voting Withdrawal',
         currency: 'NGN',
-        reference: reference,
-        beneficiary_name: 'DANIEL CHIDUBEM UWAZIE'
-      })
+        reference,
+        // TODO: read from the balance/settings doc instead of hardcoding
+        beneficiary_name: 'DANIEL CHIDUBEM UWAZIE',
+      }),
     });
 
     const transferData = await transferResponse.json();
@@ -124,7 +129,7 @@ export default async function handler(req, res) {
       return res.status(400).json({
         success: false,
         message: `Flutterwave rejected: ${errorMsg}`,
-        flutterwaveFullResponse: transferData
+        flutterwaveFullResponse: transferData,
       });
     }
 
@@ -135,11 +140,10 @@ export default async function handler(req, res) {
         success: true,
         unverified: true,
         message: `Flutterwave accepted (Ref: ${reference}) but no transfer ID returned. It will auto-confirm via webhook.`,
-        reference: reference
+        reference,
       });
     }
 
-    // ===== Record the pending state so webhook / check-transfer can finalize =====
     await setDoc(recordRef, { flutterwaveId: String(transferId), status: 'queued' }, { merge: true });
     await setDoc(balanceDoc, {
       pendingWithdrawal: {
@@ -147,30 +151,27 @@ export default async function handler(req, res) {
         flutterwaveId: String(transferId),
         amount: withdrawalAmount,
         status: 'queued',
-        createdAt: new Date().toISOString()
-      }
+        createdAt: new Date().toISOString(),
+      },
     }, { merge: true });
 
-    // ===== Short poll (fast path only). Webhook + check-transfer handle the rest. =====
+    // ---- Short poll (fast path only; the webhook is the source of truth). ----
+    // Default 3 attempts (~9s) so it fits inside the Hobby plan 10s function limit.
+    const maxAttempts = Math.min(Number(process.env.WITHDRAW_POLL_ATTEMPTS || 3), 6);
     let finalStatus = '';
     let finalData = null;
-    let attempts = 0;
-    const maxAttempts = 6; // ~18s, no longer blocks the request
 
-    while (attempts < maxAttempts) {
-      attempts++;
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    for (let attempts = 0; attempts < maxAttempts; attempts++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       try {
         const verifyResponse = await fetch(`https://api.flutterwave.com/v3/transfers/${transferId}`, {
-          headers: { 'Authorization': `Bearer ${FLUTTERWAVE_SECRET}` }
+          headers: { Authorization: `Bearer ${FLUTTERWAVE_SECRET}` },
         });
-        const verifyData = await verifyResponse.json();
-        finalData = verifyData;
-        finalStatus = verifyData.data?.status || '';
-        console.log(`[NAMTLS] Poll attempt ${attempts}/${maxAttempts}: status = ${finalStatus}`);
+        finalData = await verifyResponse.json();
+        finalStatus = finalData.data?.status || '';
+        console.log(`[NAMTLS] Poll attempt ${attempts + 1}/${maxAttempts}: status = ${finalStatus}`);
 
         if (finalStatus.toLowerCase() === 'successful') {
-          // Finalize EXACTLY ONCE
           await runTransaction(db, async (tx) => {
             const cur = await tx.get(recordRef);
             if (cur.exists() && cur.data().status === 'successful') return;
@@ -180,7 +181,7 @@ export default async function handler(req, res) {
               totalWithdrawn: increment(withdrawalAmount),
               lastWithdrawalAt: new Date().toISOString(),
               lastWithdrawalRef: reference,
-              pendingWithdrawal: null
+              pendingWithdrawal: null,
             }, { merge: true });
           });
 
@@ -188,9 +189,9 @@ export default async function handler(req, res) {
             success: true,
             verified: true,
             message: `CONFIRMED: N${withdrawalAmount.toLocaleString()} sent to Opay ${accountNumber}! Ref: ${reference}`,
-            reference: reference,
+            reference,
             flutterwaveId: transferId,
-            status: 'successful'
+            status: 'successful',
           });
         }
 
@@ -202,32 +203,28 @@ export default async function handler(req, res) {
             success: false,
             message: `Transfer FAILED: ${failReason}`,
             flutterwaveFullResponse: finalData,
-            reference: reference
+            reference,
           });
         }
       } catch (pollError) {
-        console.log(`[NAMATLS] Poll error on attempt ${attempts}: ${pollError.message}`);
-        continue;
+        console.log(`[NAMTLS] Poll error on attempt ${attempts + 1}: ${pollError.message}`);
       }
     }
 
-    // ===== Still not confirmed -> return the reference so the app can keep checking =====
-    const flutterwaveStatusUrl = `https://dashboard.flutterwave.com/transfers/${transferId}`;
     return res.status(200).json({
       success: true,
       unverified: true,
       message: `Transfer submitted and processing on Flutterwave (Ref: ${reference}). Confirming automatically...`,
-      reference: reference,
+      reference,
       flutterwaveId: transferId,
       status: finalStatus || 'unknown',
-      flutterwaveDashboardUrl: flutterwaveStatusUrl
+      flutterwaveDashboardUrl: `https://dashboard.flutterwave.com/transfers/${transferId}`,
     });
-
   } catch (e) {
-    console.error('[NAMATLS] Server error:', e.message);
+    console.error('[NAMTLS] Server error:', e);
     return res.status(500).json({
       success: false,
-      message: `Server Error: ${e.message}. Check function logs.`
+      message: `Server Error: ${e.message}. Check function logs.`,
     });
   }
 }

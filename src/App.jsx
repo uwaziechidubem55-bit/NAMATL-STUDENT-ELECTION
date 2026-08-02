@@ -2,6 +2,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 // 👇 ONLY ADDITION — Import the install popup
 import InstallPrompt from './components/InstallPrompt';
@@ -96,7 +97,7 @@ function App() {
             <Route path="/student-login" element={<StudentLogin />} />
             <Route path="/student" element={<StudentDashboard />} />
             <Route path="/admin-login" element={<AdminLogin />} />
-            <Route path="/admin-dashboard" element={<AdminDashboard />} />
+            <Route path="/admin-dashboard" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/support" element={<Support />} />
             <Route path="/purchase-form" element={<PurchaseForm />} />
             <Route path="*" element={<NotFound />} />

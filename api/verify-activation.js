@@ -7,18 +7,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: 'Use POST' });
   }
 
-  const { transaction_id, academicYear } = req.body;
+  const { transaction_id, academicYear } = req.body || {};
 
   if (!transaction_id || !academicYear) {
     return res.status(400).json({ success: false, message: 'Missing fields' });
   }
 
-try {
+  try {
     if (missingFirebaseEnv.length) {
       return res.status(500).json({ success: false, message: 'Server Firebase env missing: ' + missingFirebaseEnv.join(', ') });
     }
     const db = getDb();
-  try {
+
     // Support BOTH env var names for backward compatibility
     const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
     if (!secretKey) {

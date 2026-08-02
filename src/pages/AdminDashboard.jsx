@@ -92,7 +92,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const {
     withdrawalBalance, withdraw, loadBalance, loadFormPurchases, saveFormPurchaseSettings,
-    formPurchaseSettings, formPurchases, ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT
+    formPurchaseSettings, formPurchases, ADMIN_ID, OPAY_ACCOUNT
   } = useDataCharge();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -693,7 +693,8 @@ export default function AdminDashboard() {
             <span>{item.label}</span>
           </div>
         ))}
-        <button onClick={() => navigate('/admin-login')}
+        {/* FIXED: Logout now clears the session token */}
+        <button onClick={() => { localStorage.removeItem('adminToken'); navigate('/admin-login'); }}
                 style={{ width: '100%', padding: '12px', marginTop: '20px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
           Logout
         </button>

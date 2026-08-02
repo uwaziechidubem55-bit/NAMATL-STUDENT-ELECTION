@@ -19,22 +19,21 @@ export default async function handler(req, res) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  const payload = req.body;
+  const payload = req.body || {};
 
-try {
+  try {
     if (missingFirebaseEnv.length) {
       return res.status(500).json({ success: false, message: 'Server Firebase env missing: ' + missingFirebaseEnv.join(', ') });
     }
     const db = getDb();
-  try {
+
     // ================= CHARGE COMPLETED (activation payments) =================
     if (payload.event === 'charge.completed' && payload.data.status === 'successful') {
       const amount = payload.data.amount;
       const tx_ref = payload.data.tx_ref || '';
       const transaction_id = payload.data.id;
 
-      // FORM purchases are credited by /api/verify-form-payment.
-      // Skipping them here prevents DOUBLE-CREDITING large form sales.
+      // FORM purchases are credited by /api/verify-form-payment — skip here
       if (String(tx_ref).startsWith('FORM-')) {
         console.log(`Webhook: Skipping form payment ${tx_ref} (credited by verify-form-payment)`);
         return res.status(200).json({ status: 'skipped - form payment' });
@@ -45,7 +44,7 @@ try {
         return res.status(200).json({ status: 'skipped - below threshold' });
       }
 
-      // DEDUP CHECK: Skip if already processed
+      // DEDUP CHECK
       const activationsSnap = await getDoc(doc(db, 'finances', 'activations'));
       if (activationsSnap.exists()) {
         const activations = activationsSnap.data();
@@ -95,7 +94,6 @@ try {
       const recordRef = doc(db, 'finances', 'withdrawals', reference);
 
       if (status === 'successful') {
-        // Finalize EXACTLY ONCE (atomic) - also deducts the balance
         await runTransaction(db, async (tx) => {
           const cur = await tx.get(recordRef);
           if (cur.exists() && cur.data().status === 'successful') return; // already done

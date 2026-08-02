@@ -5,17 +5,29 @@ export default function AdminLogin() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (username === 'Brouse' && password === 'Officialelectoralcommission123') {
-      navigate('/admin-dashboard');
-    } else {
-      setError('Invalid Credentials. Ask admin for password.');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        navigate('/admin-dashboard');
+      } else {
+        setError(data.message || 'Invalid Credentials. Ask admin for password.');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
     }
+    setLoading(false);
   };
 
   const pageStyle = {
@@ -59,19 +71,18 @@ export default function AdminLogin() {
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-        <h1 style={{ color: '#003366', textAlign: 'center', marginBottom: '4px' }}>Admin Login</h1>
-        <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginBottom: '20px' }}>Authorized personnel only</p>
-
-        {error && <div style={{ padding: '10px', background: '#fee2e2', color: '#dc2626', borderRadius: '4px', marginBottom: '12px', fontSize: '14px', fontWeight: 'bold', textAlign: 'center' }}>{error}</div>}
-
+        <h1 style={{ textAlign: 'center', color: '#003366', marginBottom: '4px' }}>Admin Login</h1>
+        <p style={{ textAlign: 'center', color: '#888', marginBottom: '20px', fontSize: '14px' }}>Authorized personnel only</p>
+        {error && <p style={{ color: '#dc2626', background: '#fee2e2', padding: '10px', borderRadius: '6px', fontSize: '14px', marginBottom: '12px' }}>{error}</p>}
         <form onSubmit={handleLogin}>
-          <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} style={inputStyle} required />
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} required />
-          <button type="submit" style={btnStyle}>Login</button>
+          <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" style={inputStyle} required />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" style={inputStyle} required />
+          <button type="submit" style={{ ...btnStyle, opacity: loading ? 0.6 : 1 }} disabled={loading}>
+            {loading ? 'Checking...' : 'Login'}
+          </button>
         </form>
-
-        <p style={{ textAlign: 'center', marginTop: '20px' }}>
-          <Link to="/" style={{ color: '#2563eb', fontSize: '14px' }}>Back to Home</Link>
+        <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px' }}>
+          <Link to="/" style={{ color: '#2563eb', textDecoration: 'none' }}>Back to Home</Link>
         </p>
       </div>
     </div>

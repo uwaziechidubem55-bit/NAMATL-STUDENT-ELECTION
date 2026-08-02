@@ -1,0 +1,38 @@
+name: Purge .env from git history
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-filter-repo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-filter-repo
+
+      - name: Remove .env and scrub leaked values
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git filter-repo --force --invert-paths --path .env
+          git filter-repo --force --replace-text <(cat <<'EOF'
+          VITE_ADMIN_ID=Admin@Namatls128756BC==>VITE_ADMIN_ID=REDACTED
+          VITE_WITHDRAWAL_PIN=1966==>VITE_WITHDRAWAL_PIN=REDACTED
+          regex:FLWPUBK-[A-Za-z0-9]+-X==>FLWPUBK-REDACTED
+          EOF
+          )
+
+      - name: Force-push rewritten history
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push --force --all
+          git push --force --tags

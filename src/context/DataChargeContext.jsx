@@ -36,7 +36,10 @@ async function sendFlutterwavePayout(amount, accountNumber, narration, adminId, 
   try {
     const response = await fetch('/api/withdraw', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+        },
       body: JSON.stringify({
         amount,
         accountNumber,
@@ -117,8 +120,6 @@ export function DataChargeProvider({ children }) {
   const withdraw = async (adminId, pin, amount) => {
     if (amount <= 0) return { success: false, message: 'Invalid withdrawal amount' };
 
-    // Admin ID, PIN, beneficiary account and balance are all validated
-    // SERVER-SIDE in /api/withdraw — never trusted from the browser.
     const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS E-Voting withdrawal to Opay ${OPAY_ACCOUNT}`, adminId, pin);
     if (!transferResult.success) return transferResult;
     if (transferResult.warning || transferResult.unverified) {
@@ -170,12 +171,14 @@ export function DataChargeProvider({ children }) {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
                 const verifyRes = await fetch('/api/verify-activation', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  method: 'POST', headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+                  },
                   body: JSON.stringify({ transaction_id: response.transaction_id, tx_ref: txRef, academicYear })
                 });
                 const verifyData = await verifyRes.json();
                 if (verifyData.success) {
-                  // API already credited ₦25,000. Just refresh balance.
                   await loadBalance();
                   resolve({ success: true, message: verifyData.message });
                 } else {
@@ -207,7 +210,7 @@ export function DataChargeProvider({ children }) {
         const config = {
           public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
-          amount: amount, // <-- This is whatever YOU set in AdminDashboard
+          amount: amount,
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: candidateData.email || 'candidate@namtls.edu.ng', name: candidateData.fullName },
@@ -216,12 +219,14 @@ export function DataChargeProvider({ children }) {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
                 const verifyRes = await fetch('/api/verify-form-payment', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  method: 'POST', headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+                  },
                   body: JSON.stringify({ transaction_id: response.transaction_id, position, amount, candidateData })
                 });
                 const verifyData = await verifyRes.json();
                 if (verifyData.success) {
-                  // API already credited the exact amount. Just refresh.
                   await loadBalance();
                   await loadFormPurchases();
                   resolve({ success: true, message: verifyData.message });
@@ -257,6 +262,6 @@ export function DataChargeProvider({ children }) {
       ADMIN_ID, WITHDRAWAL_PIN, OPAY_ACCOUNT
     }}>
       {children}
-    </DataChargeContext.Provider>
+    </DataChainContext.Provider>
   );
 }

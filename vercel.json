@@ -1,7 +1,20 @@
 {
   "framework": "vite",
+  "crons": [
+    {
+      "path": "/api/check-transfer",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { 
+      "source": "/api/(.*)", 
+      "destination": "/api/$1" 
+    },
+    { 
+      "source": "/((?!api/).*)", 
+      "destination": "/index.html" 
+    }
   ],
   "headers": [
     {

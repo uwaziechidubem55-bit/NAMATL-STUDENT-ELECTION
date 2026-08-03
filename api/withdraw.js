@@ -1,5 +1,5 @@
 // NAMTLS Withdrawal API v6 — admin auth + server-safe Firebase init.
-import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 import { verifyToken } from './_session.js';
 
@@ -25,6 +25,8 @@ export default async function handler(req, res) {
     }
     const db = getDb();
 
+    const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET_KEY || '';
+
     // ---- Session auth ----
     const authHeader = req.headers.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
@@ -45,29 +47,22 @@ export default async function handler(req, res) {
     const expectedAdminId = process.env.ADMIN_ID || '';
     const expectedPin = process.env.WITHDRAWAL_PIN || '';
     if (!expectedAdminId || !expectedPin) {
-      return res.status(500).json({ success: false, message: 'Withdrawal credentials not configured on server' });
+      return res.status(500).json({ success: false, message: 'Admin withdrawal credentials not configured on server.' });
     }
-    if (adminId !== expectedAdminId || pin !== expectedPin) {
-      return res.status(401).json({ success: false, message: 'Invalid admin ID or withdrawal PIN' });
-    }
-
-    // ---- Flutterwave secret (aligned with the verify endpoints) ----
-    const FLUTTERWAVE_SECRET =
-      process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET;
-    if (!FLUTTERWAVE_SECRET) {
-      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel env vars' });
+    if (String(adminId) !== expectedAdminId || String(pin) !== expectedPin) {
+      return res.status(401).json({ success: false, message: 'Invalid Admin ID or withdrawal PIN' });
     }
 
     const withdrawalAmount = Number(amount);
-    if (!withdrawalAmount || withdrawalAmount <= 0) {
+    if (withdrawalAmount <= 0) {
       return res.status(400).json({ success: false, message: 'Invalid amount' });
     }
 
     // ---- Balance + pending lock ----
-    const balanceDoc = doc(db, 'finances', 'withdrawalBalance');
-    const balanceSnap = await getDoc(balanceDoc);
+    const balanceDoc = db.doc('finances/withdrawalBalance');
+    const balanceSnap = await balanceDoc.get();
 
-    const pending = balanceSnap.exists() ? balanceSnap.data().pendingWithdrawal : null;
+    const pending = balanceSnap.exists ? balanceSnap.data().pendingWithdrawal : null;
     if (pending && pending.status && pending.status !== 'failed') {
       return res.status(400).json({
         success: false,
@@ -78,7 +73,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const currentBalance = balanceSnap.exists() ? Number(balanceSnap.data().balance || 0) : 0;
+    const currentBalance = balanceSnap.exists ? Number(balanceSnap.data().balance || 0) : 0;
     if (withdrawalAmount > currentBalance) {
       return res.status(400).json({
         success: false,
@@ -89,8 +84,8 @@ export default async function handler(req, res) {
     const OPAY_BANK_CODE = '100004';
     const reference = `NAMTLS-WD-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
 
-    const recordRef = doc(db, 'finances', 'withdrawals', reference);
-    await setDoc(recordRef, {
+    const recordRef = db.doc('finances/withdrawals/' + reference);
+    await recordRef.set({
       reference,
       amount: withdrawalAmount,
       accountNumber: String(accountNumber),
@@ -125,7 +120,7 @@ export default async function handler(req, res) {
       let errorMsg = transferData.message || 'Unknown Flutterwave error';
       if (transferData.data?.complete_message) errorMsg = transferData.data.complete_message;
       if (transferData.data?.note) errorMsg = transferData.data.note;
-      await setDoc(recordRef, { status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
+      await recordRef.set({ status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
       return res.status(400).json({
         success: false,
         message: `Flutterwave rejected: ${errorMsg}`,
@@ -135,7 +130,7 @@ export default async function handler(req, res) {
 
     const transferId = transferData.data?.id;
     if (!transferId) {
-      await setDoc(recordRef, { status: 'submitted-no-id', submittedAt: new Date().toISOString() }, { merge: true });
+      await recordRef.set({ status: 'submitted-no-id', submittedAt: new Date().toISOString() }, { merge: true });
       return res.status(200).json({
         success: true,
         unverified: true,
@@ -144,8 +139,8 @@ export default async function handler(req, res) {
       });
     }
 
-    await setDoc(recordRef, { flutterwaveId: String(transferId), status: 'queued' }, { merge: true });
-    await setDoc(balanceDoc, {
+    await recordRef.set({ flutterwaveId: String(transferId), status: 'queued' }, { merge: true });
+    await balanceDoc.set({
       pendingWithdrawal: {
         reference,
         flutterwaveId: String(transferId),
@@ -172,13 +167,13 @@ export default async function handler(req, res) {
         console.log(`[NAMTLS] Poll attempt ${attempts + 1}/${maxAttempts}: status = ${finalStatus}`);
 
         if (finalStatus.toLowerCase() === 'successful') {
-          await runTransaction(db, async (tx) => {
+          await db.runTransaction(async (tx) => {
             const cur = await tx.get(recordRef);
-            if (cur.exists() && cur.data().status === 'successful') return;
+            if (cur.exists && cur.data().status === 'successful') return;
             tx.set(recordRef, { status: 'successful', verifiedAt: new Date().toISOString() }, { merge: true });
             tx.set(balanceDoc, {
-              balance: increment(-withdrawalAmount),
-              totalWithdrawn: increment(withdrawalAmount),
+              balance: FieldValue.increment(-withdrawalAmount),
+              totalWithdrawn: FieldValue.increment(withdrawalAmount),
               lastWithdrawalAt: new Date().toISOString(),
               lastWithdrawalRef: reference,
               pendingWithdrawal: null,
@@ -197,8 +192,8 @@ export default async function handler(req, res) {
 
         if (finalStatus.toLowerCase() === 'failed') {
           const failReason = finalData.data?.complete_message || finalData.data?.note || 'No reason provided';
-          await setDoc(recordRef, { status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
-          await setDoc(balanceDoc, { pendingWithdrawal: null }, { merge: true });
+          await recordRef.set({ status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
+          await balanceDoc.set({ pendingWithdrawal: null }, { merge: true });
           return res.status(400).json({
             success: false,
             message: `Transfer FAILED: ${failReason}`,

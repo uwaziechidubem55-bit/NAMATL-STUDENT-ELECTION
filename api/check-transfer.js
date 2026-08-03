@@ -1,7 +1,7 @@
 // /api/check-transfer.js — REAL-TIME withdrawal status checker
 // Asks Flutterwave directly whether a transfer passed, then finalizes the
 // Firestore withdrawal record + balance EXACTLY ONCE (idempotent).
-import { doc, getDoc, setDoc, increment, runTransaction, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, increment, runTransaction, collection, query, where, getDocs } from 'firebase-admin/firestore';
 import { db } from '../src/firebase';
 
 export default async function handler(req, res) {

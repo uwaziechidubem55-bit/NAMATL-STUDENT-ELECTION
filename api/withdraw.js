@@ -1,4 +1,7 @@
-// NAMTLS Withdrawal API v6 — admin auth + server-safe Firebase init.
+// NAMTLS Withdrawal API v7 — admin auth + server-safe Firebase init.
+// Withdrawal records live in the top-level `withdrawals/{reference}` collection
+// (the old `finances/withdrawals/{reference}` path is invalid in Firestore —
+// document paths require an EVEN number of segments).
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 import { verifyToken } from './_session.js';
@@ -16,7 +19,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ---- Firebase (inside try so config errors return JSON, not a crash) ----
     if (missingFirebaseEnv.length) {
       return res.status(500).json({
         success: false,
@@ -25,7 +27,10 @@ export default async function handler(req, res) {
     }
     const db = getDb();
 
-    const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET_KEY || '';
+    const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET || '';
+    if (!FLUTTERWAVE_SECRET) {
+      return res.status(500).json({ success: false, message: 'Flutterwave secret key not set (FLUTTERWAVE_SECRET_KEY / FLW_SECRET_KEY / FLUTTERWAVE_SECRET)' });
+    }
 
     // ---- Session auth ----
     const authHeader = req.headers.authorization || '';
@@ -84,7 +89,7 @@ export default async function handler(req, res) {
     const OPAY_BANK_CODE = '100004';
     const reference = `NAMTLS-WD-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`;
 
-    const recordRef = db.doc('finances/withdrawals/' + reference);
+    const recordRef = db.collection('withdrawals').doc(reference);
     await recordRef.set({
       reference,
       amount: withdrawalAmount,
@@ -108,7 +113,6 @@ export default async function handler(req, res) {
         narration: narration || 'NAMTLS E-Voting Withdrawal',
         currency: 'NGN',
         reference,
-        // TODO: read from the balance/settings doc instead of hardcoding
         beneficiary_name: 'DANIEL CHIDUBEM UWAZIE',
       }),
     });
@@ -151,7 +155,6 @@ export default async function handler(req, res) {
     }, { merge: true });
 
     // ---- Short poll (fast path only; the webhook is the source of truth). ----
-    // Default 3 attempts (~9s) so it fits inside the Hobby plan 10s function limit.
     const maxAttempts = Math.min(Number(process.env.WITHDRAW_POLL_ATTEMPTS || 3), 6);
     let finalStatus = '';
     let finalData = null;

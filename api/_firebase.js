@@ -23,4 +23,4 @@ export function getDb() {
   }
   firestore = getFirestore();
   return firestore;
-}
+} 

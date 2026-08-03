@@ -36,7 +36,7 @@ export default function Support() {
         {/* Header with Logo Centered */}
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <img
-            src="https://raw.githubusercontent.com/logo.png"
+            src="/logo.png"
             alt="NAMATL Logo"
             style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #FFD700', margin: '0 auto 12px', display: 'block' }}
             onError={(e) => { e.target.style.display = 'none'; }}

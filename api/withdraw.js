@@ -1,5 +1,5 @@
 // NAMTLS Withdrawal API v6 — admin auth + server-safe Firebase init.
-import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, getDoc, increment, runTransaction } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 import { verifyToken } from './_session.js';
 

@@ -1,5 +1,5 @@
 // NAMTLS Manual Verify + Credit API
-import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
+import { setDoc, doc, increment, getDoc } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {

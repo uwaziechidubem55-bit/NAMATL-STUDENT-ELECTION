@@ -3,7 +3,7 @@
 //    because verify-form-payment.js already credits them (fixes double-credit).
 // 2) transfer.completed -> withdrawal transfers: finalizes the record + balance
 //    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
-import { setDoc, doc, increment, getDoc, runTransaction } from 'firebase/firestore';
+import { setDoc, doc, increment, getDoc, runTransaction } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {

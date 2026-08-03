@@ -1,4 +1,4 @@
-// /api/flutterwave-webhook.js v2
+// /api/flutterwave-webhook.js v3
 // 1) charge.completed  -> activation payments (>=25k). FORM- payments are skipped
 //    because verify-form-payment.js already credits them (fixes double-credit).
 // 2) transfer.completed -> withdrawal transfers: finalizes the record + balance
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ status: 'skipped - no reference' });
       }
 
-      const recordRef = db.doc('finances/withdrawals/' + reference);
+      const recordRef = db.collection('withdrawals').doc(reference);
 
       if (status === 'successful') {
         await db.runTransaction(async (tx) => {

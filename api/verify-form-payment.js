@@ -1,6 +1,6 @@
 // NAMTLS Form Purchase Verification API — v4 (auto-fill removed, purchase record only)
 // Server-side price validation + replay protection added.
-import { setDoc, doc, increment, getDoc } from 'firebase/firestore';
+import { setDoc, doc, increment, getDoc } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {

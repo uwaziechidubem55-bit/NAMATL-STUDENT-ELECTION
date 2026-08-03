@@ -1,6 +1,6 @@
 // NAMTLS Form Purchase Verification API — v4 (auto-fill removed, purchase record only)
 // Server-side price validation + replay protection added.
-import { setDoc, doc, increment, getDoc } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {
@@ -45,9 +45,9 @@ export default async function handler(req, res) {
     const paidAmount = data.data.amount;
 
     // 2. Server-side price validation — admin-set price from Firestore, never from the client
-    const settingsSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
+    const settingsSnap = await db.doc('settings/formPurchase').get();
     let adminPrice = 0;
-    if (settingsSnap.exists()) {
+    if (settingsSnap.exists) {
       const positions = settingsSnap.data().positions || [];
       const match = positions.find(p => p.position === position);
       if (!match) {
@@ -63,21 +63,21 @@ export default async function handler(req, res) {
     }
 
     // 3. Replay protection — transaction_id IS the receipt doc ID (unique)
-    const receiptRef = doc(db, 'formPurchases', String(transaction_id));
-    const existingReceipt = await getDoc(receiptRef);
-    if (existingReceipt.exists()) {
+    const receiptRef = db.doc('formPurchases/' + String(transaction_id));
+    const existingReceipt = await receiptRef.get();
+    if (existingReceipt.exists) {
       return res.status(409).json({ success: false, message: 'This transaction has already been processed' });
     }
 
     // 4. Credit withdrawal balance
-    await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-      balance: increment(Number(paidAmount)),
-      totalReceived: increment(Number(paidAmount)),
+    await db.doc('finances/withdrawalBalance').set({
+      balance: FieldValue.increment(Number(paidAmount)),
+      totalReceived: FieldValue.increment(Number(paidAmount)),
       lastPaymentAt: new Date().toISOString()
     }, { merge: true });
 
     // 5. Save purchase record
-    await setDoc(receiptRef, {
+    await receiptRef.set({
       position,
       amount: Number(paidAmount),
       fullName: candidateData.fullName,

@@ -31,12 +31,12 @@ export default function Support() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#000F2A', color: 'white', fontFamily: 'Arial, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ background: 'white', color: '#0b1a3a', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '440px', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}>
+    <div style={{ minHeight: '100vh', background: '#000F2A', color: 'white', fontFamily: 'Arial, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <div style={{ background: 'white', color: '#0b1a3a', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '440px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}>
         {/* Header with Logo Centered */}
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <img
-            src="/logo.png"
+            src="https://raw.githubusercontent.com/logo.png"
             alt="NAMATL Logo"
             style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #FFD700', margin: '0 auto 12px', display: 'block' }}
             onError={(e) => { e.target.style.display = 'none'; }}

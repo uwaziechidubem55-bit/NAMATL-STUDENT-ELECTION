@@ -40,8 +40,9 @@ export default async function handler(req, res) {
     if (!record && flwTransferId) {
       const qs = await db.collection('withdrawals').where('flutterwaveId', '==', String(flwTransferId)).get();
       if (!qs.empty) {
-        recordRef = qs.docs[0].ref;
-        record = qs.docs[0].data();
+        const firstDoc = qs.docs[0]; // Safely extract the document snapshot first
+        recordRef = firstDoc.ref;
+        record = firstDoc.data();
       }
     }
 
@@ -77,6 +78,7 @@ export default async function handler(req, res) {
         const cur = await tx.get(targetRef);
         if (cur.exists && cur.data().status === 'successful') return; // already finalized
         const amount = record?.amount || flwAmount || 0;
+        
         tx.set(targetRef, {
           reference: ref,
           flutterwaveId: String(flwTransferId),
@@ -84,6 +86,7 @@ export default async function handler(req, res) {
           status: 'successful',
           verifiedAt: new Date().toISOString()
         }, { merge: true });
+        
         const balRef = db.doc('finances/withdrawalBalance');
         tx.set(balRef, {
           balance: FieldValue.increment(-amount),

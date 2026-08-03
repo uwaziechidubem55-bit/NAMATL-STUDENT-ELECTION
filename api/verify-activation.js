@@ -19,10 +19,9 @@ export default async function handler(req, res) {
     }
     const db = getDb();
 
-    // Support BOTH env var names for backward compatibility
-    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
+    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET;
     if (!secretKey) {
-      return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set in Vercel env vars' });
+      return res.status(500).json({ success: false, message: 'Flutterwave secret key not set (FLUTTERWAVE_SECRET_KEY / FLW_SECRET_KEY / FLUTTERWAVE_SECRET)' });
     }
 
     const response = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {

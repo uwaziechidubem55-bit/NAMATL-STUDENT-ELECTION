@@ -69,7 +69,7 @@ export default async function handler(req, res) {
       return res.status(409).json({ success: false, message: 'This transaction has already been processed' });
     }
 
-    // 4. Credit withdrawal balance
+    // 4. Credit withdrawal balance (FIXED: Added function parentheses to FieldValue.increment)
     await db.doc('finances/withdrawalBalance').set({
       balance: FieldValue.increment(Number(paidAmount)),
       totalReceived: FieldValue.increment(Number(paidAmount)),

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
-import { doc, getDoc, collection, getDocs, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 
 export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
@@ -9,6 +9,7 @@ export default function StudentDashboard() {
   const [candidates, setCandidates] = useState([]);
   const [settings, setSettings] = useState({});
   const [hasVoted, setHasVoted] = useState(false);
+  const [voting, setVoting] = useState(false);
   const [student, setStudent] = useState(null);
   const [currentTime, setCurrentTime] = useState(''); // ← ADDED
   const navigate = useNavigate();
@@ -74,8 +75,9 @@ export default function StudentDashboard() {
           setSettings(savedSettings);
         }
 
+        // hasVoted now comes from the server (login response) — localStorage kept as fallback
         const votedKey = 'voted_' + savedStudent.matric;
-        const votedStatus = localStorage.getItem(votedKey) === 'true';
+        const votedStatus = savedStudent.hasVoted === true || localStorage.getItem(votedKey) === 'true';
         setHasVoted(votedStatus);
 
       } catch (e) {
@@ -90,6 +92,7 @@ export default function StudentDashboard() {
 
   const handleLogout = () => {
     localStorage.removeItem('studentSession');
+    sessionStorage.removeItem('studentKey'); // ← clears the voting key
     navigate('/student-login');
   };
 
@@ -105,23 +108,52 @@ export default function StudentDashboard() {
   const handleVote = async (id) => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
     if (!window.confirm('Vote for this candidate? This action cannot be undone.')) return;
+    if (voting) return;
 
+    const uniqueKey = sessionStorage.getItem('studentKey');
+    if (!uniqueKey) {
+      alert('Session expired. Please login again.');
+      return;
+    }
+
+    setVoting(true);
     try {
-      const candidateRef = doc(db, 'candidates', id);
-      await updateDoc(candidateRef, {
-        votes: (candidates.find(c => c.id === id)?.votes || 0) + 1
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matric: student.matric, uniqueKey, candidateId: id }),
       });
+      const data = await res.json().catch(() => ({}));
 
+      // 409 = already voted (server-side truth) — sync local state and stop
+      if (res.status === 409) {
+        localStorage.setItem('voted_' + student.matric, 'true');
+        const saved = JSON.parse(localStorage.getItem('studentSession') || '{}');
+        saved.hasVoted = true;
+        localStorage.setItem('studentSession', JSON.stringify(saved));
+        setHasVoted(true);
+        alert('You have already voted.');
+        return;
+      }
+
+      if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+
+      // optimistic local bump for instant feedback
       const updated = candidates.map(c =>
         c.id === id ? { ...c, votes: (c.votes || 0) + 1 } : c
       );
       setCandidates(updated);
 
       localStorage.setItem('voted_' + student.matric, 'true');
+      const saved = JSON.parse(localStorage.getItem('studentSession') || '{}');
+      saved.hasVoted = true;
+      localStorage.setItem('studentSession', JSON.stringify(saved));
       setHasVoted(true);
       alert('Vote Submitted! Thank you.');
     } catch (e) {
       alert('Error submitting vote: ' + e.message);
+    } finally {
+      setVoting(false);
     }
   };
 
@@ -394,14 +426,15 @@ export default function StudentDashboard() {
                       <p style={manifestoStyle}>"{c.manifesto}"</p>
                     )}
 
-                    {/* Vote Button */}
+                    {/* Vote Button — disabled while a vote is in flight */}
                     <button
                       onClick={() => handleVote(c.id)}
-                      style={voteBtnStyle}
+                      disabled={voting}
+                      style={{ ...voteBtnStyle, opacity: voting ? 0.6 : 1, cursor: voting ? 'not-allowed' : 'pointer' }}
                       onMouseEnter={(e) => { e.target.style.transform = 'scale(1.03)'; }}
                       onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; }}
                     >
-                      Vote
+                      {voting ? 'Voting...' : 'Vote'}
                     </button>
                   </div>
                 ))}

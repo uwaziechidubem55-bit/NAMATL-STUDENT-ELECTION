@@ -2,7 +2,7 @@
 // Asks Flutterwave directly whether a transfer passed, then finalizes the
 // Firestore withdrawal record + balance EXACTLY ONCE (idempotent).
 import { doc, getDoc, setDoc, increment, runTransaction, collection, query, where, getDocs } from 'firebase-admin/firestore';
-import { db } from '../src/firebase';
+import { getDb } from './_firebase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -20,6 +20,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    const db = getDb();
+
     // ---- 1. Load (or recover) the withdrawal record -----------------------
     let recordRef = reference ? doc(db, 'finances', 'withdrawals', reference) : null;
     let record = null;

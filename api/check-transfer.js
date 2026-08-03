@@ -1,7 +1,7 @@
 // /api/check-transfer.js — REAL-TIME withdrawal status checker
 // Asks Flutterwave directly whether a transfer passed, then finalizes the
 // Firestore withdrawal record + balance EXACTLY ONCE (idempotent).
-import { doc, getDoc, setDoc, increment, runTransaction, collection, query, where, getDocs } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from './_firebase.js';
 
 export default async function handler(req, res) {
@@ -23,13 +23,13 @@ export default async function handler(req, res) {
     const db = getDb();
 
     // ---- 1. Load (or recover) the withdrawal record -----------------------
-    let recordRef = reference ? doc(db, 'finances', 'withdrawals', reference) : null;
+    let recordRef = reference ? db.doc('finances/withdrawals/' + reference) : null;
     let record = null;
     let flwTransferId = transferId || null;
 
     if (recordRef) {
-      const snap = await getDoc(recordRef);
-      if (snap.exists()) {
+      const snap = await recordRef.get();
+      if (snap.exists) {
         record = snap.data();
         flwTransferId = flwTransferId || record.flutterwaveId;
       }
@@ -37,8 +37,7 @@ export default async function handler(req, res) {
 
     // No record but we have a transferId -> recover by searching saved records
     if (!record && flwTransferId) {
-      const q = query(collection(db, 'finances', 'withdrawals'), where('flutterwaveId', '==', String(flwTransferId)));
-      const qs = await getDocs(q);
+      const qs = await db.collection('finances/withdrawals').where('flutterwaveId', '==', String(flwTransferId)).get();
       if (!qs.empty) {
         recordRef = qs.docs[0].ref;
         record = qs.docs[0].data();
@@ -72,10 +71,10 @@ export default async function handler(req, res) {
 
     if (status === 'successful') {
       // ---- 3. Finalize EXACTLY ONCE (atomic) ------------------------------
-      await runTransaction(db, async (tx) => {
-        const targetRef = recordRef || doc(db, 'finances', 'withdrawals', ref);
+      await db.runTransaction(async (tx) => {
+        const targetRef = recordRef || db.doc('finances/withdrawals/' + ref);
         const cur = await tx.get(targetRef);
-        if (cur.exists() && cur.data().status === 'successful') return; // already finalized
+        if (cur.exists && cur.data().status === 'successful') return; // already finalized
         const amount = record?.amount || flwAmount || 0;
         tx.set(targetRef, {
           reference: ref,
@@ -84,10 +83,10 @@ export default async function handler(req, res) {
           status: 'successful',
           verifiedAt: new Date().toISOString()
         }, { merge: true });
-        const balRef = doc(db, 'finances', 'withdrawalBalance');
+        const balRef = db.doc('finances/withdrawalBalance');
         tx.set(balRef, {
-          balance: increment(-amount),
-          totalWithdrawn: increment(amount),
+          balance: FieldValue.increment(-amount),
+          totalWithdrawn: FieldValue.increment(amount),
           lastWithdrawalAt: new Date().toISOString(),
           lastWithdrawalRef: ref,
           pendingWithdrawal: null
@@ -102,8 +101,8 @@ export default async function handler(req, res) {
 
     if (status === 'failed') {
       if (recordRef) {
-        await setDoc(recordRef, { status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
-        await setDoc(doc(db, 'finances', 'withdrawalBalance'), { pendingWithdrawal: null }, { merge: true });
+        await recordRef.set({ status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
+        await db.doc('finances/withdrawalBalance').set({ pendingWithdrawal: null }, { merge: true });
       }
       const reason = data.data?.complete_message || data.data?.note || data.message || 'No reason given';
       return res.status(200).json({ success: true, verified: false, status: 'failed', reference: ref, message: `Transfer FAILED: ${reason}. Flutterwave refunds it. You can retry.` });

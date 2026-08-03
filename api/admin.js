@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
+  
   if (!isAdmin(req)) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
@@ -39,8 +40,11 @@ export default async function handler(req, res) {
       }
       case 'saveCandidate': {
         const { id, data } = payload;
-        if (id) await db.doc(`candidates/${id}`).set(data, { merge: true });
-        else await db.collection('candidates').add(data);
+        if (id) {
+          await db.doc(`candidates/${id}`).set(data, { merge: true });
+        } else {
+          await db.collection('candidates').add(data);
+        }
         return res.json({ success: true });
       }
       case 'deleteCandidate': {
@@ -114,8 +118,9 @@ export default async function handler(req, res) {
         await db.doc('electionData/results').set(payload.data, { merge: true });
         return res.json({ success: true });
       }
-      default:
+      default: {
         return res.status(400).json({ success: false, message: 'Unknown action: ' + action });
+      }
     }
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message });

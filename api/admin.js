@@ -1,18 +1,37 @@
 // NAMATLS Admin API — server-side data operations for AdminDashboard.
-// Requires the same admin JWT used by /api/verify-session.
-import { getAdminDb } from './_admin.js';
-import { verifyToken } from './_session.js';
+// Guarded with a high-level diagnostic log layer to force Vercel to report silent errors.
+
+let getAdminDb, verifyToken;
+
+try {
+  // Capture dynamic module loading errors if Vercel is choking on file paths or extensions
+  const adminModule = await import('./_admin.js');
+  const sessionModule = await import('./_session.js');
+  getAdminDb = adminModule.getAdminDb;
+  verifyToken = sessionModule.verifyToken;
+} catch (importError) {
+  // If the import fails, this forces Vercel to print the exact missing file or module path
+  console.error("❌ CRITICAL STARTUP ERROR: Failed to import underlying dependencies inside api/admin.js!");
+  console.error("Stack trace:", importError.stack || importError.message || importError);
+}
 
 const SECRET = process.env.SERVER_SESSION_SECRET || '';
 
 function isAdmin(req) {
-  const auth = req.headers.authorization || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  const session = verifyToken(token, SECRET); // (token, secret) — matches your _session.js
-  return !!session && session.role === 'admin';
+  try {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!verifyToken) {
+      throw new Error("verifyToken helper function was never initialized successfully due to a prior import crash.");
+    }
+    const session = verifyToken(token, SECRET);
+    return !!session && session.role === 'admin';
+  } catch (authError) {
+    console.error("❌ AUTHENTICATION PROCESS CRASHED:", authError.message);
+    return false;
+  }
 }
 
-// Firestore Timestamps serialize to {_seconds,_nanoseconds} via JSON — convert to ISO strings for the client
 const serializeTs = (ts) => {
   if (!ts) return null;
   if (typeof ts.toDate === 'function') return ts.toDate().toISOString();
@@ -20,19 +39,26 @@ const serializeTs = (ts) => {
 };
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
-  }
-  
-  if (!isAdmin(req)) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
-
-  const { action, ...payload } = req.body || {};
-  const db = getAdminDb();
+  // Log incoming requests immediately to see if the engine registers traffic
+  console.log(`📡 [api/admin] Received execution request: ${req.method} | Action: ${req.body?.action || 'None'}`);
 
   try {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      return res.status(405).json({ success: false, message: 'Method not allowed' });
+    }
+    
+    if (!isAdmin(req)) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { action, ...payload } = req.body || {};
+    
+    if (!getAdminDb) {
+      throw new Error("getAdminDb initialization completely failed. Your Firebase instance could not boot up.");
+    }
+    const db = getAdminDb();
+
     switch (action) {
       case 'listCandidates': {
         const snap = await db.collection('candidates').get();
@@ -40,11 +66,8 @@ export default async function handler(req, res) {
       }
       case 'saveCandidate': {
         const { id, data } = payload;
-        if (id) {
-          await db.doc(`candidates/${id}`).set(data, { merge: true });
-        } else {
-          await db.collection('candidates').add(data);
-        }
+        if (id) await db.doc(`candidates/${id}`).set(data, { merge: true });
+        else await db.collection('candidates').add(data);
         return res.json({ success: true });
       }
       case 'deleteCandidate': {
@@ -118,11 +141,12 @@ export default async function handler(req, res) {
         await db.doc('electionData/results').set(payload.data, { merge: true });
         return res.json({ success: true });
       }
-      default: {
+      default:
         return res.status(400).json({ success: false, message: 'Unknown action: ' + action });
-      }
     }
-  } catch (e) {
-    return res.status(500).json({ success: false, message: e.message });
+  } catch (runtimeError) {
+    // This logs any raw operational failures directly back to Vercel's console output
+    console.error("❌ RUNTIME FAILURE INSIDE EXECUTION HANDLER:", runtimeError.stack || runtimeError.message);
+    return res.status(500).json({ success: false, message: runtimeError.message });
   }
 }

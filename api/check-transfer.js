@@ -1,6 +1,7 @@
 // /api/check-transfer.js — REAL-TIME withdrawal status checker
 // Asks Flutterwave directly whether a transfer passed, then finalizes the
 // Firestore withdrawal record + balance EXACTLY ONCE (idempotent).
+// Records live in the top-level `withdrawals/{reference}` collection.
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from './_firebase.js';
 
@@ -14,16 +15,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, message: 'Send reference or transferId' });
   }
 
-  const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
+  const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET;
   if (!secretKey) {
-    return res.status(500).json({ success: false, message: 'FLUTTERWAVE_SECRET_KEY not set' });
+    return res.status(500).json({ success: false, message: 'Flutterwave secret key not set (FLUTTERWAVE_SECRET_KEY / FLW_SECRET_KEY / FLUTTERWAVE_SECRET)' });
   }
 
   try {
     const db = getDb();
 
     // ---- 1. Load (or recover) the withdrawal record -----------------------
-    let recordRef = reference ? db.doc('finances/withdrawals/' + reference) : null;
+    let recordRef = reference ? db.collection('withdrawals').doc(reference) : null;
     let record = null;
     let flwTransferId = transferId || null;
 
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
 
     // No record but we have a transferId -> recover by searching saved records
     if (!record && flwTransferId) {
-      const qs = await db.collection('finances/withdrawals').where('flutterwaveId', '==', String(flwTransferId)).get();
+      const qs = await db.collection('withdrawals').where('flutterwaveId', '==', String(flwTransferId)).get();
       if (!qs.empty) {
         recordRef = qs.docs[0].ref;
         record = qs.docs[0].data();
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
     if (status === 'successful') {
       // ---- 3. Finalize EXACTLY ONCE (atomic) ------------------------------
       await db.runTransaction(async (tx) => {
-        const targetRef = recordRef || db.doc('finances/withdrawals/' + ref);
+        const targetRef = recordRef || db.collection('withdrawals').doc(ref);
         const cur = await tx.get(targetRef);
         if (cur.exists && cur.data().status === 'successful') return; // already finalized
         const amount = record?.amount || flwAmount || 0;

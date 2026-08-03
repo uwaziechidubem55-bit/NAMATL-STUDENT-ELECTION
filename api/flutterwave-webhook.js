@@ -3,7 +3,7 @@
 //    because verify-form-payment.js already credits them (fixes double-credit).
 // 2) transfer.completed -> withdrawal transfers: finalizes the record + balance
 //    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
-import { setDoc, doc, increment, getDoc, runTransaction } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
       }
 
       // DEDUP CHECK
-      const activationsSnap = await getDoc(doc(db, 'finances', 'activations'));
-      if (activationsSnap.exists()) {
+      const activationsSnap = await db.doc('finances/activations').get();
+      if (activationsSnap.exists) {
         const activations = activationsSnap.data();
         for (const year in activations) {
           if (activations[year].transaction_id === transaction_id) {
@@ -58,14 +58,14 @@ export default async function handler(req, res) {
 
       console.log(`Webhook: Crediting N${amount} from transaction ${transaction_id}`);
 
-      await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-        balance: increment(amount),
-        totalReceived: increment(amount),
+      await db.doc('finances/withdrawalBalance').set({
+        balance: FieldValue.increment(amount),
+        totalReceived: FieldValue.increment(amount),
         lastPaymentAt: new Date().toISOString()
       }, { merge: true });
 
       const academicYear = tx_ref?.split('-')[2] || 'unknown';
-      await setDoc(doc(db, 'finances', 'activations'), {
+      await db.doc('finances/activations').set({
         [academicYear]: {
           paid: true,
           amount,
@@ -91,23 +91,23 @@ export default async function handler(req, res) {
         return res.status(200).json({ status: 'skipped - no reference' });
       }
 
-      const recordRef = doc(db, 'finances', 'withdrawals', reference);
+      const recordRef = db.doc('finances/withdrawals/' + reference);
 
       if (status === 'successful') {
-        await runTransaction(db, async (tx) => {
+        await db.runTransaction(async (tx) => {
           const cur = await tx.get(recordRef);
-          if (cur.exists() && cur.data().status === 'successful') return; // already done
+          if (cur.exists && cur.data().status === 'successful') return; // already done
           tx.set(recordRef, {
             reference,
-            flutterwaveId: transferId ? String(transferId) : (cur.exists() ? cur.data().flutterwaveId : ''),
-            amount: amount || (cur.exists() ? Number(cur.data().amount || 0) : 0),
+            flutterwaveId: transferId ? String(transferId) : (cur.exists ? cur.data().flutterwaveId : ''),
+            amount: amount || (cur.exists ? Number(cur.data().amount || 0) : 0),
             status: 'successful',
             verifiedAt: new Date().toISOString()
           }, { merge: true });
-          const balRef = doc(db, 'finances', 'withdrawalBalance');
+          const balRef = db.doc('finances/withdrawalBalance');
           tx.set(balRef, {
-            balance: increment(-(amount || (cur.exists() ? Number(cur.data().amount || 0) : 0))),
-            totalWithdrawn: increment(amount || (cur.exists() ? Number(cur.data().amount || 0) : 0)),
+            balance: FieldValue.increment(-(amount || (cur.exists ? Number(cur.data().amount || 0) : 0))),
+            totalWithdrawn: FieldValue.increment(amount || (cur.exists ? Number(cur.data().amount || 0) : 0)),
             lastWithdrawalAt: new Date().toISOString(),
             lastWithdrawalRef: reference,
             pendingWithdrawal: null
@@ -117,8 +117,8 @@ export default async function handler(req, res) {
       }
 
       if (status === 'failed') {
-        await setDoc(recordRef, { status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
-        await setDoc(doc(db, 'finances', 'withdrawalBalance'), { pendingWithdrawal: null }, { merge: true });
+        await recordRef.set({ status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
+        await db.doc('finances/withdrawalBalance').set({ pendingWithdrawal: null }, { merge: true });
         console.log(`Webhook: Withdrawal ${reference} FAILED - cleared pending lock`);
       }
     }

@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
 
 export default function Support() {
   const [name, setName] = useState('');
@@ -17,10 +15,13 @@ export default function Support() {
       return;
     }
     try {
-      await addDoc(collection(db, 'supportMessages'), {
-        name, email: email || 'Not provided', message,
-        timestamp: serverTimestamp(), status: 'unread'
+      const res = await fetch('/api/support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, message }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
       setSubmitted(true);
       setError('');
       setName(''); setEmail(''); setMessage('');
@@ -30,292 +31,76 @@ export default function Support() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#0b1a3a',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      fontFamily: "'Segoe UI', Tahoma, sans-serif"
-    }}>
-      <div style={{
-        maxWidth: '560px',
-        width: '100%',
-        margin: '0 auto'
-      }}>
-
+    <div style={{ minHeight: '100vh', background: '#003366', color: 'white', fontFamily: 'Arial, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ background: 'white', color: '#0b1a3a', borderRadius: '12px', padding: '32px', width: '100%', maxWidth: '440px', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}>
         {/* Header with Logo Centered */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <img
-            src="/logo.png"
+            src="https://raw.githubusercontent.com/logo.png"
             alt="NAMATL Logo"
-            style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              objectFit: 'cover',
-              border: '3px solid #FFD700',
-              marginBottom: '12px',
-              display: 'block',
-              marginLeft: 'auto',
-              marginRight: 'auto'
-            }}
+            style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #FFD700', margin: '0 auto 12px', display: 'block' }}
             onError={(e) => { e.target.style.display = 'none'; }}
           />
-          <h1 style={{
-            fontSize: '24px',
-            fontWeight: '800',
-            color: '#FFD700',
-            margin: '0 0 6px 0'
-          }}>
-            NAMATL STUDENT E-VOTING
-          </h1>
-          <p style={{
-            color: '#94a3b8',
-            fontSize: '14px',
-            margin: '0'
-          }}>
-            💬 Chat / Support — Submit your complaints or request help
-          </p>
+          <h1 style={{ margin: 0, fontSize: '22px' }}>NAMATL STUDENT E-VOTING</h1>
+          <p style={{ margin: '6px 0 0', color: '#555' }}>💬 Chat / Support — Submit your complaints or request help</p>
         </div>
 
         {submitted ? (
-          <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
-            padding: '40px 24px',
-            textAlign: 'center',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: '#16a34a',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '32px',
-              margin: '0 auto 16px auto'
-            }}>✓</div>
-            <h2 style={{
-              fontSize: '22px',
-              fontWeight: '700',
-              color: '#0b1a3a',
-              margin: '0 0 8px 0'
-            }}>Message Sent!</h2>
-            <p style={{ color: '#64748b', fontSize: '14px', margin: '0 0 24px 0' }}>
-              Your message has been received. We'll get back to you as soon as possible.
-            </p>
-            <Link
-              to="/"
-              style={{
-                display: 'inline-block',
-                padding: '12px 28px',
-                background: '#FFD700',
-                color: '#061D3A',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: '700',
-                fontSize: '15px',
-                cursor: 'pointer',
-                textDecoration: 'none',
-                transition: 'all 0.3s'
-              }}
-              onMouseEnter={(e) => { e.target.style.background = '#e6a800'; }}
-              onMouseLeave={(e) => { e.target.style.background = '#FFD700'; }}
-            >
-              ← Back to Home
-            </Link>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '40px' }}>✓</div>
+            <h2 style={{ margin: '8px 0' }}>Message Sent!</h2>
+            <p>Your message has been received. We'll get back to you as soon as possible.</p>
+            <Link to="/" style={{ display: 'inline-block', marginTop: '8px', padding: '10px 24px', background: '#FFD700', color: '#0b1a3a', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }}>← Back to Home</Link>
           </div>
         ) : (
-          <form
-            onSubmit={handleSubmit}
-            style={{
-              background: '#ffffff',
-              borderRadius: '12px',
-              padding: '32px 28px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
-            }}
-          >
+          <form onSubmit={handleSubmit}>
             {error && (
-              <div style={{
-                background: '#fef2f2',
-                color: '#dc2626',
-                padding: '12px 16px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                marginBottom: '20px',
-                border: '1px solid #fecaca'
-              }}>
+              <div style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '14px' }}>
                 ⚠️ {error}
               </div>
             )}
 
-            <label style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#0b1a3a',
-              marginBottom: '6px'
-            }}>
-              Your Name <span style={{ color: '#dc2626' }}>*</span>
-            </label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Your Name *</label>
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
               required
-              style={{
-                width: '100%',
-                padding: '14px 16px',
-                border: '2px solid #e2e8f0',
-                borderRadius: '8px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                background: '#ffffff',
-                color: '#0b1a3a',
-                outline: 'none',
-                transition: 'border-color 0.2s',
-                marginBottom: '20px'
-              }}
+              onChange={(e) => setName(e.target.value)}
+              style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', outline: 'none' }}
               onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
               onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; }}
             />
 
-            <label style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#0b1a3a',
-              marginBottom: '6px'
-            }}>
-              Email <span style={{ color: '#94a3b8' }}>(optional)</span>
-            </label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Email (optional)</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '14px 16px',
-                border: '2px solid #e2e8f0',
-                borderRadius: '8px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                background: '#ffffff',
-                color: '#0b1a3a',
-                outline: 'none',
-                transition: 'border-color 0.2s',
-                marginBottom: '20px'
-              }}
+              style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', outline: 'none' }}
               onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
               onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; }}
             />
 
-            <label style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#0b1a3a',
-              marginBottom: '6px'
-            }}>
-              Your Message <span style={{ color: '#dc2626' }}>*</span>
-            </label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Your Message *</label>
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
               required
-              rows="5"
-              style={{
-                width: '100%',
-                padding: '14px 16px',
-                border: '2px solid #e2e8f0',
-                borderRadius: '8px',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                background: '#ffffff',
-                color: '#0b1a3a',
-                outline: 'none',
-                transition: 'border-color 0.2s',
-                resize: 'vertical',
-                fontFamily: "'Segoe UI', Tahoma, sans-serif",
-                marginBottom: '24px'
-              }}
+              rows={5}
+              onChange={(e) => setMessage(e.target.value)}
+              style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
               onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
               onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; }}
             />
 
-            <button
-              type="submit"
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: '#FFD700',
-                color: '#061D3A',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: '700',
-                fontSize: '16px',
-                cursor: 'pointer',
-                transition: 'all 0.3s'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = '#e6a800';
-                e.target.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = '#FFD700';
-                e.target.style.transform = 'translateY(0)';
-              }}
-            >
+            <button type="submit" style={{ width: '100%', padding: '14px', background: '#FFD700', color: '#0b1a3a', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>
               Send Message
             </button>
 
-            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-              <Link
-                to="/"
-                style={{
-                  color: '#94a3b8',
-                  background: 'transparent',
-                  border: '1px solid rgba(148,163,184,0.2)',
-                  borderRadius: '6px',
-                  padding: '8px 18px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  display: 'inline-block',
-                  transition: 'all 0.3s'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.color = '#FFD700';
-                  e.target.style.borderColor = '#FFD700';
-                  e.target.style.background = 'rgba(255,215,0,0.08)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.color = '#94a3b8';
-                  e.target.style.borderColor = 'rgba(148,163,184,0.2)';
-                  e.target.style.background = 'transparent';
-                }}
-              >
-                ← Back to Home
-              </Link>
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <Link to="/" style={{ color: '#2563eb', textDecoration: 'underline' }}>← Back to Home</Link>
             </div>
           </form>
         )}
-
-        {/* Footer */}
-        <p style={{
-          textAlign: 'center',
-          color: '#64748b',
-          fontSize: '11px',
-          marginTop: '32px'
-        }}>
-          NAMATL STUDENT E-VOTING © {new Date().getFullYear()}
-        </p>
       </div>
     </div>
   );

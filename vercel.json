@@ -1,5 +1,10 @@
 {
   "framework": "vite",
+  "functions": {
+    "api/[!_]*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],

@@ -3,7 +3,7 @@
 // Vercel serverless functions run in Node.js and do NOT have Vite's
 // `import.meta.env`. Env vars must come from process.env.
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const pick = (...names) => {
   for (const n of names) {

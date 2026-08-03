@@ -7,13 +7,20 @@ export default function Support() {
   const [message, setMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false); // <-- NEW
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return; // <-- prevent double click
+    
     if (!name || !message) {
       setError('Name and message are required');
       return;
     }
+
+    setLoading(true); // <-- disable button
+    setError('');
+
     try {
       const res = await fetch('/api/support', {
         method: 'POST',
@@ -22,18 +29,20 @@ export default function Support() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+      
       setSubmitted(true);
-      setError('');
       setName(''); setEmail(''); setMessage('');
     } catch (e) {
       setError('Failed to send message: ' + e.message);
+    } finally {
+      setLoading(false); // <-- re-enable button
     }
   };
 
   return (
     <div style={{ minHeight: '100vh', background: '#000F2A', color: 'white', fontFamily: 'Arial, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
       <div style={{ background: 'white', color: '#0b1a3a', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '440px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)' }}>
-        {/* Header with Logo Centered */}
+        
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <img
             src="/logo.png"
@@ -61,39 +70,30 @@ export default function Support() {
             )}
 
             <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Your Name *</label>
-            <input
-              type="text"
-              value={name}
-              required
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', outline: 'none' }}
-              onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
-              onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; }}
-            />
+            <input type="text" value={name} required onChange={(e) => setName(e.target.value)} style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px' }}/>
 
             <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Email (optional)</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', outline: 'none' }}
-              onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
-              onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; }}
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px' }}/>
 
             <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Your Message *</label>
-            <textarea
-              value={message}
-              required
-              rows={5}
-              onChange={(e) => setMessage(e.target.value)}
-              style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
-              onFocus={(e) => { e.target.style.borderColor = '#FFD700'; }}
-              onBlur={(e) => { e.target.style.borderColor = '#e2e8f0'; }}
-            />
+            <textarea value={message} required rows={5} onChange={(e) => setMessage(e.target.value)} style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '20px', resize: 'vertical', fontFamily: 'inherit' }}/>
 
-            <button type="submit" style={{ width: '100%', padding: '14px', background: '#FFD700', color: '#0b1a3a', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>
-              Send Message
+            <button 
+              type="submit" 
+              disabled={loading} // <-- DISABLE WHEN SENDING
+              style={{ 
+                width: '100%', 
+                padding: '14px', 
+                background: loading ? '#ccc' : '#FFD700', // gray when loading
+                color: '#0b1a3a', 
+                border: 'none', 
+                borderRadius: '8px', 
+                fontWeight: 'bold', 
+                fontSize: '16px', 
+                cursor: loading ? 'not-allowed' : 'pointer' // <-- show not-allowed cursor
+              }}
+            >
+              {loading ? 'Sending...' : 'Send Message'} {/* <-- change text */}
             </button>
 
             <div style={{ textAlign: 'center', marginTop: '16px' }}>

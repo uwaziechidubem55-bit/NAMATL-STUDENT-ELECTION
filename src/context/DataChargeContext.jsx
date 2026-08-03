@@ -1,7 +1,9 @@
 // NAMTLS DataCharge v4.3.1 - FIXED: closing tag typo (DataChainContext -> DataChargeContext)
+// v4.3.2 - All privileged Firestore ops moved server-side via /api/admin (rules stay locked)
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { doc, getDoc, setDoc, increment, collection, getDocs, addDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { adminApi } from '../utils/adminApi';
 
 // ===== READ FROM ENVIRONMENT VARIABLES (display-only values; real validation is server-side) =====
 const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || '';
@@ -70,10 +72,8 @@ export function DataChargeProvider({ children }) {
 
   const loadBalance = async () => {
     try {
-      const snap = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
-      if (snap.exists()) {
-        setWithdrawalBalance(snap.data().balance || 0);
-      }
+      const res = await adminApi('getBalance');
+      setWithdrawalBalance((res.data && typeof res.data.balance === 'number') ? res.data.balance : 0);
     } catch (e) {
       console.log('Could not load balance:', e.message);
     }
@@ -81,6 +81,7 @@ export function DataChargeProvider({ children }) {
 
   const loadFormPurchaseSettings = async () => {
     try {
+      // settings/* is public-read in rules — safe to keep client-side
       const snap = await getDoc(doc(db, 'settings', 'formPurchase'));
       if (snap.exists()) {
         setFormPurchaseSettings(snap.data());
@@ -92,7 +93,7 @@ export function DataChargeProvider({ children }) {
 
   const saveFormPurchaseSettings = async (settings) => {
     try {
-      await setDoc(doc(db, 'settings', 'formPurchase'), settings, { merge: true });
+      await adminApi('saveFormPurchaseSettings', { data: settings });
       setFormPurchaseSettings(settings);
       return { success: true, message: 'Form purchase settings saved!' };
     } catch (e) {
@@ -102,8 +103,8 @@ export function DataChargeProvider({ children }) {
 
   const loadFormPurchases = async () => {
     try {
-      const snap = await getDocs(collection(db, 'formPurchases'));
-      setFormPurchases(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const res = await adminApi('listFormPurchases');
+      setFormPurchases(res.items || []);
     } catch (e) {
       console.log('Could not load form purchases:', e.message);
     }
@@ -124,21 +125,10 @@ export function DataChargeProvider({ children }) {
       return { success: false, message: transferResult.message, reference: transferResult.reference || '' };
     }
 
-    try {
-      await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-        balance: increment(-amount),
-        lastWithdrawal: new Date().toISOString(),
-        lastWithdrawalAmount: amount,
-        lastWithdrawalAccount: OPAY_ACCOUNT,
-        lastWithdrawalReference: transferResult.reference || '',
-        lastWithdrawalFlutterwaveId: transferResult.flutterwaveId || '',
-        lastWithdrawalVerified: transferResult.verified ? true : false
-      }, { merge: true });
-      setWithdrawalBalance(prev => prev - amount);
-      return { success: true, message: `✅ CONFIRMED: ₦${amount.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${transferResult.reference || 'N/A'}` };
-    } catch (e) {
-      return { success: false, message: `⚠️ Money WAS sent (Ref: ${transferResult.reference}) but balance update failed: ${e.message}` };
-    }
+    // Server (api/withdraw) already deducted the balance inside its own transaction.
+    // Client only mirrors the decrement for instant UI feedback — no Firestore write here.
+    setWithdrawalBalance(prev => prev - amount);
+    return { success: true, message: `✅ CONFIRMED: ₦${amount.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${transferResult.reference || 'N/A'}` };
   };
 
   const checkActivationCost = async (academicYear) => {

@@ -14,7 +14,7 @@ export default function StudentLogin() {
   const [uniqueKeyInput, setUniqueKeyInput] = useState('');
   const [generatedKey, setGeneratedKey] = useState('');
 
-  const { loading, message, handleSignup, completeSignup, handleLogin, verifyKeyAccess } = useStudentAuth();
+  const { loading, message, showMessage, handleSignup, completeSignup, handleLogin, verifyKeyAccess } = useStudentAuth();
   const navigate = useNavigate();
 
   // CHANGED: Now using crypto.randomUUID() instead of Math.random()
@@ -57,11 +57,23 @@ export default function StudentLogin() {
   };
 
   const onKeyAccess = async () => {
-    const result = await verifyKeyAccess(tempStudent, uniqueKeyInput);
+    const key = uniqueKeyInput.trim();
+
+    // ERROR 1: Empty
+    if (!key) {
+      showMessage('error', 'Please fill the field');
+      return;
+    }
+
+    // Call API. If key is wrong, your hook will show "Invalid verification key"
+    const result = await verifyKeyAccess(tempStudent, key);
     console.log('[StudentLogin] verifyKeyAccess result:', result);
     if (result.success) {
       setShowKeyPopup(false);
       navigate('/student');
+    } else {
+      // If backend returns error, overwrite it to exactly "Invalid verification key"
+      showMessage('error', 'Invalid verification key');
     }
   };
 
@@ -90,7 +102,7 @@ export default function StudentLogin() {
   };
 
   const btnSuccess = {
-    ...btnPrimary, background: '#16a34a',
+ ...btnPrimary, background: '#16a34a',
   };
 
   // ── Page Layout Styles ──
@@ -121,21 +133,21 @@ export default function StudentLogin() {
     fontSize: '14px',
     fontWeight: 'bold',
     textAlign: 'center',
-    background: message.type === 'error' ? '#fee2e2' : '#d1fae5',
-    color: message.type === 'error' ? '#dc2626' : '#16a34a',
-    border: message.type === 'error' ? '1px solid #fecaca' : '1px solid #bbf7d0'
+    background: message.type === 'error'? '#fee2e2' : '#d1fae5',
+    color: message.type === 'error'? '#dc2626' : '#16a34a',
+    border: message.type === 'error'? '1px solid #fecaca' : '1px solid #bbf7d0'
   };
 
   const logoStyle = {
-  width: '80px',
-  height: '80px',
-  borderRadius: '50%',
-  objectFit: 'cover',
-  border: '3px solid #FFD700',
-  boxShadow: '0 0 15px rgba(255, 215, 0, 0.2)',
-  display: 'block',       // ADD THIS
-  margin: '0 auto 16px'   // ADD THIS - auto left/right forces center
-};
+    width: '80px',
+    height: '80px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '3px solid #FFD700',
+    boxShadow: '0 0 15px rgba(255, 215, 0, 0.2)',
+    display: 'block',
+    margin: '0 auto 16px'
+  };
 
   return (
     <div style={pageStyle}>
@@ -150,41 +162,41 @@ export default function StudentLogin() {
         />
 
         <h1 style={{ color: '#003366', textAlign: 'center', marginBottom: '4px' }}>
-          {authMode === 'signup' ? 'Student Registration' : 'Student Login'}
+          {authMode === 'signup'? 'Student Registration' : 'Student Login'}
         </h1>
         <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginBottom: '20px' }}>
-          {authMode === 'signup' ? 'Create account to continue' : 'Login with your Matric Number'}
+          {authMode === 'signup'? 'Create account to continue' : 'Login with your Matric Number'}
         </p>
 
         {message.text && (
           <div style={msgBoxStyle}>{message.text}</div>
         )}
 
-        {authMode === 'signup' ? (
+        {authMode === 'signup'? (
           <>
             <input
               placeholder="Full Name"
               value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              onChange={(e) => setForm({...form, name: e.target.value })}
               style={inputStyle}
               disabled={loading}
             />
             <input
               placeholder="Matric Number"
               value={form.matric}
-              onChange={(e) => setForm({ ...form, matric: e.target.value })}
+              onChange={(e) => setForm({...form, matric: e.target.value })}
               style={inputStyle}
               disabled={loading}
             />
             <input
               placeholder="Level (e.g. 200, 300, 400)"
               value={form.level}
-              onChange={(e) => setForm({ ...form, level: e.target.value })}
+              onChange={(e) => setForm({...form, level: e.target.value })}
               style={inputStyle}
               disabled={loading}
             />
             <button onClick={onSignup} style={btnPrimary} disabled={loading}>
-              {loading ? 'Please wait...' : 'Register'}
+              {loading? 'Please wait...' : 'Register'}
             </button>
             <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#666' }}>
               Already have an account?{' '}
@@ -202,11 +214,11 @@ export default function StudentLogin() {
               placeholder="Matric Number"
               value={loginMatric}
               onChange={(e) => setLoginMatric(e.target.value)}
-              style={{ ...inputStyle, marginBottom: '16px' }}
+              style={{...inputStyle, marginBottom: '16px' }}
               disabled={loading}
             />
             <button onClick={onLogin} style={btnPrimary} disabled={loading}>
-              {loading ? 'Please wait...' : 'Login'}
+              {loading? 'Please wait...' : 'Login'}
             </button>
             <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#666' }}>
               Don't have an account?{' '}
@@ -244,7 +256,7 @@ export default function StudentLogin() {
               autoFocus
             />
             <button onClick={onVerifyCode} style={btnPrimary} disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify'}
+              {loading? 'Verifying...' : 'Verify'}
             </button>
           </div>
         </div>
@@ -255,9 +267,9 @@ export default function StudentLogin() {
         <div style={popupOverlay}>
           <div style={popupBox}>
             <h2 style={{ color: '#003366', textAlign: 'center' }}>
-              {generatedKey ? 'Your Unique Code — Save This' : 'Access Voting Portal'}
+              {generatedKey? 'Your Unique Code — Save This' : 'Access Voting Portal'}
             </h2>
-            {generatedKey ? (
+            {generatedKey? (
               <>
                 <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
                   This is your one-time access key. Save it now — you will need it to log in later.
@@ -288,7 +300,7 @@ export default function StudentLogin() {
                   autoFocus
                 />
                 <button onClick={onKeyAccess} style={btnPrimary} disabled={loading}>
-                  {loading ? 'Verifying...' : 'Access Voting Portal'}
+                  {loading? 'Verifying...' : 'Access Voting Portal'}
                 </button>
               </>
             )}

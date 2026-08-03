@@ -20,9 +20,9 @@ export default async function handler(req, res) {
     }
     const db = getDb();
 
-    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY;
+    const secretKey = process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET;
     if (!secretKey) {
-      return res.status(500).json({ success: false, message: 'Flutterwave secret key not set in environment variables' });
+      return res.status(500).json({ success: false, message: 'Flutterwave secret key not set (FLUTTERWAVE_SECRET_KEY / FLW_SECRET_KEY / FLUTTERWAVE_SECRET)' });
     }
 
     // 1. Verify with Flutterwave

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, storage } from '../firebase';
-import { collection, addDoc, getDocs, getDoc, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext';
+import { adminApi } from '../utils/adminApi';
 
 const MAX_PER_POSITION = 5;
 
@@ -145,30 +145,26 @@ export default function AdminDashboard() {
   const [activationLoading, setActivationLoading] = useState(false);
   const [activationMsg, setActivationMsg] = useState({ type: '', text: '' });
 
-  // ===================== LOAD ACTIVATION FROM FIRESTORE =====================
+  // ===================== LOAD ACTIVATION (server-side now) =====================
   const loadActivation = async () => {
     try {
-      const activationSnap = await getDoc(doc(db, 'settings', 'main'));
-      if (activationSnap.exists()) {
-        const data = activationSnap.data();
+      const mainRes = await adminApi('getMainSettings');
+      if (mainRes.data) {
+        const data = mainRes.data;
         let currentMode = data.activeMode || 'none';
         const now = new Date();
 
         // ===== AUTO-STOP ELECTION IF END DATE/TIME HAS PASSED =====
         if (currentMode === 'election' || currentMode === 'both') {
-          const electionSnap = await getDoc(doc(db, 'settings', 'election'));
-          if (electionSnap.exists()) {
-            const electionData = electionSnap.data();
+          const electionRes = await adminApi('getElectionSettings');
+          if (electionRes.data) {
+            const electionData = electionRes.data;
             if (electionData.endDate && electionData.endTime) {
               const endDateTime = new Date(electionData.endDate + 'T' + electionData.endTime);
               if (now >= endDateTime) {
                 console.log('[Auto-Stop] Election end time passed. Auto-stopping election.');
-                // Auto-stop election
                 const newMode = currentMode === 'both' ? 'formPurchase' : 'none';
-                await setDoc(doc(db, 'settings', 'main'), {
-                  activeMode: newMode,
-                  isActive: false
-                }, { merge: true });
+                await adminApi('saveMainSettings', { data: { activeMode: newMode, isActive: false } });
                 currentMode = newMode;
               }
             }
@@ -177,20 +173,16 @@ export default function AdminDashboard() {
 
         // ===== AUTO-STOP FORM PURCHASE IF END DATE/TIME HAS PASSED =====
         if (currentMode === 'formPurchase' || currentMode === 'both') {
-          const fpSnap = await getDoc(doc(db, 'settings', 'formPurchase'));
-          if (fpSnap.exists()) {
-            const fpData = fpSnap.data();
+          const fpRes = await adminApi('getFormPurchaseSettings');
+          if (fpRes.data) {
+            const fpData = fpRes.data;
             if (fpData.closingDate && fpData.closingTime) {
               const closeDateTime = new Date(fpData.closingDate + 'T' + fpData.closingTime);
               if (now >= closeDateTime) {
                 console.log('[Auto-Stop] Form purchase end time passed. Auto-stopping form purchase.');
                 const newMode = currentMode === 'both' ? 'election' : 'none';
-                await setDoc(doc(db, 'settings', 'main'), {
-                  activeMode: newMode,
-                }, { merge: true });
-                await setDoc(doc(db, 'settings', 'formPurchase'), {
-                  isActive: false
-                }, { merge: true });
+                await adminApi('saveMainSettings', { data: { activeMode: newMode } });
+                await adminApi('saveFormPurchaseSettings', { data: { isActive: false } });
                 currentMode = newMode;
               }
             }
@@ -217,29 +209,29 @@ export default function AdminDashboard() {
       }
 
       // Write to settings/main
-      await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
+      await adminApi('saveMainSettings', { data: { activeMode: newMode } });
 
       if (type === 'election') {
         // Copy election settings into settings/main so StudentDashboard reads them
-        const electionSettings = await getDoc(doc(db, 'settings', 'election'));
-        if (electionSettings.exists()) {
-          const data = electionSettings.data();
-          await setDoc(doc(db, 'settings', 'main'), {
-            isActive: true,
-            startDate: data.startDate || '',
-            startTime: data.startTime || '',
-            endDate: data.endDate || '',
-            endTime: data.endTime || '',
-            year: data.year || ''
-          }, { merge: true });
+        const electionRes = await adminApi('getElectionSettings');
+        if (electionRes.data) {
+          const data = electionRes.data;
+          await adminApi('saveMainSettings', {
+            data: {
+              isActive: true,
+              startDate: data.startDate || '',
+              startTime: data.startTime || '',
+              endDate: data.endDate || '',
+              endTime: data.endTime || '',
+              year: data.year || ''
+            }
+          });
         }
       }
 
       if (type === 'formPurchase') {
         // Activate the formPurchase settings so PurchaseForm.jsx sees isActive: true
-        await setDoc(doc(db, 'settings', 'formPurchase'), {
-          isActive: true
-        }, { merge: true });
+        await adminApi('saveFormPurchaseSettings', { data: { isActive: true } });
       }
 
       setActiveMode(newMode);
@@ -262,14 +254,14 @@ export default function AdminDashboard() {
         newMode = activeMode === 'both' ? 'election' : 'none';
       }
 
-      await setDoc(doc(db, 'settings', 'main'), { activeMode: newMode }, { merge: true });
+      await adminApi('saveMainSettings', { data: { activeMode: newMode } });
 
       if (type === 'election') {
-        await setDoc(doc(db, 'settings', 'main'), { isActive: false }, { merge: true });
+        await adminApi('saveMainSettings', { data: { isActive: false } });
       }
 
       if (type === 'formPurchase') {
-        await setDoc(doc(db, 'settings', 'formPurchase'), { isActive: false }, { merge: true });
+        await adminApi('saveFormPurchaseSettings', { data: { isActive: false } });
       }
 
       setActiveMode(newMode);
@@ -285,32 +277,26 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
     try {
-      const [candidatesSnap, settingsSnap, votersSnap, supportSnap] = await Promise.all([
-        getDocs(collection(db, 'candidates')),
-        getDoc(doc(db, 'settings', 'election')).catch(() => ({ exists: () => false, data: () => ({}) })),
-        getDocs(collection(db, 'students')).catch(() => ({ forEach: () => {} })),
-        getDocs(collection(db, 'supportMessages')).catch(() => ({ forEach: () => {} })),
+      const [candidatesRes, settingsRes, votersRes, supportRes] = await Promise.all([
+        adminApi('listCandidates'),
+        adminApi('getElectionSettings').catch(() => ({ data: null })),
+        adminApi('listStudents').catch(() => ({ items: [] })),
+        adminApi('listSupport').catch(() => ({ items: [] })),
       ]);
 
-      const cData = [];
-      candidatesSnap.forEach(d => cData.push({ id: d.id, ...d.data() }));
+      const cData = candidatesRes.items || [];
       setCandidates(cData);
 
       const counts = {};
       cData.forEach(c => { counts[c.position] = (counts[c.position] || 0) + 1; });
       setFpCandidateCounts(counts);
 
-      if (settingsSnap.exists()) {
-        setSettings(settingsSnap.data());
+      if (settingsRes.data) {
+        setSettings(settingsRes.data);
       }
 
-      const vData = [];
-      votersSnap.forEach(d => vData.push({ id: d.id, ...d.data() }));
-      setVoters(vData);
-
-      const mData = [];
-      supportSnap.forEach(d => mData.push({ id: d.id, ...d.data() }));
-      setSupportMessages(mData);
+      setVoters(votersRes.items || []);
+      setSupportMessages(supportRes.items || []);
 
       try { await loadBalance(); } catch (e) {}
       try { await loadFormPurchases(); } catch (e) {}
@@ -319,7 +305,9 @@ export default function AdminDashboard() {
       setLoading(false);
     } catch (e) {
       console.error('Admin load error:', e);
-      setError('Failed to load data. Make sure Firestore database is created in Firebase Console.');
+      setError(e.message && e.message.includes('Unauthorized')
+        ? 'Admin session expired. Please login again.'
+        : 'Failed to load data. Make sure Firestore database is created in Firebase Console.');
       setLoading(false);
     }
   };
@@ -402,7 +390,7 @@ export default function AdminDashboard() {
   };
 
   const handleSaveSettings = async () => {
-    try { await setDoc(doc(db, 'settings', 'election'), settings, { merge: true }); alert('✅ Saved!'); }
+    try { await adminApi('saveElectionSettings', { data: settings }); alert('✅ Saved!'); }
     catch (e) { alert('Error: ' + e.message); }
   };
 
@@ -410,13 +398,13 @@ export default function AdminDashboard() {
     if (!name || !position || !dept) { alert('Name, position and dept required'); return; }
     try {
       if (editingCandidate) {
-        await updateDoc(doc(db, 'candidates', editingCandidate.id), { name, position, dept, manifesto });
-        // Upload photo if new one selected
+        await adminApi('saveCandidate', { id: editingCandidate.id, data: { name, position, dept, manifesto } });
+        // Upload photo if new one selected (Firebase Storage — separate from Firestore rules)
         if (photo) {
           const storageRef = ref(storage, `candidates/${editingCandidate.id}_${Date.now()}`);
           await uploadBytes(storageRef, photo);
           const photoURL = await getDownloadURL(storageRef);
-          await updateDoc(doc(db, 'candidates', editingCandidate.id), { photo: photoURL });
+          await adminApi('saveCandidate', { id: editingCandidate.id, data: { photo: photoURL } });
         }
       } else {
         const posCount = candidates.filter(c => c.position === position).length;
@@ -427,9 +415,8 @@ export default function AdminDashboard() {
           await uploadBytes(storageRef, photo);
           photoURL = await getDownloadURL(storageRef);
         }
-        await addDoc(collection(db, 'candidates'), {
-          name, position, dept, level: '', email: '', votes: 0,
-          photo: photoURL, manifesto, paidForm: false
+        await adminApi('saveCandidate', {
+          data: { name, position, dept, level: '', email: '', votes: 0, photo: photoURL, manifesto, paidForm: false }
         });
       }
       setName(''); setPosition(''); setDept(''); setManifesto('');
@@ -448,7 +435,7 @@ export default function AdminDashboard() {
 
   const handleDeleteCandidate = async (id) => {
     if (!window.confirm('Delete?')) return;
-    try { await deleteDoc(doc(db, 'candidates', id)); loadAllData(); }
+    try { await adminApi('deleteCandidate', { id }); loadAllData(); }
     catch (e) { alert('Error: ' + e.message); }
   };
 
@@ -557,12 +544,12 @@ export default function AdminDashboard() {
     setResultsGenerated(false);
 
     try {
-      // Check if results already exist in Firestore
-      const existingResultsSnap = await getDoc(doc(db, 'electionData', 'results'));
+      // Check if results already exist (electionData is denied client-side — read via server)
+      const existingResultsRes = await adminApi('getResults');
       let storedCandidateIds = {};
 
-      if (existingResultsSnap.exists()) {
-        storedCandidateIds = existingResultsSnap.data().candidateIds || {};
+      if (existingResultsRes.data) {
+        storedCandidateIds = existingResultsRes.data.candidateIds || {};
       }
 
       // Count candidates per position for vote points
@@ -605,17 +592,19 @@ export default function AdminDashboard() {
       // Re-assign serial numbers after sorting
       results.forEach((r, i) => { r.sNo = i + 1; });
 
-      // Store in Firestore
+      // Store in Firestore (server-side)
       const year = settings.year || '2026/2027';
-      await setDoc(doc(db, 'electionData', 'results'), {
-        year: year,
-        generatedAt: new Date().toISOString(),
-        candidateIds: candidateIds,
-        results: results,
-        totalPositions: Object.keys(positionCounts).length,
-        totalCandidates: candidates.length,
-        totalVoters: activeVoters
-      }, { merge: true });
+      await adminApi('saveResults', {
+        data: {
+          year: year,
+          generatedAt: new Date().toISOString(),
+          candidateIds: candidateIds,
+          results: results,
+          totalPositions: Object.keys(positionCounts).length,
+          totalCandidates: candidates.length,
+          totalVoters: activeVoters
+        }
+      });
 
       setElectionResults(results);
       setResultsGenerated(true);
@@ -631,13 +620,10 @@ export default function AdminDashboard() {
   const loadExistingResults = async () => {
     setPrintLoading(true);
     try {
-      const resultsSnap = await getDoc(doc(db, 'electionData', 'results'));
-      if (resultsSnap.exists()) {
-        const data = resultsSnap.data();
-        if (data.results && data.results.length > 0) {
-          setElectionResults(data.results);
-          setResultsGenerated(true);
-        }
+      const resultsRes = await adminApi('getResults');
+      if (resultsRes.data && resultsRes.data.results && resultsRes.data.results.length > 0) {
+        setElectionResults(resultsRes.data.results);
+        setResultsGenerated(true);
       }
     } catch (e) {
       console.error('Load results error:', e);
@@ -1616,14 +1602,14 @@ export default function AdminDashboard() {
                       {msg.email && <span style={{ fontSize: '12px', color: '#888', marginLeft: '8px' }}>&lt;{msg.email}&gt;</span>}
                     </div>
                     <span style={{ fontSize: '12px', color: '#888' }}>
-                      {msg.timestamp?.toDate?.()?.toLocaleString() || ''}
+                      {msg.timestamp ? new Date(msg.timestamp).toLocaleString() : ''}
                       {msg.status === 'unread' && <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '8px' }}>New</span>}
                     </span>
                   </div>
                   <p style={{ margin: '0 0 4px 0', color: '#666' }}>{msg.message}</p>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     {msg.status === 'unread' && (
-                      <button onClick={async () => { try { await updateDoc(doc(db, 'supportMessages', msg.id), { status: 'read' }); loadAllData(); } catch(e) {} }}
+                      <button onClick={async () => { try { await adminApi('markSupportRead', { id: msg.id }); loadAllData(); } catch(e) {} }}
                               style={{ padding: '4px 10px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
                         Mark Read
                       </button>

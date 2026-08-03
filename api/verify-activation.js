@@ -1,5 +1,5 @@
 // NAMTLS Manual Verify + Credit API
-import { setDoc, doc, increment, getDoc } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 
 export default async function handler(req, res) {
@@ -48,19 +48,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: 'Amount less than 25000' });
     }
 
-    const activationRef = doc(db, 'finances', 'activations');
-    const activationSnap = await getDoc(activationRef);
-    if (activationSnap.exists() && activationSnap.data()[academicYear]?.paid) {
+    const activationRef = db.doc('finances/activations');
+    const activationSnap = await activationRef.get();
+    if (activationSnap.exists && activationSnap.data()[academicYear]?.paid) {
       return res.status(400).json({ success: false, message: `Year ${academicYear} already activated` });
     }
 
-    await setDoc(doc(db, 'finances', 'withdrawalBalance'), {
-      balance: increment(amount),
-      totalReceived: increment(amount),
+    await db.doc('finances/withdrawalBalance').set({
+      balance: FieldValue.increment(amount),
+      totalReceived: FieldValue.increment(amount),
       lastPaymentAt: new Date().toISOString()
     }, { merge: true });
 
-    await setDoc(activationRef, {
+    await activationRef.set({
       [academicYear]: {
         paid: true,
         amount,

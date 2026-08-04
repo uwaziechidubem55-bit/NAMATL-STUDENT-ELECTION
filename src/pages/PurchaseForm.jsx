@@ -81,12 +81,12 @@ export default function PurchaseForm({
   };
 
   // Admin-set price for the currently selected position (prop overrides Firestore amount)
-  const adminSetPrice = Number(propAdminPrice ?? selectedPosition?.amount ?? 0);
+  const adminSetPrice = Number(propAdminPrice?? selectedPosition?.amount?? 0);
   // Single source of truth for what the candidate is charged
-  const charges = selectedPosition ? calculateFormCharges(adminSetPrice) : null;
+  const charges = selectedPosition? calculateFormCharges(adminSetPrice) : null;
 
   const handlePay = async () => {
-    if (!formData.fullName.trim() || !formData.department.trim() || !formData.level.trim()) {
+    if (!formData.fullName.trim() ||!formData.department.trim() ||!formData.level.trim()) {
       alert('Fill all required fields'); return;
     }
     setSubmitting(true);
@@ -109,7 +109,7 @@ export default function PurchaseForm({
               body: JSON.stringify({
                 transaction_id: response.transaction_id,
                 position: selectedPosition.position,
-                amount: adminSetPrice,               // admin price (unchanged contract)
+                amount: adminSetPrice, // admin price (unchanged contract)
                 totalPaid: priceToCharge.displayPrice, // additive, safe
                 candidateData: formData
               })
@@ -156,6 +156,8 @@ export default function PurchaseForm({
     border: '4px solid #FFD700',
     boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
     marginBottom: '12px',
+    display: 'block',
+    margin: '0 auto',
   };
 
   // ═══ CHANGED: Loading screen — NO logo, text centered only ═══
@@ -199,14 +201,14 @@ export default function PurchaseForm({
           style={logoStyle}
           onError={(e) => { e.target.style.display = 'none'; }}
         />
-        <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '4px' }}>🏛️ NAMATL STUDENTS E-VOTING</h1>
-        <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Form Purchase Portal</p>
+        <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '4px', textAlign: 'center' }}>🏛️ NAMATL STUDENTS E-VOTING</h1>
+        <p style={{ color: '#64748b', fontSize: '14px', margin: 0, textAlign: 'center' }}>Form Purchase Portal</p>
       </div>
 
       {/* ═══ CHANGED: top "← Back to Home" link REMOVED (only one at the bottom now) ═══ */}
 
       {error && (
-        <div style={{ ...card, border: '1px solid #fecaca', background: '#fef2f2' }}>
+        <div style={{...card, border: '1px solid #fecaca', background: '#fef2f2' }}>
           <div style={{ color: '#dc2626', fontSize: '15px' }}>
             ⛔ {error}
           </div>
@@ -216,14 +218,14 @@ export default function PurchaseForm({
       )}
 
       {successMsg && (
-        <div style={{ ...card, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+        <div style={{...card, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
           <div style={{ color: '#15803d', fontSize: '15px' }}>✅ {successMsg}</div>
         </div>
       )}
 
-      {!error && settings && !selectedPosition && (
+      {!error && settings &&!selectedPosition && (
         <>
-          <div style={{ ...card, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+          <div style={{...card, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
             📅 {settings.openingDate} - {settings.closingDate}
             {settings.positions?.length > 0 && (
               <div style={{ color: '#64748b', fontSize: '13px', marginTop: '4px' }}>
@@ -241,13 +243,13 @@ export default function PurchaseForm({
                 key={i}
                 onClick={() => handleSelect(pos)}
                 style={{
-                  ...card,
-                  cursor: full ? 'not-allowed' : 'pointer',
-                  border: full ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                 ...card,
+                  cursor: full? 'not-allowed' : 'pointer',
+                  border: full? '1px solid #fecaca' : '1px solid #e2e8f0',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  opacity: full ? 0.6 : 1
+                  opacity: full? 0.6 : 1
                 }}
               >
                 <div>
@@ -288,23 +290,23 @@ export default function PurchaseForm({
               <span>Service Charge</span>
               <span>₦{charges.breakdown['Service Charge'].toLocaleString()}</span>
             </div>
-            <div style={{ ...breakdownRow, borderTop: '1px solid #cbd5e1', paddingTop: '10px', fontWeight: '700', fontSize: '16px' }}>
+            <div style={{...breakdownRow, borderTop: '1px solid #cbd5e1', paddingTop: '10px', fontWeight: '700', fontSize: '16px' }}>
               <span>Total Amount</span>
               <span>₦{charges.totalCustomerPays.toLocaleString()}</span>
             </div>
           </div>
 
-          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({...formData, department: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({...formData, level: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value })} style={input} disabled={submitting} />
 
           <button
             onClick={handlePay}
             disabled={submitting}
-            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting? 'not-allowed' : 'pointer', opacity: submitting? 0.6 : 1 }}
           >
-            {submitting ? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
+            {submitting? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
           </button>
         </div>
       )}

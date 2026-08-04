@@ -10,6 +10,9 @@
     { "source": "/api/verify-form-payment", "destination": "/api/verify-payment?action=form" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
+  "crons": [
+    { "path": "/api/check-transfer", "schedule": "0 1 * * *" }
+  ],
   "headers": [
     { "source": "/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] }
   ]

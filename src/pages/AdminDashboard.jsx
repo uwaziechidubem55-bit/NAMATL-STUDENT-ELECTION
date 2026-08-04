@@ -6,6 +6,8 @@ import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
 
 const MAX_PER_POSITION = 5;
+const MAX_PHOTO_KB = 500; // Max candidate photo size in KB (passport-photo size)
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/jpg'];
 
 // Helper to generate random candidate ID
 const generateCandidateId = () => {
@@ -400,8 +402,32 @@ export default function AdminDashboard() {
     catch (e) { alert('Error: ' + e.message); }
   };
 
+ // ===================== PHOTO SELECT (JPG/JPEG only, passport size) =====================
+  const handlePhotoSelect = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!ALLOWED_PHOTO_TYPES.includes(f.type)) {
+      alert('Only JPG or JPEG files are allowed. Please select a passport photo in JPG format.');
+      e.target.value = '';
+      setPhoto(null); setPhotoPreview('');
+      return;
+    }
+    if (f.size > MAX_PHOTO_KB * 1024) {
+      alert(`Photo too large. Maximum is ${MAX_PHOTO_KB}KB (passport photo size). Please compress it and try again.`);
+      e.target.value = '';
+      setPhoto(null); setPhotoPreview('');
+      return;
+    }
+    setPhoto(f);
+    setPhotoPreview(URL.createObjectURL(f));
+  };
+
   const handleSaveCandidate = async () => {
     if (!name || !position || !dept) { alert('Name, position and dept required'); return; }
+    if (photo && (!ALLOWED_PHOTO_TYPES.includes(photo.type) || photo.size > MAX_PHOTO_KB * 1024)) {
+      alert(`Photo must be JPG/JPEG and under ${MAX_PHOTO_KB}KB (passport photo size).`);
+      return;
+    }
     try {
       if (editingCandidate) {
         await adminApi('saveCandidate', { id: editingCandidate.id, data: { name, position, dept, manifesto } });
@@ -1074,7 +1100,16 @@ export default function AdminDashboard() {
               <input placeholder="Position" value={position} onChange={e => setPosition(e.target.value)} style={inputStyle} />
               <input placeholder="Department" value={dept} onChange={e => setDept(e.target.value)} style={inputStyle} />
               <textarea placeholder="Manifesto (required for form purchasers)" value={manifesto} onChange={e => setManifesto(e.target.value)} style={{...inputStyle, minHeight: '80px'}} />
-              <input type="file" accept="image/*" onChange={e => { const f = e.target.files[0]; if(f) { setPhoto(f); setPhotoPreview(URL.createObjectURL(f)); }}} />
+          <input
+                type="file"
+                accept=".jpg,.jpeg,image/jpeg"
+                onChange={handlePhotoSelect}
+              />
+              {photoPreview && (
+                <div style={{ fontSize: '13px', color: '#78350f', background: '#fef3c7', padding: '8px 12px', borderRadius: '6px', margin: '8px 0' }}>
+                  🖼️ {photo?.name} ({(photo.size / 1024).toFixed(0)} KB)
+                </div>
+              )}
               {photoPreview && <img src={photoPreview} alt="" style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover', margin: '8px 0' }} />}
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button onClick={handleSaveCandidate} style={btnSuccess}>{editingCandidate ? '✏️ Update' : '➕ Add'}</button>

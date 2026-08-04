@@ -1,10 +1,13 @@
-// /api/flutterwave-webhook.js v3
-// 1) charge.completed  -> activation payments (>=25k). FORM- payments are skipped
-//    because verify-form-payment.js already credits them (fixes double-credit).
+// /api/flutterwave-webhook.js v4
+// 1) charge.completed -> activation payments (>=25k). FORM- payments are skipped
+//    because verify-form-payment already credits them (fixes double-credit).
+//    Activation credits now go through the SHARED finance ledger
+//    (creditPaymentOnce in _firebase.js) — the same ledger the verify endpoint
+//    uses, so webhook vs callback can NEVER double-credit, in either order.
 // 2) transfer.completed -> withdrawal transfers: finalizes the record + balance
 //    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
 import { FieldValue } from 'firebase-admin/firestore';
-import { getDb, missingFirebaseEnv } from './_firebase.js';
+import { getDb, missingFirebaseEnv, creditPaymentOnce, parseActivationYear } from './_firebase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -44,38 +47,23 @@ export default async function handler(req, res) {
         return res.status(200).json({ status: 'skipped - below threshold' });
       }
 
-      // DEDUP CHECK
-      const activationsSnap = await db.doc('finances/activations').get();
-      if (activationsSnap.exists) {
-        const activations = activationsSnap.data();
-        for (const year in activations) {
-          if (activations[year].transaction_id === transaction_id) {
-            console.log(`Webhook: Transaction ${transaction_id} already processed. Skipping.`);
-            return res.status(200).json({ status: 'skipped - already processed' });
-          }
-        }
+      // Atomic claim + credit via the SHARED ledger (same one verify-payment uses).
+      // "already-credited" / "year-already-activated" here are EXPECTED and safe.
+      const result = await creditPaymentOnce({
+        transactionId: transaction_id,
+        txRef: tx_ref,
+        amount,
+        kind: 'activation',
+      });
+
+      if (result.credited) {
+        console.log(`Webhook: Credited N${amount} from transaction ${transaction_id} (${parseActivationYear(tx_ref) || 'unknown'} activated)`);
+      } else {
+        console.log(`Webhook: Not credited - ${result.reason} (transaction ${transaction_id})`);
       }
-
-      console.log(`Webhook: Crediting N${amount} from transaction ${transaction_id}`);
-
-      await db.doc('finances/withdrawalBalance').set({
-        balance: FieldValue.increment(amount),
-        totalReceived: FieldValue.increment(amount),
-        lastPaymentAt: new Date().toISOString()
-      }, { merge: true });
-
-      const academicYear = tx_ref?.split('-')[2] || 'unknown';
-      await db.doc('finances/activations').set({
-        [academicYear]: {
-          paid: true,
-          amount,
-          paidAt: new Date().toISOString(),
-          tx_ref,
-          transaction_id
-        }
-      }, { merge: true });
-
-      console.log(`Webhook: ${academicYear} activated successfully`);
+      // Always 200: the event was received and handled. A non-credited result
+      // is not an error — it means another path already took care of it.
+      return res.status(200).json({ status: result.credited ? 'credited' : result.reason });
     }
 
     // ================= TRANSFER COMPLETED (withdrawals) =================

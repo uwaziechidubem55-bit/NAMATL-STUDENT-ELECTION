@@ -147,10 +147,50 @@ export default function PurchaseForm({
   const breakdownTitle = { fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' };
   const breakdownRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '14px', color: '#334155' };
 
+  // ═══ CHANGED: New loading styles (logo top-center, text centered in the middle) ═══
+  const loadingScreen = {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#f5f7fa',
+    textAlign: 'center',
+    padding: '20px',
+    boxSizing: 'border-box',
+  };
+  const loadingLogo = {
+    width: '100px',
+    height: '100px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '4px solid #FFD700',
+    boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
+    marginBottom: '16px',
+  };
+  const loadingTitle = {
+    fontSize: '22px',
+    fontWeight: '700',
+    color: '#1e293b',
+    margin: '0 0 8px 0',
+  };
+  const loadingText = {
+    fontSize: '14px',
+    color: '#64748b',
+    margin: '0',
+  };
+
+  // ═══ CHANGED: Loading screen — logo at top center, loading text centered ═══
   if (loading) return (
-    <div style={page}>
-      <h2>⏳ Loading...</h2>
-      <p>Connecting to server...</p>
+    <div style={loadingScreen}>
+      <img
+        src="/logo.png"
+        alt="NAMTL Logo"
+        style={loadingLogo}
+        onError={(e) => { e.target.style.display = 'none'; }}
+      />
+      <h2 style={loadingTitle}>⏳ Loading...</h2>
+      <p style={loadingText}>Connecting to server...</p>
     </div>
   );
 

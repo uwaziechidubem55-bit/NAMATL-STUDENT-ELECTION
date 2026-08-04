@@ -4,6 +4,7 @@
 // Records live in the top-level `withdrawals/{reference}` collection.
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from './_firebase.js';
+import { verifyToken } from './_session.js';
 
 // Reusable function to verify a single transfer ID/reference against Flutterwave
 async function verifySingleTransfer(db, secretKey, reference, transferId) {
@@ -132,9 +133,20 @@ export default async function handler(req, res) {
   }
 
   // -------------------------------------------------------------------------
-  // APPROACH B: Manual On-Demand Check (Triggered by clicking Dashboard button via POST)
+  // APPROACH B: Manual On-Demand Check (Triggered by Dashboard button via POST)
   // -------------------------------------------------------------------------
   if (req.method === 'POST') {
+    // ---- Session auth (same pattern as /api/withdraw and /api/admin) ----
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!process.env.SERVER_SESSION_SECRET) {
+      return res.status(500).json({ success: false, message: 'Server session secret not configured.' });
+    }
+    const session = verifyToken(token, process.env.SERVER_SESSION_SECRET);
+    if (!session || session.role !== 'admin') {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
     const { reference, transferId } = req.body || {};
     if (!reference && !transferId) {
       return res.status(400).json({ success: false, message: 'Send reference or transferId' });

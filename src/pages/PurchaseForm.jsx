@@ -48,7 +48,7 @@ export default function PurchaseForm({
         else if (data.closingDate && now > closeDt) setError('Purchase is closed, come back next year.');
         else if (!data.isActive) setError('Form purchase is currently disabled.');
       } else {
-        setError('Form purchase not configured yet. Contact admin.');
+        setError('Form purchase not configured yet. Contact your Electoralcommission.');
       }
 
       const counts = {};

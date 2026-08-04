@@ -134,6 +134,11 @@ export default function AdminDashboard() {
   const [fpMsg, setFpMsg] = useState('');
   const [fpCandidateCounts, setFpCandidateCounts] = useState({});
 
+  // ===================== PENDING TRANSFER CHECK STATE =====================
+  const [pendingTx, setPendingTx] = useState(null);
+  const [checkBusy, setCheckBusy] = useState(false);
+  const [checkMsg, setCheckMsg] = useState({ type: '', text: '' });
+
   // ===================== PRINT RESULTS STATE =====================
   const [electionResults, setElectionResults] = useState([]);
   const [resultsGenerated, setResultsGenerated] = useState(false);
@@ -301,6 +306,7 @@ export default function AdminDashboard() {
       try { await loadBalance(); } catch (e) {}
       try { await loadFormPurchases(); } catch (e) {}
       try { await loadActivation(); } catch (e) {}
+      try { await loadPendingTransfer(); } catch (e) {}
 
       setLoading(false);
     } catch (e) {
@@ -462,6 +468,7 @@ export default function AdminDashboard() {
         setWithdrawMsg({ type: 'success', text: result.message });
         setWithdrawAmount(''); setWithdrawPin('');
         loadBalance();
+        loadPendingTransfer();
         setWithdrawBusy(false);
         return;
       }
@@ -479,7 +486,10 @@ export default function AdminDashboard() {
         try {
           const checkRes = await fetch('/api/check-transfer', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+            },
             body: JSON.stringify({ reference: ref, transferId: id })
           });
           const check = await checkRes.json();
@@ -488,6 +498,7 @@ export default function AdminDashboard() {
             setWithdrawMsg({ type: 'success', text: '✅ ' + (check.message || 'Withdrawal confirmed!') });
             setWithdrawAmount(''); setWithdrawPin('');
             loadBalance();
+            loadPendingTransfer();
             setWithdrawBusy(false);
           } else if (check.status === 'failed') {
             clearInterval(poll);
@@ -510,6 +521,51 @@ export default function AdminDashboard() {
       setWithdrawMsg({ type: 'error', text: '⚠️ Network error: ' + e.message });
       setWithdrawBusy(false);
     }
+  };
+
+  // ===================== LOAD PENDING TRANSFER (reads server balance doc) =====================
+  const loadPendingTransfer = async () => {
+    try {
+      const res = await adminApi('getBalance');
+      setPendingTx(res.data?.pendingWithdrawal || null);
+    } catch (e) {
+      console.error('Load pending transfer error:', e);
+    }
+  };
+
+  // ===================== CHECK TRANSFER NOW (manual confirm button) =====================
+  const handleCheckTransfer = async () => {
+    if (!pendingTx) { setCheckMsg({ type: 'error', text: 'No pending transfer to check.' }); return; }
+    if (checkBusy) return;
+    setCheckBusy(true);
+    setCheckMsg({ type: '', text: 'Checking with Flutterwave...' });
+    try {
+      const res = await fetch('/api/check-transfer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+        },
+        body: JSON.stringify({ reference: pendingTx.reference, transferId: pendingTx.flutterwaveId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Check failed');
+
+      if (data.verified) {
+        setCheckMsg({ type: 'success', text: '✅ ' + (data.message || 'Transfer confirmed!') });
+        setPendingTx(null);
+        loadBalance();
+      } else if (data.status === 'failed') {
+        setCheckMsg({ type: 'error', text: '❌ ' + (data.message || 'Transfer failed') });
+        setPendingTx(null);
+        loadBalance();
+      } else {
+        setCheckMsg({ type: 'info', text: '⏳ ' + (data.message || `Status: ${data.status}`) });
+      }
+    } catch (e) {
+      setCheckMsg({ type: 'error', text: '⚠️ ' + e.message });
+    }
+    setCheckBusy(false);
   };
 
   const handleFpAddPosition = () => {
@@ -1473,6 +1529,26 @@ export default function AdminDashboard() {
         <span>🕐 Processing: 1–5 mins</span>
       </div>
     </div>
+
+    {/* ===================== PENDING TRANSFER CHECK CARD ===================== */}
+    {pendingTx && (
+      <div style={{ ...cardStyle, border: '1px solid #f59e0b', background: '#fffbeb' }}>
+        <h3 style={{ color: '#92400e', margin: '0 0 8px 0', fontSize: '15px' }}>⏳ Pending Transfer</h3>
+        <p style={{ fontSize: '13px', color: '#78350f', margin: '0 0 12px 0' }}>
+          Ref: <strong>{pendingTx.reference}</strong> · ₦{Number(pendingTx.amount).toLocaleString()} · Status: {pendingTx.status}
+        </p>
+        <button onClick={handleCheckTransfer} disabled={checkBusy} style={{ ...btnWarning, opacity: checkBusy ? 0.6 : 1 }}>
+          {checkBusy ? '⏳ Checking Flutterwave...' : '🔎 Check Transfer Now'}
+        </button>
+        {checkMsg.text && (
+          <div style={{
+            marginTop: '12px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px',
+            background: checkMsg.type === 'error' ? '#fee2e2' : checkMsg.type === 'info' ? '#fef3c7' : '#d1fae5',
+            color: checkMsg.type === 'error' ? '#dc2626' : checkMsg.type === 'info' ? '#b45309' : '#16a34a'
+          }}>{checkMsg.text}</div>
+        )}
+      </div>
+    )}
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
       {/* Withdraw form */}

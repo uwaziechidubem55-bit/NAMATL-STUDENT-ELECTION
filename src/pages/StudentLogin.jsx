@@ -31,6 +31,8 @@ export default function StudentLogin() {
     console.log('[StudentLogin] handleSignup result:', result);
     if (result.success && result.phase === 'verify') {
       setTempStudent(result.tempStudent);
+      // ✅ FIX: clear any stale message so old errors never show inside the popup
+      showMessage('', '');
       setShowVerifyPopup(true);
       setFiveDigitCode('');
     }
@@ -41,6 +43,8 @@ export default function StudentLogin() {
     console.log('[StudentLogin] completeSignup result:', result);
     if (result.success) {
       setGeneratedKey(result.generatedKey);
+      // ✅ FIX: clear any stale message before showing the key popup
+      showMessage('', '');
       setShowVerifyPopup(false);
       setShowKeyPopup(true);
     }
@@ -51,6 +55,8 @@ export default function StudentLogin() {
     console.log('[StudentLogin] handleLogin result:', result);
     if (result.success && result.phase === 'key') {
       setTempStudent(result.tempStudent);
+      // ✅ FIX: clear any stale message before showing the key popup
+      showMessage('', '');
       setShowKeyPopup(true);
       setUniqueKeyInput('');
     }
@@ -246,6 +252,12 @@ export default function StudentLogin() {
             <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
               Enter the first 5 digits from your matric number
             </p>
+
+            {/* ✅ FIX: error message now shows INSIDE this popup (was hidden behind the overlay) */}
+            {message.text && (
+              <div style={msgBoxStyle}>{message.text}</div>
+            )}
+
             <input
               value={fiveDigitCode}
               onChange={(e) => setFiveDigitCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
@@ -291,6 +303,12 @@ export default function StudentLogin() {
                 <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
                   Enter your unique code to access the voting portal
                 </p>
+
+                {/* ✅ FIX: error message now shows INSIDE this popup (was hidden behind the overlay) */}
+                {message.text && (
+                  <div style={msgBoxStyle}>{message.text}</div>
+                )}
+
                 <input
                   value={uniqueKeyInput}
                   onChange={(e) => setUniqueKeyInput(e.target.value)}

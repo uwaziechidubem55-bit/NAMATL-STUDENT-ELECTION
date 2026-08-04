@@ -1,22 +1,53 @@
 // NAMATLS Payment verification — activation + form purchase in ONE function.
-import { FieldValue } from 'firebase-admin/firestore';
-import { getDb, missingFirebaseEnv } from './_firebase.js';
+// v5: money-in flows through the shared finance ledger (creditPaymentOnce in
+// _firebase.js), so the webhook and this endpoint can NEVER double-credit.
+// Admin session is now REQUIRED (same check as /api/withdraw).
+import { getDb, missingFirebaseEnv, creditPaymentOnce } from './_firebase.js';
+import { verifyToken } from './_session.js';
 
 const getSecretKey = () =>
   process.env.FLUTTERWAVE_SECRET_KEY || process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET;
+
+const CREDIT_MESSAGES = {
+  'already-credited': 'This payment was already processed successfully.',
+  'year-already-activated': 'This academic year has already been activated.',
+  'below-minimum': 'Amount is below the minimum required.',
+  'invalid-tx-ref': 'This transaction is not a valid activation payment (tx_ref must start with ACT-).',
+  'year-mismatch': 'The transaction reference does not match the academic year being activated.',
+  'missing-transaction-id': 'Missing transaction id.',
+};
+
+function requireAdmin(req, res) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!process.env.SERVER_SESSION_SECRET) {
+    res.status(500).json({ success: false, message: 'Server session secret not configured.' });
+    return false;
+  }
+  const session = verifyToken(token, process.env.SERVER_SESSION_SECRET);
+  if (!session || session.role !== 'admin') {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+    return false;
+  }
+  return true;
+}
+
+function creditResponse(res, result, successMessage) {
+  if (result.credited) {
+    return res.status(200).json({ success: true, message: successMessage });
+  }
+  if (result.reason === 'already-credited') {
+    // The webhook already credited it (or this is a retry). Treat as SUCCESS —
+    // never show a scary error for a payment that DID go through.
+    return res.status(200).json({ success: true, alreadyCredited: true, message: CREDIT_MESSAGES[result.reason] });
+  }
+  return res.status(400).json({ success: false, message: CREDIT_MESSAGES[result.reason] || 'Payment could not be processed.' });
+}
 
 async function verifyActivation(req, res) {
   const { transaction_id, academicYear } = req.body || {};
   if (!transaction_id || !academicYear) {
     return res.status(400).json({ success: false, message: 'Missing fields' });
-  }
-  const db = getDb();
-
-  // Replay protection
-  const receiptRef = db.doc('activationReceipts/' + String(transaction_id));
-  const receiptSnap = await receiptRef.get();
-  if (receiptSnap.exists) {
-    return res.status(409).json({ success: false, message: 'This transaction receipt has already been processed and claimed.' });
   }
 
   const response = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
@@ -27,39 +58,17 @@ async function verifyActivation(req, res) {
   if (data.status !== 'success' || data.data?.status !== 'successful') {
     return res.status(400).json({ success: false, message: data.message || 'Transaction not successful' });
   }
-  const amount = data.data.amount;
-  const tx_ref = data.data.tx_ref;
-  if (Number(amount) < 25000) {
-    return res.status(400).json({ success: false, message: 'Amount less than 25000' });
-  }
 
-  const activationRef = db.doc('finances/activations');
-  const activationSnap = await activationRef.get();
-  if (activationSnap.exists && activationSnap.data()[academicYear]?.paid) {
-    return res.status(400).json({ success: false, message: `Year ${academicYear} already activated` });
-  }
-
-  await db.doc('finances/withdrawalBalance').set({
-    balance: FieldValue.increment(Number(amount)),
-    totalReceived: FieldValue.increment(Number(amount)),
-    lastPaymentAt: new Date().toISOString(),
-  }, { merge: true });
-
-  await receiptRef.set({
-    transaction_id: String(transaction_id),
+  // Use Flutterwave's OWN tx_ref (not the client's) for validation.
+  const result = await creditPaymentOnce({
+    transactionId: transaction_id,
+    txRef: data.data.tx_ref,
+    amount: data.data.amount,
+    kind: 'activation',
     academicYear,
-    amount: Number(amount),
-    claimedAt: new Date().toISOString(),
   });
 
-  await activationRef.set({
-    [academicYear]: { paid: true, amount: Number(amount), paidAt: new Date().toISOString(), tx_ref, transaction_id: String(transaction_id) },
-  }, { merge: true });
-
-  return res.status(200).json({
-    success: true,
-    message: `Payment verified! N${Number(amount).toLocaleString()} credited. ${academicYear} activated securely.`,
-  });
+  return creditResponse(res, result, `Payment verified! N${Number(data.data.amount).toLocaleString()} credited. ${academicYear} activated securely.`);
 }
 
 async function verifyFormPayment(req, res) {
@@ -79,7 +88,7 @@ async function verifyFormPayment(req, res) {
   }
   const paidAmount = data.data.amount;
 
-  // Server-side price validation
+  // Server-side price validation (unchanged behavior)
   const settingsSnap = await db.doc('settings/formPurchase').get();
   let adminPrice = 0;
   if (settingsSnap.exists) {
@@ -97,35 +106,21 @@ async function verifyFormPayment(req, res) {
     return res.status(400).json({ success: false, message: `Paid N${paidAmount} but N${adminPrice} required` });
   }
 
-  // Replay protection
-  const receiptRef = db.doc('formPurchases/' + String(transaction_id));
-  const existingReceipt = await receiptRef.get();
-  if (existingReceipt.exists) {
-    return res.status(409).json({ success: false, message: 'This transaction has already been processed' });
-  }
-
-  await db.doc('finances/withdrawalBalance').set({
-    balance: FieldValue.increment(Number(paidAmount)),
-    totalReceived: FieldValue.increment(Number(paidAmount)),
-    lastPaymentAt: new Date().toISOString(),
-  }, { merge: true });
-
-  await receiptRef.set({
-    position,
-    amount: Number(paidAmount),
-    fullName: candidateData.fullName,
-    department: candidateData.department,
-    level: candidateData.level,
-    email: candidateData.email || 'Not provided',
-    status: 'paid',
-    transaction_id: String(transaction_id),
-    paidAt: new Date().toISOString(),
+  const result = await creditPaymentOnce({
+    transactionId: transaction_id,
+    txRef: data.data.tx_ref,
+    amount: paidAmount,
+    kind: 'form',
+    meta: {
+      position,
+      fullName: candidateData.fullName,
+      department: candidateData.department,
+      level: candidateData.level,
+      email: candidateData.email || 'Not provided',
+    },
   });
 
-  return res.status(200).json({
-    success: true,
-    message: `N${Number(paidAmount).toLocaleString()} credited! ${candidateData.fullName}'s ${position} form received.`,
-  });
+  return creditResponse(res, result, `N${Number(paidAmount).toLocaleString()} credited! ${candidateData.fullName}'s ${position} form received.`);
 }
 
 export default async function handler(req, res) {
@@ -139,6 +134,8 @@ export default async function handler(req, res) {
     if (!getSecretKey()) {
       return res.status(500).json({ success: false, message: 'Flutterwave secret key not set (FLUTTERWAVE_SECRET_KEY / FLW_SECRET_KEY / FLUTTERWAVE_SECRET)' });
     }
+    if (!requireAdmin(req, res)) return; // NEW: admin session required
+
     const { action } = req.query; // set by vercel.json rewrites
     switch (action) {
       case 'activation': return verifyActivation(req, res);

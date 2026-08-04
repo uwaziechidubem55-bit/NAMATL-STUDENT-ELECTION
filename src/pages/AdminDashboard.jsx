@@ -39,7 +39,7 @@ const generateAutoReply = (msg) => {
   const header = `Thank you for contacting the NAMATL Electoral Commission.\n\nWe have carefully reviewed your message and provide the following response:\n\n`;
 
   // Common footer
-  const footer = `\n\nThe Electoral Commission is actively working on your request. We will get back to you with a comprehensive update within 24–48 hours.\n\nShould you have any further questions, please do not hesitate to reach out.\n\nSigned and approved by:\n_______________________________\nComr. D. Uwazie\nSecretary, NAMATL Electoral Commission\n\n_______________________________\nComr. P.Ufot\nChairman, NAMATL Electoral Commission\n\n--\nNAMATL Electoral Commission\nFederal University of Petroleum Resources Effurun`;
+  const footer = `\n\nThe Electoral Commission is actively working on your request. We will get back to you with a comprehensive update within 24–48 hours.\n\nShould you have any further questions, please do not hesitate to reach out.\n\nSigned and approved by:\n_______________________________\nComr. D.C. Uwazie\nSecretary, NAMATL Electoral Commission\n\n_______________________________\nComr.G. P.Ufot\nChairman, NAMATL Electoral Commission\n\n--\nNAMATL Electoral Commission\nFederal University of Petroleum Resources Effurun`;
 
   // If message is very short or unclear — use a general response
   if (text.length < 10) {

@@ -147,7 +147,18 @@ export default function PurchaseForm({
   const breakdownTitle = { fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' };
   const breakdownRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '14px', color: '#334155' };
 
-  // ═══ CHANGED: New loading styles (logo top-center, text centered in the middle) ═══
+  // ═══ CHANGED: logo style for the page header (top center) ═══
+  const logoStyle = {
+    width: '80px',
+    height: '80px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '4px solid #FFD700',
+    boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
+    marginBottom: '12px',
+  };
+
+  // ═══ CHANGED: Loading screen — NO logo, text centered only ═══
   const loadingScreen = {
     minHeight: '100vh',
     display: 'flex',
@@ -158,15 +169,6 @@ export default function PurchaseForm({
     textAlign: 'center',
     padding: '20px',
     boxSizing: 'border-box',
-  };
-  const loadingLogo = {
-    width: '100px',
-    height: '100px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-    border: '4px solid #FFD700',
-    boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
-    marginBottom: '16px',
   };
   const loadingTitle = {
     fontSize: '22px',
@@ -180,15 +182,8 @@ export default function PurchaseForm({
     margin: '0',
   };
 
-  // ═══ CHANGED: Loading screen — logo at top center, loading text centered ═══
   if (loading) return (
     <div style={loadingScreen}>
-      <img
-        src="/logo.png"
-        alt="NAMTL Logo"
-        style={loadingLogo}
-        onError={(e) => { e.target.style.display = 'none'; }}
-      />
       <h2 style={loadingTitle}>⏳ Loading...</h2>
       <p style={loadingText}>Connecting to server...</p>
     </div>
@@ -196,11 +191,19 @@ export default function PurchaseForm({
 
   return (
     <div style={page}>
+      {/* ═══ CHANGED: Logo now lives here — top center, above the title ═══ */}
       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+        <img
+          src="/logo.png"
+          alt="NAMTL Logo"
+          style={logoStyle}
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
         <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '4px' }}>🏛️ NAMATL STUDENTS E-VOTING</h1>
         <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Form Purchase Portal</p>
       </div>
-      <Link to="/" style={{ color: '#2563eb', fontSize: '14px', textDecoration: 'none' }}>← Back to Home</Link>
+
+      {/* ═══ CHANGED: top "← Back to Home" link REMOVED (only one at the bottom now) ═══ */}
 
       {error && (
         <div style={{ ...card, border: '1px solid #fecaca', background: '#fef2f2' }}>
@@ -208,7 +211,7 @@ export default function PurchaseForm({
             ⛔ {error}
           </div>
           <button onClick={loadData} style={{ marginTop: '10px', padding: '8px 18px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>🔄 Retry</button>
-          <Link to="/" style={{ display: 'inline-block', marginLeft: '10px', color: '#64748b', fontSize: '14px' }}>← Back to Home</Link>
+          {/* ═══ CHANGED: "← Back to Home" link inside the error box REMOVED ═══ */}
         </div>
       )}
 
@@ -306,7 +309,12 @@ export default function PurchaseForm({
         </div>
       )}
 
-      <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px', marginTop: '24px' }}>
+      {/* ═══ CHANGED: single "← Back to Home" link — at the bottom, above the footer ═══ */}
+      <div style={{ textAlign: 'center', marginTop: '24px' }}>
+        <Link to="/" style={{ color: '#2563eb', fontSize: '14px', textDecoration: 'none' }}>← Back to Home</Link>
+      </div>
+
+      <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '13px', marginTop: '12px' }}>
         NAMATL Students E-voting © {new Date().getFullYear()}
       </div>
     </div>

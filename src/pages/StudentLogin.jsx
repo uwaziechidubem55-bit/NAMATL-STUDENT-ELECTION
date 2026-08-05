@@ -13,6 +13,7 @@ export default function StudentLogin() {
   const [fiveDigitCode, setFiveDigitCode] = useState('');
   const [uniqueKeyInput, setUniqueKeyInput] = useState('');
   const [generatedKey, setGeneratedKey] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const { loading, message, showMessage, handleSignup, completeSignup, handleLogin, verifyKeyAccess } = useStudentAuth();
   const navigate = useNavigate();
@@ -81,6 +82,25 @@ export default function StudentLogin() {
       // If backend returns error, overwrite it to exactly "Invalid verification key"
       showMessage('error', 'Invalid verification key');
     }
+  };
+
+  // ===================== COPY GENERATED KEY =====================
+  const copyKey = async () => {
+    if (!generatedKey) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(generatedKey);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = generatedKey;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {}
   };
 
   // ── Shared Popup Styles ──
@@ -289,11 +309,22 @@ export default function StudentLogin() {
                 <div style={{
                   background: '#f0fdf4', border: '2px dashed #16a34a',
                   padding: '20px', textAlign: 'center', borderRadius: '8px',
-                  marginBottom: '16px', fontSize: '20px', fontWeight: 'bold',
+                  marginBottom: '12px', fontSize: '20px', fontWeight: 'bold',
                   color: '#15803d', wordBreak: 'break-all', fontFamily: 'monospace'
                 }}>
                   {generatedKey}
                 </div>
+                {/* NEW: Copy Code button */}
+                <button
+                  onClick={copyKey}
+                  style={{
+                    width: '100%', padding: '12px', background: copied ? '#16a34a' : '#003366',
+                    color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold',
+                    cursor: 'pointer', fontSize: '14px', marginBottom: '12px'
+                  }}
+                >
+                  {copied ? '✅ Copied!' : '📋 Copy Code'}
+                </button>
                 <button onClick={() => { setShowKeyPopup(false); navigate('/student'); }} style={btnSuccess}>
                   Continue to Portal
                 </button>

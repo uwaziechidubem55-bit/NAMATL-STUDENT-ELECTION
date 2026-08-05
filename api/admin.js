@@ -47,13 +47,13 @@ export default async function handler(req, res) {
       res.setHeader('Allow', 'POST');
       return res.status(405).json({ success: false, message: 'Method not allowed' });
     }
-    
+
     if (!isAdmin(req)) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     const { action, ...payload } = req.body || {};
-    
+
     if (!getAdminDb) {
       throw new Error("getAdminDb initialization completely failed. Your Firebase instance could not boot up.");
     }
@@ -140,6 +140,45 @@ export default async function handler(req, res) {
       case 'saveResults': {
         await db.doc('electionData/results').set(payload.data, { merge: true });
         return res.json({ success: true });
+      }
+      case 'findStudentKey': {
+        // ---- Validate inputs ----
+        const name = (payload.name || '').toString().trim();
+        const matric = (payload.matric || '').toString().trim().toUpperCase().replace(/\s+/g, '');
+        if (!name || !matric) {
+          return res.status(400).json({ success: false, message: 'Both name and matric are required' });
+        }
+
+        // ---- Locate the student doc (same normalization as api/student.js) ----
+        // Matric is stored with '/' replaced by '_', e.g. FUPRE/2021/1234 -> FUPRE_2021_1234
+        const docId = matric.replace(/\//g, '_');
+        const snap = await db.doc(`students/${docId}`).get();
+        if (!snap.exists) {
+          return res.status(200).json({ success: false, message: 'Student not found. Check the name and matric number.' });
+        }
+
+        const student = snap.data();
+
+        // ---- Soft name check (case-insensitive, tolerates name order) ----
+        const storedName = (student.name || '').toString().trim().toLowerCase();
+        const queryName = name.toLowerCase();
+        const nameMatches =
+          storedName === queryName ||
+          storedName.includes(queryName) ||
+          queryName.includes(storedName);
+        if (!nameMatches) {
+          return res.status(200).json({ success: false, message: 'Student not found. The name does not match this matric number.' });
+        }
+
+        // ---- Return the student (includes uniqueKey) ----
+        return res.json({
+          success: true,
+          student: {
+            ...student,
+            id: snap.id,
+            createdAt: serializeTs(student.createdAt)
+          }
+        });
       }
       default:
         return res.status(400).json({ success: false, message: 'Unknown action: ' + action });

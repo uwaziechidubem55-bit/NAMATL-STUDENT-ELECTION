@@ -4,6 +4,7 @@ import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
+import UniqueKeyFinder from '../components/UniqueKeyFinder';
 
 const MAX_PER_POSITION = 5;
 const MAX_PHOTO_KB = 500; // Max candidate photo size in KB (passport-photo size)
@@ -368,6 +369,7 @@ export default function AdminDashboard() {
     { key: 'purchase-list', label: 'Purchase List', icon: '🛒' },
     { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
     { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
+    { key: 'key-finder', label: 'Key Finder', icon: '🔑' },
   ];
 
   const inputStyle = {
@@ -1698,7 +1700,10 @@ export default function AdminDashboard() {
       </div>
     </div>
   </div>
-)}
+}
+
+{/* Key Finder */}
+        {activeView === 'key-finder' && <UniqueKeyFinder />}
 
         {/* Messages */}
         {activeView === 'messages' && (
@@ -1752,3 +1757,120 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+// ===================== UNIQUE KEY FINDER (admin tool) =====================
+const UniqueKeyFinder = () => {
+  const [name, setName] = useState('');
+  const [matric, setMatric] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const findKey = async () => {
+    if (!name.trim() || !matric.trim()) {
+      setResult({ error: "Enter both the student's full name and matric number." });
+      return;
+    }
+    setBusy(true);
+    setCopied(false);
+    try {
+      const data = await adminApi('findStudentKey', { name: name.trim(), matric: matric.trim() });
+      if (data && data.success && data.student) {
+        setResult({ student: data.student });
+      } else {
+        setResult({ error: (data && data.message) || 'Student not found. Check the name and matric number.' });
+      }
+    } catch (e) {
+      setResult({ error: 'Request failed. Make sure you are logged in as admin and try again.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyKey = async () => {
+    if (!result || !result.student) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(result.student.uniqueKey);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = result.student.uniqueKey;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {}
+  };
+
+  const kfInput = {
+    width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px',
+    fontSize: '14px', boxSizing: 'border-box', marginTop: '4px', marginBottom: '12px'
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #eee' }}>
+        <h2 style={{ color: '#003366', margin: '0 0 4px 0' }}>🔑 Unique Key Finder</h2>
+        <p style={{ fontSize: '13px', color: '#666', margin: '0 0 20px 0' }}>
+          Recover a student's lost unique key. Enter their full name and matric number exactly as registered.
+        </p>
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>👤 Student Name</label>
+        <input placeholder="e.g. Uwazie Chidubem" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && findKey()} style={kfInput} />
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>🎓 Matric Number</label>
+        <input placeholder="e.g. FUPRE/2021/1234" value={matric} onChange={e => setMatric(e.target.value)} onKeyDown={e => e.key === 'Enter' && findKey()} style={kfInput} />
+        <button onClick={findKey} disabled={busy} style={{ width: '100%', padding: '13px', background: '#003366', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+          {busy ? '⏳ Searching...' : '🔎 Find Key'}
+        </button>
+        {result && result.error && (
+          <div style={{ marginTop: '16px', padding: '12px 14px', borderRadius: '8px', background: '#fee2e2', color: '#dc2626', fontWeight: 'bold', fontSize: '13px' }}>
+            {result.error}
+          </div>
+        )}
+      </div>
+      <div>
+        {result && result.student ? (
+          <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #eee' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <h3 style={{ color: '#003366', margin: 0 }}>✅ Student Found</h3>
+              <span style={{ background: '#d1fae5', color: '#16a34a', padding: '2px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>Registered</span>
+            </div>
+            <div style={{ padding: '10px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+              <span style={{ color: '#888', fontSize: '13px' }}>Name</span>
+              <strong style={{ textAlign: 'right' }}>{result.student.name}</strong>
+            </div>
+            <div style={{ padding: '10px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+              <span style={{ color: '#888', fontSize: '13px' }}>Matric</span>
+              <strong style={{ textAlign: 'right' }}>{result.student.matric}</strong>
+            </div>
+            {result.student.level && (
+              <div style={{ padding: '10px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ color: '#888', fontSize: '13px' }}>Level</span>
+                <strong>{result.student.level}</strong>
+              </div>
+            )}
+            <div style={{ padding: '14px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+              <span style={{ color: '#888', fontSize: '13px' }}>Unique Key</span>
+              <strong style={{ fontSize: '15px', color: '#003366', wordBreak: 'break-all', textAlign: 'right' }}>{result.student.uniqueKey}</strong>
+            </div>
+            <button onClick={copyKey} style={{ width: '100%', padding: '12px', marginTop: '6px', background: copied ? '#16a34a' : '#003366', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}>
+              {copied ? '✅ Copied!' : '📋 Copy Key'}
+            </button>
+            <p style={{ fontSize: '12px', color: '#94a3b8', margin: '12px 0 0 0', lineHeight: '1.5' }}>
+              Share this key privately with the student. Anyone holding it can log in and vote as this student.
+            </p>
+          </div>
+        ) : (
+          !(result && result.error) && (
+            <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '24px', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
+              Enter a name and matric number, then click <strong>Find Key</strong>.<br />
+              The student's unique key will appear here.
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+};

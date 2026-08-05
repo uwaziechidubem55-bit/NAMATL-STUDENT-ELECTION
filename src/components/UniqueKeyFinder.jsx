@@ -100,7 +100,7 @@ export default function UniqueKeyFinder() {
       </p>
 
       <input placeholder="Full Name (e.g. John Doe)" value={name} onChange={(e) => setName(e.target.value)} style={input} />
-      <input placeholder="Matric Number (e.g. CMOS/11639/2023)" value={matric} onChange={(e) => setMatric(e.target.value)} style={input} />
+      <input placeholder="Matric Number (e.g. CMOS/XXXXX/2023)" value={matric} onChange={(e) => setMatric(e.target.value)} style={input} />
 
       <button onClick={handleFind} disabled={loading} style={{ ...findBtn, opacity: loading ? 0.6 : 1 }}>
         {loading ? '⏳ Searching…' : '🔍 Find Key'}

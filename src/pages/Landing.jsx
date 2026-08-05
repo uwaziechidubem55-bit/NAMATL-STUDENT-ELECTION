@@ -200,7 +200,7 @@ export default function Landing() {
               onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f5f5'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; }}
             >
-              🔐 Access Admin Dashboard
+              🔐 Restricted Admin Access 
             </Link>
             <Link
               to="/support"
@@ -232,7 +232,7 @@ export default function Landing() {
       />
 
       <h1 style={titleStyle}>
-        <span style={titleLineStyle}>NAMTLS STUDENT</span>
+        <span style={titleLineStyle}>NAMATL STUDENTS</span>
         <span style={titleNoBreakStyle}>E-VOTING</span>
       </h1>
 

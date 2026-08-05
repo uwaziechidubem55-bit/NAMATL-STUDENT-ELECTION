@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
 import UniqueKeyFinder from '../components/UniqueKeyFinder';
@@ -18,6 +16,45 @@ const generateCandidateId = () => {
     id += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return 'NAMATL-' + id;
+};
+
+// ===================== CLOUDINARY PHOTO UPLOAD =====================
+// The browser uploads DIRECTLY to Cloudinary using a short-lived signature
+// issued by /api/upload. CLOUDINARY_API_SECRET never leaves the server.
+const uploadPhotoToCloudinary = async (file) => {
+  // 1) Ask the server for signed upload params (admin JWT required)
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || ''),
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || 'Upload permission denied');
+  }
+  const { cloudName, apiKey, timestamp, folder, allowedFormats, signature } = await res.json();
+
+  // 2) Upload the file straight to Cloudinary's CDN endpoint
+  const form = new FormData();
+  form.append('file', file);
+  form.append('api_key', apiKey);
+  form.append('timestamp', String(timestamp));
+  form.append('folder', folder);
+  form.append('allowed_formats', allowedFormats);
+  form.append('signature', signature);
+
+  const up = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!up.ok) {
+    const err = await up.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Cloudinary upload failed');
+  }
+  const data = await up.json();
+  return data.secure_url; // https://res.cloudinary.com/<cloud>/image/upload/...
 };
 
 // ===================== AUTO-REPLY GENERATOR =====================
@@ -433,24 +470,20 @@ export default function AdminDashboard() {
     try {
       if (editingCandidate) {
         await adminApi('saveCandidate', { id: editingCandidate.id, data: { name, position, dept, manifesto } });
-        // Upload photo if new one selected (Firebase Storage — separate from Firestore rules)
+        // Upload photo if a new one was selected (Cloudinary — signature from /api/upload)
         if (photo) {
-          const storageRef = ref(storage, `candidates/${editingCandidate.id}_${Date.now()}`);
-          await uploadBytes(storageRef, photo);
-          const photoURL = await getDownloadURL(storageRef);
-          await adminApi('saveCandidate', { id: editingCandidate.id, data: { photo: photoURL } });
+          const photoURL = await uploadPhotoToCloudinary(photo);
+          await adminApi('saveCandidate', { id: editingCandidate.id, data: { photo: photoURL, photoURL } });
         }
       } else {
         const posCount = candidates.filter(c => c.position === position).length;
         if (posCount >= MAX_PER_POSITION) { alert(`Max ${MAX_PER_POSITION} for ${position}`); return; }
         let photoURL = '';
         if (photo) {
-          const storageRef = ref(storage, `candidates/${Date.now()}_${photo.name}`);
-          await uploadBytes(storageRef, photo);
-          photoURL = await getDownloadURL(storageRef);
+          photoURL = await uploadPhotoToCloudinary(photo);
         }
         await adminApi('saveCandidate', {
-          data: { name, position, dept, level: '', email: '', votes: 0, photo: photoURL, manifesto, paidForm: false }
+          data: { name, position, dept, level: '', email: '', votes: 0, photo: photoURL, photoURL, manifesto, paidForm: false }
         });
       }
       setName(''); setPosition(''); setDept(''); setManifesto('');

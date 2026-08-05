@@ -1700,7 +1700,7 @@ export default function AdminDashboard() {
       </div>
     </div>
   </div>
-}
+)}
 
 {/* Key Finder */}
         {activeView === 'key-finder' && <UniqueKeyFinder />}

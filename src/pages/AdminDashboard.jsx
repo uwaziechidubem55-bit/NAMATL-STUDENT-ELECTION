@@ -4,7 +4,6 @@ import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
-import UniqueKeyFinder from '../components/UniqueKeyFinder';
 
 const MAX_PER_POSITION = 5;
 const MAX_PHOTO_KB = 500; // Max candidate photo size in KB (passport-photo size)
@@ -1700,7 +1699,7 @@ export default function AdminDashboard() {
       </div>
     </div>
   </div>
-)}
+}
 
 {/* Key Finder */}
         {activeView === 'key-finder' && <UniqueKeyFinder />}

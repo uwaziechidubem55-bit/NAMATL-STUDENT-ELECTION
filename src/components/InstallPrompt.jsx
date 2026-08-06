@@ -23,7 +23,7 @@ const COOLDOWN_UNTIL_KEY = 'namatl_install_cooldown_until';
 // ⏰ Cooldown window: 4 hours after the 3rd dismissal
 const COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h
 
-// Are we inside the 4-hour cooldown? (3rd dismissal happened)
+// Are we inside the 4-hour cooldown?
 const inCooldown = () => {
   try {
     const until = Number(localStorage.getItem(COOLDOWN_UNTIL_KEY) || 0);
@@ -38,6 +38,9 @@ const isRunningStandalone = () =>
   window.matchMedia('(display-mode: minimal-ui)').matches ||
   window.navigator.standalone === true;
 
+// Does the browser give us a REAL install prompt? (null → already installed / not installable)
+const hasRealPrompt = () => !!(_deferredPrompt && typeof _deferredPrompt.prompt === 'function');
+
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(_deferredPrompt);
   const [visible, setVisible] = useState(false);
@@ -46,15 +49,10 @@ export default function InstallPrompt() {
   const [guideContent, setGuideContent] = useState(null);
   const [installClicks, setInstallClicks] = useState(0);
 
-  const getBrowserInfo = () => {
-    const ua = navigator.userAgent || navigator.vendor || window.opera;
-    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    return { isIOS };
-  };
-
   useEffect(() => {
-    // ✅ Already running inside the installed app → never show the popup
+    // ✅ Running inside the installed app → mark installed, never show popup
     if (isRunningStandalone()) {
+      try { localStorage.setItem(INSTALLED_KEY, '1'); } catch (e) {}
       setVisible(false);
       return;
     }
@@ -62,7 +60,7 @@ export default function InstallPrompt() {
     const showPopup = () => setVisible(true);
 
     const checkInstalled = async () => {
-      // ⏰ In cooldown (3rd dismissal < 4h ago) → stay hidden, regardless of reloads
+      // ⏰ In cooldown (3rd dismissal < 4h ago) → stay hidden
       if (inCooldown()) return;
 
       try {
@@ -121,8 +119,9 @@ export default function InstallPrompt() {
   }, []);
 
   // ===================== CLICK 1: show instructions =====================
-  // ===================== CLICK 2: real install =====================
+  // ===================== CLICK 2: install OR "already installed" =====================
   const handleInstall = async () => {
+    // First click → explain the next steps
     if (installClicks === 0) {
       setInstallClicks(1);
       setGuideContent({
@@ -139,9 +138,11 @@ export default function InstallPrompt() {
       return;
     }
 
+    // Second click → check if we have a REAL install prompt
     const prompt = deferredPrompt || _deferredPrompt;
 
     if (prompt && typeof prompt.prompt === 'function') {
+      // ✅ Real install available → actually install
       setStage('installing');
       try {
         await prompt.prompt();
@@ -153,41 +154,22 @@ export default function InstallPrompt() {
           }, 1500);
           return;
         }
+        // User cancelled the system prompt → back to popup, can retry anytime
         setStage('popup');
+        setInstallClicks(0);
         return;
       } catch (err) {
         console.error('Native prompt delivery failed:', err);
         setStage('popup');
+        setInstallClicks(0);
         return;
       }
     }
 
-    // No native prompt → platform guidance (iOS uses the Share button)
-    const { isIOS } = getBrowserInfo();
-    if (isIOS) {
-      setGuideContent({
-        icon: '🍎',
-        title: 'Install on iPhone / iPad',
-        steps: [
-          'Tap the Share button (square with arrow) at the bottom of the screen.',
-          'Scroll down and tap "Add to Home Screen".',
-          'Tap "Add" in the top-right corner.',
-          'Find the NAMATL icon on your home screen and open it like a real app.',
-        ],
-      });
-    } else {
-      setGuideContent({
-        icon: '📱',
-        title: 'Install NAMATL',
-        steps: [
-          'Make sure you are using Chrome (Android) or Safari (iPhone).',
-          'Tap "Install App" below.',
-          'When the system prompt appears, tap "Install".',
-          'The NAMATL icon will appear on your home screen.',
-        ],
-      });
-    }
-    setStage('guide');
+    // 🚫 No real prompt available → the app is ALREADY INSTALLED on this device.
+    // (Chrome withholds beforeinstallprompt for already-installed apps.)
+    setAlreadyInstalled(true);
+    setStage('popup');
   };
 
   // "Got it" → guide closes, but the INSTALL POPUP STAYS (unchanged)
@@ -202,7 +184,6 @@ export default function InstallPrompt() {
     setStage('popup');
     setInstallClicks(0);
 
-    // Already in cooldown → nothing to count
     if (inCooldown()) return;
 
     let count = 0;
@@ -210,7 +191,7 @@ export default function InstallPrompt() {
     count += 1;
 
     if (count >= 3) {
-      // 3rd dismissal → cooldown for 4 hours, then reset the counter for the next cycle
+      // 3rd dismissal → cooldown for 4 hours, reset counter for next cycle
       try {
         localStorage.setItem(COOLDOWN_UNTIL_KEY, String(Date.now() + COOLDOWN_MS));
         localStorage.setItem(DISMISS_COUNT_KEY, '0');
@@ -220,10 +201,18 @@ export default function InstallPrompt() {
     }
   };
 
-  // "Done" on the installed screen → close forever (real install, not a dismiss)
+  // "Done" on the installed screen → close forever (real install)
   const handleDone = () => {
     setVisible(false);
     setStage('popup');
+    try { localStorage.setItem(INSTALLED_KEY, '1'); } catch (e) {}
+  };
+
+  // Already-installed users: Close → just hide, no cooldown count (they already have it)
+  const handleAlreadyInstalledClose = () => {
+    setVisible(false);
+    setStage('popup');
+    setInstallClicks(0);
     try { localStorage.setItem(INSTALLED_KEY, '1'); } catch (e) {}
   };
 
@@ -366,7 +355,7 @@ export default function InstallPrompt() {
             <p style={{ fontSize: '13px', color: '#666', margin: '0 0 16px', lineHeight: '1.4' }}>
               Open NAMATL from your home screen to use it as an app.
             </p>
-            <button onClick={handleDismiss} style={{
+            <button onClick={handleAlreadyInstalledClose} style={{
               padding: '10px 32px', border: 'none', borderRadius: '10px',
               background: '#003366', color: '#ffffff', fontSize: '15px',
               fontWeight: '700', cursor: 'pointer'

@@ -23,8 +23,12 @@ const COOLDOWN_UNTIL_KEY = 'namatl_install_cooldown_until';
 // ⏰ Cooldown window: 4 hours after the 3rd dismissal
 const COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h
 
-// Are we inside the 4-hour cooldown?
+// 🔬 TEST MODE: add ?forceInstall=1 to the URL to ALWAYS show the popup
+// (ignores cooldown + standalone detection). Remove it for normal users.
+const forceTest = () => window.location.href.includes('forceInstall');
+
 const inCooldown = () => {
+  if (forceTest()) return false;
   try {
     const until = Number(localStorage.getItem(COOLDOWN_UNTIL_KEY) || 0);
     return Date.now() < until;
@@ -32,14 +36,15 @@ const inCooldown = () => {
 };
 
 // ✅ Am I already running inside the installed app?
-const isRunningStandalone = () =>
-  window.matchMedia('(display-mode: standalone)').matches ||
-  window.matchMedia('(display-mode: fullscreen)').matches ||
-  window.matchMedia('(display-mode: minimal-ui)').matches ||
-  window.navigator.standalone === true;
-
-// Does the browser give us a REAL install prompt? (null → already installed / not installable)
-const hasRealPrompt = () => !!(_deferredPrompt && typeof _deferredPrompt.prompt === 'function');
+const isRunningStandalone = () => {
+  if (forceTest()) return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches ||
+    window.matchMedia('(display-mode: minimal-ui)').matches ||
+    window.navigator.standalone === true
+  );
+};
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(_deferredPrompt);
@@ -57,22 +62,30 @@ export default function InstallPrompt() {
       return;
     }
 
-    const showPopup = () => setVisible(true);
+    let cancelled = false;
+    let showTimer = null;
+    let handler = null;
+    let installedHandler = null;
 
-    const checkInstalled = async () => {
+    const showPopup = () => { if (!cancelled) setVisible(true); };
+
+    const run = async () => {
       // ⏰ In cooldown (3rd dismissal < 4h ago) → stay hidden
       if (inCooldown()) return;
 
+      // Already installed on this device → show "already installed" message
       try {
         if (navigator.getInstalledRelatedApps) {
           const apps = await navigator.getInstalledRelatedApps();
-          if (apps.some((app) => app.platform === 'web' || app.platform === 'play')) {
+          if (!cancelled && apps.some((app) => app.platform === 'web' || app.platform === 'play')) {
             setAlreadyInstalled(true);
             showPopup();
             return;
           }
         }
       } catch (e) {}
+      if (cancelled) return;
+
       try {
         if (localStorage.getItem(INSTALLED_KEY)) {
           setAlreadyInstalled(true);
@@ -87,9 +100,9 @@ export default function InstallPrompt() {
         return;
       }
 
-      const showTimer = setTimeout(showPopup, 3000);
+      showTimer = setTimeout(showPopup, 3000);
 
-      const handler = (e) => {
+      handler = (e) => {
         e.preventDefault();
         _deferredPrompt = e;
         _promptAvailable = true;
@@ -98,7 +111,7 @@ export default function InstallPrompt() {
       };
       window.addEventListener('beforeinstallprompt', handler);
 
-      const installedHandler = () => {
+      installedHandler = () => {
         _deferredPrompt = null;
         _promptAvailable = false;
         setDeferredPrompt(null);
@@ -107,15 +120,16 @@ export default function InstallPrompt() {
         showPopup();
       };
       window.addEventListener('appinstalled', installedHandler);
-
-      return () => {
-        clearTimeout(showTimer);
-        window.removeEventListener('beforeinstallprompt', handler);
-        window.removeEventListener('appinstalled', installedHandler);
-      };
     };
 
-    checkInstalled();
+    run();
+
+    return () => {
+      cancelled = true;
+      if (showTimer) clearTimeout(showTimer);
+      if (handler) window.removeEventListener('beforeinstallprompt', handler);
+      if (installedHandler) window.removeEventListener('appinstalled', installedHandler);
+    };
   }, []);
 
   // ===================== CLICK 1: show instructions =====================

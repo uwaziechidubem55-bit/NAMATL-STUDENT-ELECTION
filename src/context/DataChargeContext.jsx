@@ -189,11 +189,14 @@ export function DataChargeProvider({ children }) {
     }
   };
 
-  // === Form Purchase (YOU set the amount - FIXED: no double-credit) ===
+    // === Form Purchase (YOU set the amount - FIXED: no double-credit) ===
   const purchaseForm = async (position, amount, candidateData) => {
     try {
       const txRef = `FORM-${position.replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      const FlutterwaveCheckout = (await import('flutterwave-react-v3')).default;
+      
+      // FIX: Dynamically import the core library instead of the React hooks library
+      const FlutterwaveCheckout = (await import('flutterwave-inline-js')).default;
+      
       return new Promise((resolve) => {
         const config = {
           public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
@@ -230,13 +233,15 @@ export function DataChargeProvider({ children }) {
           },
           onClose: () => { resolve({ success: false, message: 'Payment cancelled.' }); }
         };
-        const checkout = new FlutterwaveCheckout(config);
-        checkout.open();
+        
+        // FIX: The standard package accepts the config payload directly as a function call
+        FlutterwaveCheckout(config);
       });
     } catch (e) {
       return { success: false, message: 'Error: ' + e.message };
     }
   };
+
 
   return (
     <DataChargeContext.Provider value={{

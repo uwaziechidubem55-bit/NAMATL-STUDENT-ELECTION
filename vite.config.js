@@ -14,10 +14,6 @@ export default defineConfig({
           if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) {
             return 'firebase';
           }
-          // 💳 Split Flutterwave payments out
-          if (id.includes('node_modules/flutterwave-react-v3')) {
-            return 'flutterwave';
-          }
           // 📄 Split PDF generation tools out
           if (id.includes('node_modules/jspdf')) {
             return 'jspdf';

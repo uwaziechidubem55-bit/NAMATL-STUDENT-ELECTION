@@ -1,7 +1,6 @@
 // NAMATLS Payment verification — activation + form purchase in ONE function.
 // v5: money-in flows through the shared finance ledger (creditPaymentOnce in
 // _firebase.js), so the webhook and this endpoint can NEVER double-credit.
-// Admin session is now REQUIRED (same check as /api/withdraw).
 import { getDb, missingFirebaseEnv, creditPaymentOnce } from './_firebase.js';
 import { verifyToken } from './_session.js';
 
@@ -26,7 +25,7 @@ function requireAdmin(req, res) {
   }
   const session = verifyToken(token, process.env.SERVER_SESSION_SECRET);
   if (!session || session.role !== 'admin') {
-    res.status(401).json({ success: false, message: 'Unauthorized' });
+    res.status(401).json({ success: false, message: 'Unauthorized: Admin login required' });
     return false;
   }
   return true;
@@ -134,12 +133,18 @@ export default async function handler(req, res) {
     if (!getSecretKey()) {
       return res.status(500).json({ success: false, message: 'Flutterwave secret key not set (FLUTTERWAVE_SECRET_KEY / FLW_SECRET_KEY / FLUTTERWAVE_SECRET)' });
     }
-    if (!requireAdmin(req, res)) return; // NEW: admin session required
 
     const { action } = req.query; // set by vercel.json rewrites
     switch (action) {
-      case 'activation': return verifyActivation(req, res);
-      case 'form': return verifyFormPayment(req, res);
+      case 'activation':
+        // Only require Admin session when activating academic year
+        if (!requireAdmin(req, res)) return;
+        return verifyActivation(req, res);
+
+      case 'form':
+        // Candidates can verify their own form payment
+        return verifyFormPayment(req, res);
+
       default:
         return res.status(400).json({ success: false, message: 'Unknown action: ' + action });
     }

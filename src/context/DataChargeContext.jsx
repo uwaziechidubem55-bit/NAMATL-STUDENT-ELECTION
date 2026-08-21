@@ -171,7 +171,7 @@ export function DataChargeProvider({ children }) {
 
       return new Promise((resolve) => {
         FlutterwaveCheckout({
-          public_key: import.meta.env.FLW_PUBLIC_KEY,
+          public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: 25000,
           currency: 'NGN',
@@ -223,7 +223,7 @@ export function DataChargeProvider({ children }) {
 
       return new Promise((resolve) => {
         FlutterwaveCheckout({
-          public_key: import.meta.env.FLW_PUBLIC_KEY,
+          public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: amount,
           currency: 'NGN',

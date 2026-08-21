@@ -27,10 +27,9 @@ export default function PurchaseForm({
     const timeout = setTimeout(() => {
       setError('⚠️ Taking too long to connect. Check your internet or refresh the page.');
       setLoading(false);
-    }, 8000); // 8 second timeout
+    }, 8000);
 
     try {
-      // Load both at same time to make it faster
       const [settingsDoc, candidatesSnap] = await Promise.all([
         getDoc(doc(db, 'settings', 'formPurchase')),
         getDocs(collection(db, 'candidates'))
@@ -48,7 +47,7 @@ export default function PurchaseForm({
         else if (data.closingDate && now > closeDt) setError('Purchase is closed, come back next year.');
         else if (!data.isActive) setError('Form purchase is currently disabled.');
       } else {
-        setError('Form purchase not configured yet. Contact your Electoralcommission.');
+        setError('Form purchase not configured yet. Contact your Electoral Commission.');
       }
 
       const counts = {};
@@ -59,7 +58,6 @@ export default function PurchaseForm({
       clearTimeout(timeout);
       console.error(e);
 
-      // Better error messages
       if (e.message.includes('offline') || e.message.includes('Failed to get')) {
         setError('🌐 No internet connection. Please check your data/WiFi and tap refresh.');
       } else if (e.message.includes('permission')) {
@@ -80,64 +78,96 @@ export default function PurchaseForm({
     setSuccessMsg('');
   };
 
-  // Admin-set price for the currently selected position (prop overrides Firestore amount)
-  const adminSetPrice = Number(propAdminPrice?? selectedPosition?.amount?? 0);
-  // Single source of truth for what the candidate is charged
-  const charges = selectedPosition? calculateFormCharges(adminSetPrice) : null;
+  const adminSetPrice = Number(propAdminPrice ?? selectedPosition?.amount ?? 0);
+  const charges = selectedPosition ? calculateFormCharges(adminSetPrice) : null;
 
   const handlePay = async () => {
-    if (!formData.fullName.trim() ||!formData.department.trim() ||!formData.level.trim()) {
-      alert('Fill all required fields'); return;
+    if (!formData.fullName.trim() || !formData.department.trim() || !formData.level.trim()) {
+      alert('Fill all required fields'); 
+      return;
     }
+
     setSubmitting(true);
     try {
+      // 1. Ensure Flutterwave script is ready
+      if (typeof window.FlutterwaveCheckout !== 'function') {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.flutterwave.com/v3.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load payment gateway. Check your internet connection.'));
+          document.head.appendChild(script);
+        });
+      }
+
       const priceToCharge = calculateFormCharges(adminSetPrice);
-      const txRef = 'FORM-' + selectedPosition.position.replace(/\s+/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
-      const FLW = (await import('flutterwave-react-v3')).default;
-      const checkout = new FLW({
-        public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
+      const txRef = 'FORM-' + selectedPosition.position.replace(/\s+/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const flwKey = import.meta.env.VITE_FLW_PUBLIC_KEY || import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY || 'FLWPUBK_LIVE-xxxxxxxxxxxxxxxxxxxx';
+
+      // 2. Call FlutterwaveCheckout directly without 'new'
+      window.FlutterwaveCheckout({
+        public_key: flwKey,
         tx_ref: txRef,
-        amount: priceToCharge.displayPrice, // ← candidate pays displayPrice
+        amount: priceToCharge.displayPrice,
         currency: 'NGN',
         payment_options: 'card,ussd,transfer,banktransfer',
-        customer: { email: formData.email || 'candidate@namtls.edu.ng', name: formData.fullName },
-        customizations: { title: 'NAMATL Form Purchase', description: selectedPosition.position + ' candidacy form' },
+        customer: { 
+          email: formData.email || 'candidate@namtls.edu.ng', 
+          name: formData.fullName 
+        },
+        customizations: { 
+          title: 'NAMATL Form Purchase', 
+          description: selectedPosition.position + ' candidacy form',
+          logo: 'https://namtls-election.vercel.app/logo.png'
+        },
         callback: async (response) => {
           if (response.status === 'successful' || response.status === 'completed') {
-            const verifyRes = await fetch('/api/verify-form-payment', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                transaction_id: response.transaction_id,
-                position: selectedPosition.position,
-                amount: adminSetPrice, // admin price (unchanged contract)
-                totalPaid: priceToCharge.displayPrice, // additive, safe
-                candidateData: formData
-              })
-            });
-            const verifyData = await verifyRes.json();
-            if (verifyData.success) {
-              setSuccessMsg(verifyData.message);
-              // ✅ Success callback — admin receives EXACTLY the admin-set price
-              if (typeof propOnSuccess === 'function') {
-                propOnSuccess({
-                  adminReceives: adminSetPrice,
-                  position: propPosition || selectedPosition.position,
-                  candidateData: propCandidateData || formData,
-                  totalCustomerPays: priceToCharge.displayPrice,
-                  transaction_id: response.transaction_id
-                });
+            try {
+              const verifyRes = await fetch('/api/verify-form-payment', {
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  transaction_id: response.transaction_id,
+                  position: selectedPosition.position,
+                  amount: adminSetPrice,
+                  totalPaid: priceToCharge.displayPrice,
+                  candidateData: formData
+                })
+              });
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                setSuccessMsg(verifyData.message);
+                if (typeof propOnSuccess === 'function') {
+                  propOnSuccess({
+                    adminReceives: adminSetPrice,
+                    position: propPosition || selectedPosition.position,
+                    candidateData: propCandidateData || formData,
+                    totalCustomerPays: priceToCharge.displayPrice,
+                    transaction_id: response.transaction_id
+                  });
+                }
+                setSelectedPosition(null);
+                setFormData({ fullName: '', department: '', level: '', email: '' });
+                loadData();
+              } else { 
+                alert('❌ ' + verifyData.message); 
               }
-              setSelectedPosition(null);
-              setFormData({ fullName: '', department: '', level: '', email: '' });
-              loadData();
-            } else { alert('❌ ' + verifyData.message); }
-          } else { alert('Payment not completed.'); }
+            } catch (err) {
+              alert('Server error: ' + err.message);
+            }
+          } else { 
+            alert('Payment not completed.'); 
+          }
           setSubmitting(false);
         },
-        onClose: () => { setSubmitting(false); alert('Payment cancelled.'); }
+        onclose: () => { 
+          setSubmitting(false); 
+        }
       });
-      checkout.open();
-    } catch (e) { setSubmitting(false); alert('Error: ' + e.message); }
+    } catch (e) { 
+      setSubmitting(false); 
+      alert('Error: ' + e.message); 
+    }
   };
 
   const page = { minHeight: '100vh', background: '#f5f7fa', color: '#1e293b', fontFamily: 'system-ui, sans-serif', padding: '20px', maxWidth: '600px', margin: '0 auto' };
@@ -147,7 +177,6 @@ export default function PurchaseForm({
   const breakdownTitle = { fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' };
   const breakdownRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '14px', color: '#334155' };
 
-  // ═══ CHANGED: logo style for the page header (top center) ═══
   const logoStyle = {
     width: '80px',
     height: '80px',
@@ -160,7 +189,6 @@ export default function PurchaseForm({
     margin: '0 auto',
   };
 
-  // ═══ CHANGED: Loading screen — NO logo, text centered only ═══
   const loadingScreen = {
     minHeight: '100vh',
     display: 'flex',
@@ -172,28 +200,16 @@ export default function PurchaseForm({
     padding: '20px',
     boxSizing: 'border-box',
   };
-  const loadingTitle = {
-    fontSize: '22px',
-    fontWeight: '700',
-    color: '#1e293b',
-    margin: '0 0 8px 0',
-  };
-  const loadingText = {
-    fontSize: '14px',
-    color: '#64748b',
-    margin: '0',
-  };
 
   if (loading) return (
     <div style={loadingScreen}>
-      <h2 style={loadingTitle}>⏳ Loading...</h2>
-      <p style={loadingText}>Connecting to server...</p>
+      <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#1e293b', margin: '0 0 8px 0' }}>⏳ Loading...</h2>
+      <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>Connecting to server...</p>
     </div>
   );
 
   return (
     <div style={page}>
-      {/* ═══ CHANGED: Logo now lives here — top center, above the title ═══ */}
       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
         <img
           src="/logo.png"
@@ -205,27 +221,24 @@ export default function PurchaseForm({
         <p style={{ color: '#64748b', fontSize: '14px', margin: 0, textAlign: 'center' }}>Form Purchase Portal</p>
       </div>
 
-      {/* ═══ CHANGED: top "← Back to Home" link REMOVED (only one at the bottom now) ═══ */}
-
       {error && (
-        <div style={{...card, border: '1px solid #fecaca', background: '#fef2f2' }}>
+        <div style={{ ...card, border: '1px solid #fecaca', background: '#fef2f2' }}>
           <div style={{ color: '#dc2626', fontSize: '15px' }}>
             ⛔ {error}
           </div>
           <button onClick={loadData} style={{ marginTop: '10px', padding: '8px 18px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>🔄 Retry</button>
-          {/* ═══ CHANGED: "← Back to Home" link inside the error box REMOVED ═══ */}
         </div>
       )}
 
       {successMsg && (
-        <div style={{...card, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+        <div style={{ ...card, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
           <div style={{ color: '#15803d', fontSize: '15px' }}>✅ {successMsg}</div>
         </div>
       )}
 
-      {!error && settings &&!selectedPosition && (
+      {!error && settings && !selectedPosition && (
         <>
-          <div style={{...card, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+          <div style={{ ...card, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
             📅 {settings.openingDate} - {settings.closingDate}
             {settings.positions?.length > 0 && (
               <div style={{ color: '#64748b', fontSize: '13px', marginTop: '4px' }}>
@@ -243,13 +256,13 @@ export default function PurchaseForm({
                 key={i}
                 onClick={() => handleSelect(pos)}
                 style={{
-                 ...card,
-                  cursor: full? 'not-allowed' : 'pointer',
-                  border: full? '1px solid #fecaca' : '1px solid #e2e8f0',
+                  ...card,
+                  cursor: full ? 'not-allowed' : 'pointer',
+                  border: full ? '1px solid #fecaca' : '1px solid #e2e8f0',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  opacity: full? 0.6 : 1
+                  opacity: full ? 0.6 : 1
                 }}
               >
                 <div>
@@ -275,7 +288,6 @@ export default function PurchaseForm({
 
           <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px' }}>✍️ Fill Your Details for {selectedPosition.position}</h2>
 
-          {/* 💳 Payment breakdown — shown BEFORE payment */}
           <div style={breakdownBox}>
             <div style={breakdownTitle}>💳 Payment Breakdown</div>
             <div style={breakdownRow}>
@@ -290,28 +302,27 @@ export default function PurchaseForm({
               <span>Service Charge</span>
               <span>₦{charges.breakdown['Service Charge'].toLocaleString()}</span>
             </div>
-            <div style={{...breakdownRow, borderTop: '1px solid #cbd5e1', paddingTop: '10px', fontWeight: '700', fontSize: '16px' }}>
+            <div style={{ ...breakdownRow, borderTop: '1px solid #cbd5e1', paddingTop: '10px', fontWeight: '700', fontSize: '16px' }}>
               <span>Total Amount</span>
               <span>₦{charges.totalCustomerPays.toLocaleString()}</span>
             </div>
           </div>
 
-          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({...formData, department: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({...formData, level: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
 
           <button
             onClick={handlePay}
             disabled={submitting}
-            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting? 'not-allowed' : 'pointer', opacity: submitting? 0.6 : 1 }}
+            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
           >
-            {submitting? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
+            {submitting ? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
           </button>
         </div>
       )}
 
-      {/* ═══ CHANGED: single "← Back to Home" link — at the bottom, above the footer ═══ */}
       <div style={{ textAlign: 'center', marginTop: '24px' }}>
         <Link to="/" style={{ color: '#2563eb', fontSize: '14px', textDecoration: 'none' }}>← Back to Home</Link>
       </div>

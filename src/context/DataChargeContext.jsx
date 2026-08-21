@@ -1,11 +1,11 @@
-// NAMTLS DataCharge v4.3.1 - FIXED: closing tag typo (DataChainContext -> DataChargeContext)
 // v4.3.2 - All privileged Firestore ops moved server-side via /api/admin (rules stay locked)
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+// NAMTLS DataCharge v4.3.3 - FIXED: Flutterwave Inline CDN replaces broken class/hook usage
+import { createContext, useContext, useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { adminApi } from '../utils/adminApi';
 
-// ===== READ FROM ENVIRONMENT VARIABLES (display-only values; real validation is server-side) =====
+// ===== READ FROM ENVIRONMENT VARIABLES =====
 const ADMIN_ID = import.meta.env.VITE_ADMIN_ID || '';
 const OPAY_ACCOUNT = import.meta.env.VITE_OPAY_ACCOUNT || '';
 
@@ -32,36 +32,50 @@ export function useDataCharge() {
   return ctx;
 }
 
+// ===== LOAD FLUTTERWAVE INLINE SCRIPT ONCE (CDN) =====
+let flutterwavePromise = null;
+function loadFlutterwaveInline() {
+  if (!flutterwavePromise) {
+    flutterwavePromise = new Promise((resolve, reject) => {
+      if (window.FlutterwaveCheckout) {
+        resolve(window.FlutterwaveCheckout);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.flutterwave.com/v3.js';
+      script.onload = () => {
+        if (typeof window.FlutterwaveCheckout === 'function') {
+          resolve(window.FlutterwaveCheckout);
+        } else {
+          reject(new Error('FlutterwaveCheckout not available after script load'));
+        }
+      };
+      script.onerror = () => reject(new Error('Failed to load Flutterwave Inline script. Check your internet.'));
+      document.head.appendChild(script);
+    });
+  }
+  return flutterwavePromise;
+}
+
 async function sendFlutterwavePayout(amount, accountNumber, narration, adminId, pin) {
   try {
     const response = await fetch('/api/withdraw', {
       method: 'POST',
       headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
-        },
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+      },
       body: JSON.stringify({
         amount,
         accountNumber,
-        narration: narration || 'NAMTLS E-Voting Withdrawal',
+        narration: narration || 'NAMTLS E-Voting',
         adminId,
         pin
-      })
+      }),
     });
-
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      return {
-        success: false,
-        message: `API returned non-JSON response: ${text.substring(0, 200)}`
-      };
-    }
-
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (e) {
-    return { success: false, message: `Network error: ${e.message}` };
+    return { success: false, message: 'Network error: ' + e.message };
   }
 }
 
@@ -72,8 +86,10 @@ export function DataChargeProvider({ children }) {
 
   const loadBalance = async () => {
     try {
-      const res = await adminApi('getBalance');
-      setWithdrawalBalance((res.data && typeof res.data.balance === 'number') ? res.data.balance : 0);
+      const snap = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
+      if (snap.exists()) {
+        setWithdrawalBalance(Number(snap.data().balance || 0));
+      }
     } catch (e) {
       console.log('Could not load balance:', e.message);
     }
@@ -81,7 +97,6 @@ export function DataChargeProvider({ children }) {
 
   const loadFormPurchaseSettings = async () => {
     try {
-      // settings/* is public-read in rules — safe to keep client-side
       const snap = await getDoc(doc(db, 'settings', 'formPurchase'));
       if (snap.exists()) {
         setFormPurchaseSettings(snap.data());
@@ -115,20 +130,27 @@ export function DataChargeProvider({ children }) {
     loadFormPurchaseSettings();
   }, []);
 
-  // === WITHDRAW (server-side auth + fixed beneficiary + server balance check) ===
+  // === WITHDRAW ===
   const withdraw = async (adminId, pin, amount) => {
     if (amount <= 0) return { success: false, message: 'Invalid withdrawal amount' };
 
-    const transferResult = await sendFlutterwavePayout(amount, OPAY_ACCOUNT, `NAMTLS E-Voting withdrawal to Opay ${OPAY_ACCOUNT}`, adminId, pin);
+    const transferResult = await sendFlutterwavePayout(
+      amount,
+      OPAY_ACCOUNT,
+      `NAMTLS E-Voting withdrawal to Opay ${OPAY_ACCOUNT}`,
+      adminId,
+      pin
+    );
     if (!transferResult.success) return transferResult;
     if (transferResult.warning || transferResult.unverified) {
       return { success: false, message: transferResult.message, reference: transferResult.reference || '' };
     }
 
-    // Server (api/withdraw) already deducted the balance inside its own transaction.
-    // Client only mirrors the decrement for instant UI feedback — no Firestore write here.
     setWithdrawalBalance(prev => prev - amount);
-    return { success: true, message: `✅ CONFIRMED: ₦${amount.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${transferResult.reference || 'N/A'}` };
+    return {
+      success: true,
+      message: `CONFIRMED: ₦${amount.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${transferResult.reference || 'N/A'}`
+    };
   };
 
   const checkActivationCost = async (academicYear) => {
@@ -138,28 +160,34 @@ export function DataChargeProvider({ children }) {
     return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
   };
 
-  // === Activation Payment (₦25,000 fixed - FIXED: no double-credit) ===
+  // === Activation Payment (FIXED: uses Flutterwave Inline CDN, not broken class constructor) ===
   const processActivationPayment = async (academicYear) => {
     if (academicYear === '2026/2027') {
       return { success: true, message: 'Election activated FREE!' };
     }
     try {
+      const FlutterwaveCheckout = await loadFlutterwaveInline();
       const txRef = `ACT-${academicYear.replace('/', '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      const FlutterwaveCheckout = (await import('flutterwave-react-v3')).default;
+
       return new Promise((resolve) => {
-        const config = {
+        FlutterwaveCheckout({
           public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: 25000,
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: 'officialelectoralcommission@gmail.com', name: 'NAMTLS Admin' },
-          customizations: { title: 'NAMTLS Activation Payment', description: `Activation fee for ${academicYear}`, logo: 'https://namtls-election.vercel.app/logo.png' },
+          customizations: {
+            title: 'NAMTLS Activation Payment',
+            description: `Activation fee for ${academicYear}`,
+            logo: 'https://namtls-election.vercel.app/logo.png'
+          },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
                 const verifyRes = await fetch('/api/verify-activation', {
-                  method: 'POST', headers: { 
+                  method: 'POST',
+                  headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
                   },
@@ -179,38 +207,39 @@ export function DataChargeProvider({ children }) {
               resolve({ success: false, message: 'Payment not completed.' });
             }
           },
-          onClose: () => { resolve({ success: false, message: 'Payment cancelled.' }); }
-        };
-        const checkout = new FlutterwaveCheckout(config);
-        checkout.open();
+          onclose: () => { resolve({ success: false, message: 'Payment cancelled.' }); }
+        });
       });
     } catch (e) {
-      return { success: false, message: e.message.includes('Cannot find module') ? 'flutterwave-react-v3 missing in package.json' : 'Error: ' + e.message };
+      return { success: false, message: 'Error: ' + e.message };
     }
   };
 
-    // === Form Purchase (YOU set the amount - FIXED: no double-credit) ===
+  // === Form Purchase (FIXED: uses Flutterwave Inline CDN, not non-existent package) ===
   const purchaseForm = async (position, amount, candidateData) => {
     try {
+      const FlutterwaveCheckout = await loadFlutterwaveInline();
       const txRef = `FORM-${position.replace(/\s+/g, '-')}-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      
-      // FIX: Dynamically import the core library instead of the React hooks library
-      const FlutterwaveCheckout = (await import('flutterwave-inline-js')).default;
-      
+
       return new Promise((resolve) => {
-        const config = {
+        FlutterwaveCheckout({
           public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
           amount: amount,
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: candidateData.email || 'candidate@namtls.edu.ng', name: candidateData.fullName },
-          customizations: { title: 'NAMTLS Form Purchase', description: `${position} candidacy form`, logo: 'https://namtls-election.vercel.app/logo.png' },
+          customizations: {
+            title: 'NAMTLS Form Purchase',
+            description: `${position} candidacy form`,
+            logo: 'https://namtls-election.vercel.app/logo.png'
+          },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
               try {
                 const verifyRes = await fetch('/api/verify-form-payment', {
-                  method: 'POST', headers: { 
+                  method: 'POST',
+                  headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
                   },
@@ -231,28 +260,28 @@ export function DataChargeProvider({ children }) {
               resolve({ success: false, message: 'Payment not completed.' });
             }
           },
-          onClose: () => { resolve({ success: false, message: 'Payment cancelled.' }); }
-        };
-        
-        // FIX: The standard package accepts the config payload directly as a function call
-        FlutterwaveCheckout(config);
+          onclose: () => { resolve({ success: false, message: 'Payment cancelled.' }); }
+        });
       });
     } catch (e) {
       return { success: false, message: 'Error: ' + e.message };
     }
   };
 
-
   return (
     <DataChargeContext.Provider value={{
       withdrawalBalance,
       loadBalance,
       withdraw,
-      checkActivationCost, processActivationPayment,
+      checkActivationCost,
+      processActivationPayment,
       purchaseForm,
-      saveFormPurchaseSettings, loadFormPurchases,
-      formPurchaseSettings, formPurchases,
-      ADMIN_ID, OPAY_ACCOUNT
+      saveFormPurchaseSettings,
+      loadFormPurchases,
+      formPurchaseSettings,
+      formPurchases,
+      ADMIN_ID,
+      OPAY_ACCOUNT
     }}>
       {children}
     </DataChargeContext.Provider>

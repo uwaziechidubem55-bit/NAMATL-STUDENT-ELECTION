@@ -112,16 +112,20 @@ export default function useStudentAuth() {
 
       console.log('[useStudentAuth] Firestore write successful (server-side)');
 
+      // ✅ Store student session & key
+      const key = data.uniqueKey;
+      sessionStorage.setItem('studentKey', key);
       localStorage.setItem('studentSession', JSON.stringify({
         name: tempStudent.name,
         matric: tempStudent.matric,
         level: tempStudent.level,
         hasVoted: false,
+        uniqueKey: key,
       }));
-      console.log('[useStudentAuth] Session saved to localStorage');
+      console.log('[useStudentAuth] Session and studentKey saved');
 
       setLoading(false);
-      return { success: true, phase: 'key', generatedKey: data.uniqueKey };
+      return { success: true, phase: 'key', generatedKey: key };
     } catch (e) {
       console.error('[useStudentAuth] completeSignup error:', e);
       setLoading(false);
@@ -177,21 +181,25 @@ export default function useStudentAuth() {
   const verifyKeyAccess = async (tempStudent, uniqueKeyInput) => {
     console.log('[useStudentAuth] verifyKeyAccess for matric:', tempStudent.matric);
 
+    const cleanKey = uniqueKeyInput.trim();
     setLoading(true);
     try {
-      // Key is compared against the server copy — the browser never sees stored keys.
+      // Key is compared against the server copy
       await apiPost('/api/student-verify-key', {
         matric: tempStudent.matric,
-        uniqueKey: uniqueKeyInput,
+        uniqueKey: cleanKey,
       });
 
+      // ✅ Store student key in sessionStorage & localStorage
+      sessionStorage.setItem('studentKey', cleanKey);
       localStorage.setItem('studentSession', JSON.stringify({
         name: tempStudent.name,
         matric: tempStudent.matric,
         level: tempStudent.level,
         hasVoted: !!tempStudent.hasVoted,
+        uniqueKey: cleanKey,
       }));
-      console.log('[useStudentAuth] Key verified, session saved');
+      console.log('[useStudentAuth] Key verified, session and studentKey saved');
 
       setLoading(false);
       return { success: true };

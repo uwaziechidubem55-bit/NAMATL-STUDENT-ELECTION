@@ -18,6 +18,80 @@ const generateCandidateId = () => {
   return 'NAMATL-' + id;
 };
 
+// ===================== HIGH-PRECISION AUTO-COMPRESS (TARGET: ~499 KB) =====================
+// Uses binary-search quality optimization to retain maximum sharpness right up to 499 KB without cutting/cropping
+const compressImage = (file, maxKB = 499) => {
+  const maxBytes = maxKB * 1024;
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      // Keep maximum native resolution up to 2400px preserving full aspect ratio (no cutting)
+      const maxDim = 2400;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const getBlob = (q) => new Promise(res => canvas.toBlob(res, 'image/jpeg', q));
+
+      let minQ = 0.10;
+      let maxQ = 0.99;
+      let bestBlob = null;
+
+      // 1. If 99% full quality is already under 499 KB, keep full quality
+      const fullBlob = await getBlob(0.99);
+      if (fullBlob && fullBlob.size <= maxBytes) {
+        bestBlob = fullBlob;
+      } else {
+        // 2. Binary search to find highest quality that stays right at ~480KB–499KB
+        for (let i = 0; i < 8; i++) {
+          const midQ = (minQ + maxQ) / 2;
+          const currentBlob = await getBlob(midQ);
+          if (currentBlob && currentBlob.size <= maxBytes) {
+            bestBlob = currentBlob;
+            minQ = midQ;
+          } else {
+            maxQ = midQ;
+          }
+        }
+        if (!bestBlob) {
+          bestBlob = await getBlob(0.75);
+        }
+      }
+
+      if (!bestBlob) {
+        reject(new Error('Compression failed'));
+        return;
+      }
+
+      const compressedFile = new File(
+        [bestBlob],
+        (file.name || 'candidate').replace(/\.[^/.]+$/, '') + '.jpg',
+        { type: 'image/jpeg', lastModified: Date.now() }
+      );
+      resolve(compressedFile);
+    };
+    img.onerror = () => reject(new Error('Could not read image file'));
+    reader.readAsDataURL(file);
+  });
+};
+
 // ===================== CLOUDINARY PHOTO UPLOAD =====================
 // The browser uploads DIRECTLY to Cloudinary using a short-lived signature
 // issued by /api/upload. CLOUDINARY_API_SECRET never leaves the server.
@@ -148,6 +222,8 @@ export default function AdminDashboard() {
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [editingCandidate, setEditingCandidate] = useState(null);
+  const [oversizedFile, setOversizedFile] = useState(null);
+  const [compressing, setCompressing] = useState(false);
 
   const [settings, setSettings] = useState({
     year: '', startDate: '', startTime: '', endDate: '', endTime: '', isActive: false
@@ -448,17 +524,33 @@ export default function AdminDashboard() {
     if (!ALLOWED_PHOTO_TYPES.includes(f.type)) {
       alert('Only JPG or JPEG files are allowed. Please select a passport photo in JPG format.');
       e.target.value = '';
-      setPhoto(null); setPhotoPreview('');
+      setPhoto(null); setPhotoPreview(''); setOversizedFile(null);
       return;
     }
     if (f.size > MAX_PHOTO_KB * 1024) {
-      alert(`Photo too large. Maximum is ${MAX_PHOTO_KB}KB (passport photo size). Please compress it and try again.`);
-      e.target.value = '';
-      setPhoto(null); setPhotoPreview('');
+      setOversizedFile(f);
+      setPhoto(null);
+      setPhotoPreview('');
       return;
     }
+    setOversizedFile(null);
     setPhoto(f);
     setPhotoPreview(URL.createObjectURL(f));
+  };
+
+  const handleAutoCompress = async () => {
+    if (!oversizedFile) return;
+    setCompressing(true);
+    try {
+      const compressed = await compressImage(oversizedFile, 499);
+      setPhoto(compressed);
+      setPhotoPreview(URL.createObjectURL(compressed));
+      setOversizedFile(null);
+    } catch (err) {
+      alert('Could not auto-compress photo: ' + err.message);
+    } finally {
+      setCompressing(false);
+    }
   };
 
   const handleSaveCandidate = async () => {
@@ -487,7 +579,7 @@ export default function AdminDashboard() {
         });
       }
       setName(''); setPosition(''); setDept(''); setManifesto('');
-      setPhoto(null); setPhotoPreview(''); setEditingCandidate(null);
+      setPhoto(null); setPhotoPreview(''); setOversizedFile(null); setEditingCandidate(null);
       loadAllData();
     } catch (e) { alert('Error: ' + e.message); }
   };
@@ -498,6 +590,7 @@ export default function AdminDashboard() {
     setManifesto(c.manifesto || '');
     setPhotoPreview(c.photo || '');
     setPhoto(null);
+    setOversizedFile(null);
   };
 
   const handleDeleteCandidate = async (id) => {
@@ -1135,20 +1228,60 @@ export default function AdminDashboard() {
               <input placeholder="Position" value={position} onChange={e => setPosition(e.target.value)} style={inputStyle} />
               <input placeholder="Department" value={dept} onChange={e => setDept(e.target.value)} style={inputStyle} />
               <textarea placeholder="Manifesto (required for form purchasers)" value={manifesto} onChange={e => setManifesto(e.target.value)} style={{...inputStyle, minHeight: '80px'}} />
-          <input
+          <label style={labelStyle}>Candidate Photo (JPG/JPEG, max 500KB):</label>
+              <input
                 type="file"
                 accept=".jpg,.jpeg,image/jpeg"
                 onChange={handlePhotoSelect}
+                style={{ marginBottom: '8px', display: 'block' }}
               />
-              {photoPreview && (
-                <div style={{ fontSize: '13px', color: '#78350f', background: '#fef3c7', padding: '8px 12px', borderRadius: '6px', margin: '8px 0' }}>
-                  🖼️ {photo?.name} ({(photo.size / 1024).toFixed(0)} KB)
+
+              {/* ⚠️ Oversized Notice + ⚡ High-Precision Auto-Size Button */}
+              {oversizedFile && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  margin: '10px 0',
+                  fontSize: '13px'
+                }}>
+                  <div style={{ color: '#dc2626', fontWeight: 'bold', marginBottom: '4px' }}>
+                    ⚠️ Photo is too large: {(oversizedFile.size / 1024).toFixed(0)} KB (Maximum allowed is {MAX_PHOTO_KB} KB)
+                  </div>
+                  <p style={{ color: '#64748b', margin: '0 0 8px 0', fontSize: '12px' }}>
+                    Click below to automatically optimize this photo to ~499 KB while preserving 100% full aspect ratio and image clarity without any cutting:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAutoCompress}
+                    disabled={compressing}
+                    style={{
+                      ...btnPrimary,
+                      background: '#2563eb',
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      cursor: compressing ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {compressing ? '⏳ Auto-sizing photo...' : '⚡ Click to Auto-Size Photo (<500 KB)'}
+                  </button>
                 </div>
               )}
-              {photoPreview && <img src={photoPreview} alt="" style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover', margin: '8px 0' }} />}
+
+              {photo && photoPreview && (
+                <div style={{ margin: '10px 0' }}>
+                  <div style={{ fontSize: '13px', color: '#15803d', background: '#dcfce7', padding: '6px 12px', borderRadius: '6px', marginBottom: '8px', display: 'inline-block' }}>
+                    ✅ Ready: {photo.name} ({(photo.size / 1024).toFixed(0)} KB)
+                  </div>
+                  <div>
+                    <img src={photoPreview} alt="" style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #cbd5e1', display: 'block' }} />
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button onClick={handleSaveCandidate} style={btnSuccess}>{editingCandidate ? '✏️ Update' : '➕ Add'}</button>
-                {editingCandidate && <button onClick={() => { setEditingCandidate(null); setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); }} style={btnDanger}>Cancel</button>}
+                {editingCandidate && <button onClick={() => { setEditingCandidate(null); setName(''); setPosition(''); setDept(''); setManifesto(''); setPhoto(null); setPhotoPreview(''); setOversizedFile(null); }} style={btnDanger}>Cancel</button>}
               </div>
             </div>
             {candidates.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No candidates yet</p> : (

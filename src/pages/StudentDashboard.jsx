@@ -60,11 +60,22 @@ export default function StudentDashboard() {
         }
 
         try {
-          const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
-          if (settingsSnap.exists()) {
-            const fbSettings = settingsSnap.data();
-            setSettings(fbSettings);
-            localStorage.setItem('electionSettings', JSON.stringify(fbSettings));
+          // Merge settings/main (where AdminDashboard saves activeMode) and settings/election
+          const [mainSnap, electionSnap] = await Promise.all([
+            getDoc(doc(db, 'settings', 'main')),
+            getDoc(doc(db, 'settings', 'election')).catch(() => null)
+          ]);
+          let merged = {};
+          if (electionSnap && electionSnap.exists()) {
+            merged = { ...electionSnap.data() };
+          }
+          if (mainSnap && mainSnap.exists()) {
+            merged = { ...merged, ...mainSnap.data() };
+          }
+
+          if (Object.keys(merged).length > 0) {
+            setSettings(merged);
+            localStorage.setItem('electionSettings', JSON.stringify(merged));
           } else {
             const savedSettings = JSON.parse(localStorage.getItem('electionSettings') || '{}');
             setSettings(savedSettings);
@@ -96,14 +107,25 @@ export default function StudentDashboard() {
     navigate('/student-login');
   };
 
-  const startDateTime = settings.startDate && settings.startTime
-    ? new Date(settings.startDate + 'T' + settings.startTime) : null;
-  const endDateTime = settings.endDate && settings.endTime
-    ? new Date(settings.endDate + 'T' + settings.endTime) : null;
+  // ✅ Connects directly to AdminDashboard activation state (activeMode: 'election' | 'both')
+  const isModeActive = settings.activeMode === 'election' || settings.activeMode === 'both' || settings.isActive === true || settings.isActive === 'true';
+
+  let startDateTime = null;
+  if (settings.startDate) {
+    const timeStr = settings.startTime ? settings.startTime : '00:00';
+    startDateTime = new Date(`${settings.startDate}T${timeStr}`);
+  }
+
+  let endDateTime = null;
+  if (settings.endDate) {
+    const timeStr = settings.endTime ? settings.endTime : '23:59';
+    endDateTime = new Date(`${settings.endDate}T${timeStr}`);
+  }
+
   const now = new Date();
-  const isElectionStarted = startDateTime ? now >= startDateTime : false;
-  const isElectionEnded = endDateTime ? now >= endDateTime : false;
-  const isVotingOpen = settings.isActive && startDateTime && isElectionStarted && !isElectionEnded;
+  const isElectionStarted = startDateTime ? (now >= startDateTime) : true;
+  const isElectionEnded = endDateTime ? (now >= endDateTime) : false;
+  const isVotingOpen = isModeActive && isElectionStarted && !isElectionEnded;
 
   const handleVote = async (id) => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
@@ -158,7 +180,7 @@ export default function StudentDashboard() {
   };
 
   const getStatusBadge = () => {
-    if (!settings.isActive || !settings.startDate) return { text: 'NOT CONFIGURED', color: '#6b7280' };
+    if (!isModeActive) return { text: 'NOT CONFIGURED', color: '#6b7280' };
     if (!isElectionStarted) return { text: 'COMING SOON', color: '#f59e0b' };
     if (isElectionEnded) return { text: 'ENDED', color: '#dc2626' };
     return { text: 'LIVE', color: '#16a34a' };

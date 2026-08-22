@@ -29,34 +29,32 @@ const uploadPhotoToCloudinary = async (file) => {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || ''),
     },
-    body: JSON.stringify({ folder: 'namatl-candidates' }),
   });
-  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.message || `Upload authorization failed (${res.status})`);
-    err.error = data;
-    throw err;
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || 'Upload permission denied');
   }
+  const { cloudName, apiKey, timestamp, folder, allowedFormats, signature } = await res.json();
 
-  // 2) POST multipart form directly to Cloudinary's public endpoint
+  // 2) Upload the file straight to Cloudinary's CDN endpoint
   const form = new FormData();
   form.append('file', file);
-  form.append('api_key', data.apiKey);
-  form.append('timestamp', String(data.timestamp));
-  form.append('signature', data.signature);
-  form.append('folder', data.folder);
+  form.append('api_key', apiKey);
+  form.append('timestamp', String(timestamp));
+  form.append('folder', folder);
+  form.append('allowed_formats', allowedFormats);
+  form.append('signature', signature);
 
-  const cloudRes = await fetch(
-    `https://api.cloudinary.com/v1_1/${data.cloudName}/image/upload`,
-    { method: 'POST', body: form }
-  );
-  const cloudData = await cloudRes.json().catch(() => ({}));
-  if (!cloudRes.ok) {
-    const err = new Error(cloudData.error?.message || `Cloudinary rejected upload (${cloudRes.status})`);
-    err.error = cloudData;
-    throw err;
+  const up = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!up.ok) {
+    const err = await up.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Cloudinary upload failed');
   }
-  return cloudData.secure_url;
+  const data = await up.json();
+  return data.secure_url; // https://res.cloudinary.com/<cloud>/image/upload/...
 };
 
 // ===================== AUTO-REPLY GENERATOR =====================
@@ -79,62 +77,69 @@ const generateAutoReply = (msg) => {
   const header = `Thank you for contacting the NAMATL Electoral Commission.\n\nWe have carefully reviewed your message and provide the following response:\n\n`;
 
   // Common footer
-  const footer = `\n\nFor further assistance, you may reach out to the Commission during official hours.\n\nYours in service,\nNAMATL Electoral Commission`;
+  const footer = `\n\nThe Electoral Commission is actively working on your request. We will get back to you with a comprehensive update within 24–48 hours.\n\nShould you have any further questions, please do not hesitate to reach out.\n\nSigned and approved by:\n_______________________________\nComr. D.C. Uwazie\nSecretary, NAMATL Electoral Commission\n\n_______________________________\nComr.G. P.Ufot\nChairman, NAMATL Electoral Commission\n\n--\nNAMATL Electoral Commission\nFederal University of Petroleum Resources Effurun`;
 
-  // Topic-specific replies
-  if (isLoginCode) {
-    return `${header}Regarding your unique access code for the voting portal, the Electoral Commission has established a secure verification process. Please note:\n\n• Unique voting codes are issued only to registered and eligible students\n• If you have registered, your code was displayed upon completion of registration\n• If you misplaced your code, you can use the "Find Key" feature on the portal or contact the Commission with your full name, matriculation number, and department for identity verification\n• For security reasons, codes are never sent via unverified channels\n\nPlease ensure your student details match the official university register.${footer}`;
+  // If message is very short or unclear — use a general response
+  if (text.length < 10) {
+    return `${header}We acknowledge receipt of your message. The NAMATL Electoral Commission appreciates your communication. However, your enquiry appears to require further clarification. Kindly provide more details regarding your issue so that we may assist you appropriately. Alternatively, you may visit the Students' Affairs Division for in-person assistance.${footer}`;
   }
 
+  // Login/access code related
+  if (isLoginCode) {
+    return `${header}Regarding your request for access to the student voting portal, please be informed that each registered student of the Federal University of Petroleum Resources Effurun is issued unique login credentials linked to their institutional matriculation number.\n\nTo access the portal:\n1. Use your matriculation number as your username\n2. An OTP will be sent to your registered institutional email address\n3. Enter the OTP to complete the login process\n\nIf you are experiencing difficulty logging in, it may be due to an incorrect matriculation number or an unregistered email address. Kindly confirm that your details are correctly entered. For further assistance, the Commission will investigate and provide a resolution promptly.${footer}`;
+  }
+
+  // Voting process related
   if (isVoting) {
     return `${header}Thank you for your enquiry regarding the voting process. The NAMATL election is conducted electronically through our secure and transparent e-voting platform.\n\nKey information:\n• Each eligible voter must log in using their unique student credentials\n• Voting is only open during the designated election period as announced\n• Each student is entitled to one vote per position\n• The platform ensures secure, encrypted, and anonymous voting\n• Results are tallied automatically and verified by the Electoral Commission\n\nYour participation in the electoral process is duly noted. If you require any clarification on the voting procedure, please refer to the guidelines available on the portal or contact the Commission directly.${footer}`;
   }
 
+  // Form purchase related
   if (isForm) {
     return `${header}With reference to your message concerning form purchase, the NAMATL Electoral Commission provides the following information:\n\n• Nomination forms are available for purchase through the official e-voting portal\n• Payments are processed securely via Flutterwave (credit/debit cards, bank transfers, USSD)\n• After payment, the Commission reviews your details and registers you as a candidate\n• You will be required to upload your manifesto and passport photograph after payment\n• Each position has a specific fee as listed on the Form Purchase page\n• Maximum of five (5) candidates per position\n\nFor specific pricing and position availability, kindly refer to the Form Purchase section on the portal. The Commission will attend to any further inquiries regarding your transaction.${footer}`;
   }
 
+  // Candidate/nomination related
   if (isCandidate) {
     return `${header}Thank you for your interest in contesting for a position in the NAMATL election. We are pleased to inform you of the nomination process:\n\n1. Purchase the nomination form for your desired position through the official portal\n2. Complete the payment via Flutterwave (secured transaction)\n3. After successful payment, provide your details including:\n   - Full name\n   - Position contested\n   - Department\n   - Manifesto (your vision and plans)\n   - Passport photograph\n4. Your candidacy will be reviewed and approved by the Electoral Commission\n5. You will appear on the ballot paper once approved\n\nWe appreciate your enthusiasm and commitment to student leadership. The Commission encourages all qualified students to participate in the democratic process.${footer}`;
   }
 
+  // Payment related
   if (isPayment) {
     return `${header}Regarding your enquiry about payment, the NAMATL Electoral Commission uses Flutterwave as our secure payment gateway for all form purchases and transactions.\n\nImportant information:\n• All payments are processed in real-time\n• A confirmation receipt is generated upon successful payment\n• If you encountered an issue during payment, please provide the transaction reference number\n• The Commission will verify the transaction and resolve any discrepancies\n• Refunds, if applicable, are processed within 5–7 business days\n\nPlease allow the Commission some time to investigate your transaction. We will provide you with a detailed update regarding the status of your payment.${footer}`;
   }
 
+  // Results related
   if (isResult) {
     return `${header}Thank you for your interest in the election results. The NAMATL Electoral Commission conducts a transparent and verifiable election process.\n\nRegarding results:\n• Results are officially released immediately after the conclusion of the election period\n• Final results are displayed on the Admin Dashboard and are accessible to authorised personnel\n• The results include the total votes cast per candidate, vote points, and official candidate IDs\n• All results are certified by the Electoral Commission before publication\n\nIf the election has not yet concluded, please note that results will only be made available after voting has ended. The Commission will communicate the official results through the appropriate channels.${footer}`;
   }
 
+  // Complaint related
   if (isComplaint) {
-    return `${header}The Electoral Commission acknowledges receipt of your complaint. We take all issues raised by students very seriously and are committed to ensuring a fair, transparent, and smooth electoral process.\n\nAction being taken:\n• Your complaint has been logged and assigned to the relevant committee\n• A technical/administrative review is currently underway\n• We aim to resolve all reported issues promptly\n• If additional information is needed, a representative of the Commission will contact you\n\nWe appreciate your patience while we investigate and resolve this matter. Thank you for helping us maintain the integrity of our election.${footer}`;
+    return `${header}We acknowledge receipt of your complaint and sincerely apologise for any inconvenience you may have experienced. The NAMATL Electoral Commission takes all concerns with the utmost seriousness.\n\nYour issue has been logged and escalated to the appropriate technical and administrative team for immediate review. The Commission is committed to:\n• Investigating the matter thoroughly\n• Addressing any technical glitches or administrative errors\n• Ensuring a fair and seamless electoral process for all students\n• Providing you with a detailed resolution within the shortest possible time\n\nWe assure you that the matter will be addressed with the urgency it deserves. Your patience and understanding are highly appreciated.${footer}`;
   }
 
-  if (isHelp) {
-    return `${header}We are pleased to assist you. The NAMATL Electoral Commission provides comprehensive support to all students participating in the election.\n\nHere are some helpful pointers:\n• Student Registration/Login: Use your valid matriculation number to access the portal\n• Form Purchase: Visit the Form Purchase section to apply for available positions\n• Voting: Cast your vote during the official voting hours on election day\n• Results: View certified results after the election concludes\n\nIf you need specific assistance beyond these guidelines, please provide additional details about your request, and the Commission will be glad to assist you further.${footer}`;
+  // General help/assistance
+  if (isHelp || isGeneral) {
+    return `${header}We appreciate you reaching out to the NAMATL Electoral Commission for assistance. Below is comprehensive information relevant to your enquiry:\n\nABOUT THE PLATFORM:\nThe NAMATL Student E-Voting system is designed to facilitate a seamless, transparent, and secure voting experience for all students of the Federal University of Petroleum Resources Effurun.\n\nTECHNICAL REQUIREMENTS:\n• Ensure you are using a stable internet connection\n• Use an updated browser (Chrome, Firefox, or Safari recommended)\n• Clear your browser cache if you encounter any display issues\n\nLOGIN ASSISTANCE:\n• Your username is your institutional matriculation number\n• An OTP is sent to your registered institutional email\n• Contact the IT support desk if you do not receive the OTP\n\nFORM PURCHASE:\n• Visit the Purchase Form section on the landing page\n• Follow the payment instructions carefully\n• Contact the Commission if payment is not reflected\n\nShould your question require further clarification, the Commission will follow up with you directly. We are committed to ensuring a smooth electoral experience for all.${footer}`;
   }
 
-  if (isGeneral) {
-    return `${header}Thank you for reaching out to the NAMATL Electoral Commission. We have received your inquiry and wish to provide the following information:\n\n• The Commission is dedicated to conducting free, fair, and credible elections for all NAMATL students\n• All official announcements, timelines, and guidelines are published on this portal\n• For specific inquiries regarding candidates, positions, voting schedules, or results, please refer to the relevant sections of the portal\n\nShould you require further clarification, do not hesitate to send another message with specific details. We will respond at the earliest opportunity.${footer}`;
-  }
-
-  // Default professional response
-  return `${header}Thank you for reaching out to the NAMATL Electoral Commission. We have received your message and it is currently being reviewed by the Commission.\n\n• Your message reference: #${(msg.id || '').substring(0, 8)}\n• Submitted: ${msg.timestamp ? new Date(msg.timestamp).toLocaleString() : 'Recently'}\n\nA representative of the Electoral Commission will review your inquiry and take appropriate action. If this is an urgent matter regarding the election, please also reach out through our official channels.\n\nWe appreciate your engagement in the NAMATL electoral process.${footer}`;
+  // Default fallback for any other enquiry
+  return `${header}Thank you for your message. The NAMATL Electoral Commission has noted your enquiry and will review it accordingly. Our team is committed to providing you with a thorough and satisfactory response.\n\nFor your reference, here are some common resources:\n• Student Login Portal: Available on the landing page\n• Form Purchase: Accessible via the Purchase Form link\n• Admin Support: Available through the support channel\n\nPlease allow us some time to process your request, and we will get back to you as soon as possible. For urgent matters, you may also visit the Electoral Commission office at the Students' Affairs Division, FUPRE.${footer}`;
 };
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const {
-    withdrawalBalance,
-    loadBalance,
-    withdraw,
-    checkActivationCost,
-    processActivationPayment,
-    ADMIN_ID,
-    OPAY_ACCOUNT
+    withdrawalBalance, withdraw, loadBalance, loadFormPurchases, saveFormPurchaseSettings,
+    formPurchaseSettings, formPurchases, ADMIN_ID, OPAY_ACCOUNT
   } = useDataCharge();
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   const [candidates, setCandidates] = useState([]);
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
@@ -154,44 +159,47 @@ export default function AdminDashboard() {
   const [withdrawMsg, setWithdrawMsg] = useState({ type: '', text: '' });
   const [withdrawBusy, setWithdrawBusy] = useState(false);
 
+  const [voters, setVoters] = useState([]);
   const [supportMessages, setSupportMessages] = useState([]);
-  const [activeVoters, setActiveVoters] = useState(0);
 
-  const [activeMode, setActiveMode] = useState('none');
-  const [activationMsg, setActivationMsg] = useState({ type: '', text: '' });
-  const [activationLoading, setActivationLoading] = useState(false);
-
-  const [printMsg, setPrintMsg] = useState('');
-  const [printLoading, setPrintLoading] = useState(false);
-  const [electionResults, setElectionResults] = useState([]);
-  const [resultsGenerated, setResultsGenerated] = useState(false);
-
-  const [formPurchases, setFormPurchases] = useState([]);
+  const [fpPositions, setFpPositions] = useState([]);
   const [fpOpeningDate, setFpOpeningDate] = useState('');
   const [fpClosingDate, setFpClosingDate] = useState('');
   const [fpOpeningTime, setFpOpeningTime] = useState('');
   const [fpClosingTime, setFpClosingTime] = useState('');
-  const [fpPositions, setFpPositions] = useState([]);
-  const [newPositionName, setNewPositionName] = useState('');
-  const [newPositionAmount, setNewPositionAmount] = useState('');
-  const [fpLoading, setFpLoading] = useState(false);
-  const [fpMsg, setFpMsg] = useState({ type: '', text: '' });
+  const [fpIsActive, setFpIsActive] = useState(false);
+  const [fpNewPosition, setFpNewPosition] = useState('');
+  const [fpNewAmount, setFpNewAmount] = useState('');
+  const [fpSaving, setFpSaving] = useState(false);
+  const [fpMsg, setFpMsg] = useState('');
+  const [fpCandidateCounts, setFpCandidateCounts] = useState({});
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const [checkRef, setCheckRef] = useState('');
-  const [checkMsg, setCheckMsg] = useState({ type: '', text: '' });
+  // ===================== PENDING TRANSFER CHECK STATE =====================
+  const [pendingTx, setPendingTx] = useState(null);
   const [checkBusy, setCheckBusy] = useState(false);
+  const [checkMsg, setCheckMsg] = useState({ type: '', text: '' });
 
-  const loadActivationSettings = async () => {
+  // ===================== PRINT RESULTS STATE =====================
+  const [electionResults, setElectionResults] = useState([]);
+  const [resultsGenerated, setResultsGenerated] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [printMsg, setPrintMsg] = useState('');
+
+  // ===================== ACTIVATION STATE =====================
+  const [activeMode, setActiveMode] = useState('none');
+  const [activationLoading, setActivationLoading] = useState(false);
+  const [activationMsg, setActivationMsg] = useState({ type: '', text: '' });
+
+  // ===================== LOAD ACTIVATION (server-side now) =====================
+  const loadActivation = async () => {
     try {
       const mainRes = await adminApi('getMainSettings');
       if (mainRes.data) {
-        let currentMode = mainRes.data.activeMode || 'none';
-
+        const data = mainRes.data;
+        let currentMode = data.activeMode || 'none';
         const now = new Date();
 
+        // ===== AUTO-STOP ELECTION IF END DATE/TIME HAS PASSED =====
         if (currentMode === 'election' || currentMode === 'both') {
           const electionRes = await adminApi('getElectionSettings');
           if (electionRes.data) {
@@ -208,6 +216,7 @@ export default function AdminDashboard() {
           }
         }
 
+        // ===== AUTO-STOP FORM PURCHASE IF END DATE/TIME HAS PASSED =====
         if (currentMode === 'formPurchase' || currentMode === 'both') {
           const fpRes = await adminApi('getFormPurchaseSettings');
           if (fpRes.data) {
@@ -320,112 +329,85 @@ export default function AdminDashboard() {
         adminApi('listSupport').catch(() => ({ items: [] })),
       ]);
 
-      setCandidates(candidatesRes.items || []);
+      const cData = candidatesRes.items || [];
+      setCandidates(cData);
+
+      const counts = {};
+      cData.forEach(c => { counts[c.position] = (counts[c.position] || 0) + 1; });
+      setFpCandidateCounts(counts);
+
       if (settingsRes.data) {
         setSettings(settingsRes.data);
       }
 
-      const votersList = votersRes.items || [];
-      const votedCount = votersList.filter(v => v.hasVoted).length;
-      setActiveVoters(votedCount);
-
+      setVoters(votersRes.items || []);
       setSupportMessages(supportRes.items || []);
 
-      // Load form purchase settings
-      try {
-        const fpRes = await adminApi('getFormPurchaseSettings');
-        if (fpRes.data) {
-          setFpOpeningDate(fpRes.data.openingDate || '');
-          setFpClosingDate(fpRes.data.closingDate || '');
-          setFpOpeningTime(fpRes.data.openingTime || '');
-          setFpClosingTime(fpRes.data.closingTime || '');
-          setFpPositions(fpRes.data.positions || []);
-        }
-      } catch (e) {
-        console.log('Form purchase settings load error:', e.message);
-      }
+      try { await loadBalance(); } catch (e) {}
+      try { await loadFormPurchases(); } catch (e) {}
+      try { await loadActivation(); } catch (e) {}
+      try { await loadPendingTransfer(); } catch (e) {}
 
-      // Load form purchases list
-      try {
-        const purchasesRes = await adminApi('listFormPurchases');
-        setFormPurchases(purchasesRes.items || []);
-      } catch (e) {
-        console.log('Form purchases load error:', e.message);
-      }
-
-      // Load activation status (with auto-stop checks)
-      await loadActivationSettings();
-      await loadBalance();
-
+      setLoading(false);
     } catch (e) {
-      console.error(e);
-      setError('Error loading data: ' + e.message);
+      console.error('Admin load error:', e);
+      setError(e.message && e.message.includes('Unauthorized')
+        ? 'Admin session expired. Please login again.'
+        : 'Failed to load data. Make sure Firestore database is created in Firebase Console.');
+      setLoading(false);
     }
-    setLoading(false);
   };
+
+  useEffect(() => { loadAllData(); }, []);
 
   useEffect(() => {
-    loadAllData();
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem('adminToken');
-    navigate('/admin-login');
-  };
+    if (formPurchaseSettings) {
+      setFpPositions(formPurchaseSettings.positions || []);
+      setFpOpeningDate(formPurchaseSettings.openingDate || '');
+      setFpClosingDate(formPurchaseSettings.closingDate || '');
+      setFpOpeningTime(formPurchaseSettings.openingTime || '');
+      setFpClosingTime(formPurchaseSettings.closingTime || '');
+      setFpIsActive(formPurchaseSettings.isActive || false);
+    }
+  }, [formPurchaseSettings]);
 
   const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  const unreadMessages = supportMessages.filter(m => m.status === 'unread').length;
+  const activeVoters = voters.filter(v => v.hasVoted).length;
 
-  // ===================== FORM PURCHASE HANDLERS =====================
-  const handleAddFpPosition = () => {
-    if (!newPositionName.trim() || !newPositionAmount) {
-      setFpMsg({ type: 'error', text: 'Enter both position name and amount' });
-      return;
-    }
-    const exists = fpPositions.some(p => p.position.toLowerCase() === newPositionName.trim().toLowerCase());
-    if (exists) {
-      setFpMsg({ type: 'error', text: 'This position already exists' });
-      return;
-    }
-    setFpPositions([...fpPositions, { position: newPositionName.trim(), amount: Number(newPositionAmount) }]);
-    setNewPositionName('');
-    setNewPositionAmount('');
-    setFpMsg({ type: '', text: '' });
-  };
+  // ===================== PURCHASE LIST (grouped by position, President on top) =====================
+  const purchaseGroups = (() => {
+    const groups = {};
+    (formPurchases || []).forEach(p => {
+      const key = p.position || 'Unknown Position';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    const positionKeys = Object.keys(groups);
+    if (positionKeys.length === 0) return [];
+    const presidentKey = positionKeys.find(k => k.toLowerCase() === 'president');
+    const orderedKeys = [];
+    if (presidentKey) orderedKeys.push(presidentKey);
+    fpPositions.forEach(x => {
+      if (groups[x.position] && !orderedKeys.includes(x.position)) orderedKeys.push(x.position);
+    });
+    positionKeys.filter(k => !orderedKeys.includes(k)).sort((a, b) => a.localeCompare(b)).forEach(k => orderedKeys.push(k));
+    return orderedKeys.map(pos => ({ position: pos, purchases: groups[pos] }));
+  })();
 
-  const handleRemoveFpPosition = (index) => {
-    setFpPositions(fpPositions.filter((_, i) => i !== index));
-  };
-
-  const handleSaveFpSettings = async () => {
-    if (!fpOpeningDate || !fpClosingDate) {
-      setFpMsg({ type: 'error', text: 'Please set opening and closing dates' });
-      return;
-    }
-    if (fpPositions.length === 0) {
-      setFpMsg({ type: 'error', text: 'Add at least one position with amount' });
-      return;
-    }
-    setFpLoading(true);
-    setFpMsg({ type: '', text: '' });
-    try {
-      await adminApi('saveFormPurchaseSettings', {
-        data: {
-          openingDate: fpOpeningDate,
-          closingDate: fpClosingDate,
-          openingTime: fpOpeningTime,
-          closingTime: fpClosingTime,
-          positions: fpPositions,
-          maxPerPosition: 5,
-          isActive: activeMode === 'formPurchase' || activeMode === 'both'
-        }
-      });
-      setFpMsg({ type: 'success', text: '✅ Form purchase settings saved!' });
-      setTimeout(() => setFpMsg({ type: '', text: '' }), 4000);
-    } catch (e) {
-      setFpMsg({ type: 'error', text: 'Error: ' + e.message });
-    }
-    setFpLoading(false);
-  };
+  const sidebarItems = [
+    { key: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { key: 'settings', label: 'Election Settings', icon: '⚙️' },
+    { key: 'candidates', label: 'Manage Candidates', icon: '👥' },
+    { key: 'activation', label: 'Activation', icon: '🔘' },
+    { key: 'results', label: 'Election Results', icon: '📈' },
+    { key: 'print-results', label: 'Print Results', icon: '🖨️' },
+    { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
+    { key: 'purchase-list', label: 'Purchase List', icon: '🛒' },
+    { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
+    { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
+    { key: 'key-finder', label: 'Key Finder', icon: '🔑' },
+  ];
 
   const inputStyle = {
     width: '100%', padding: '12px 14px', border: '1px solid #ddd',
@@ -531,258 +513,311 @@ export default function AdminDashboard() {
     }
     if (withdrawBusy) return;
     setWithdrawBusy(true);
-    setWithdrawMsg({ type: '', text: '' });
+    setWithdrawMsg({ type: '', text: 'Processing...' });
     try {
-      const amt = Number(withdrawAmount);
-      const result = await withdraw(withdrawAdminId, withdrawPin, amt);
+      const result = await withdraw(withdrawAdminId, withdrawPin, Number(withdrawAmount));
 
+      // Plain failure (bad PIN, insufficient balance, Flutterwave rejected)
       if (!result.success && !result.reference) {
-        // Plain failure (bad PIN, insufficient balance, Flutterwave rejected)
-        setWithdrawMsg({ type: 'error', text: result.message });
+        setWithdrawMsg({ type: 'error', text: result.message || 'Withdrawal failed' });
         setWithdrawBusy(false);
         return;
       }
 
-      if (result.success) {
-        // ✅ Fully confirmed by Flutterwave already
+      // ✅ Fully confirmed by Flutterwave already
+      if (result.success && !result.reference) {
         setWithdrawMsg({ type: 'success', text: result.message });
-        setWithdrawAmount('');
-        setWithdrawPin('');
-        await loadBalance();
+        setWithdrawAmount(''); setWithdrawPin('');
+        loadBalance();
+        loadPendingTransfer();
         setWithdrawBusy(false);
         return;
       }
 
       // ⏳ Unverified / pending — Flutterwave accepted the transfer but hasn't
       // confirmed it yet. Poll /api/check-transfer (which asks Flutterwave
-      // directly) up to 3 times every 3 seconds to auto-confirm it in real-time.
+      // DIRECTLY using the secret key) until it confirms, then show success.
       const ref = result.reference;
+      const id = result.flutterwaveId;
       setWithdrawMsg({ type: 'info', text: '⏳ ' + (result.message || 'Transfer accepted. Confirming with Flutterwave...') });
 
-      let confirmed = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        await new Promise(r => setTimeout(r, 3000));
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
         try {
-          const checkRes = await fetch(`/api/check-transfer?ref=${encodeURIComponent(ref)}`);
-          const checkData = await checkRes.json();
-          if (checkData.verified) {
-            setWithdrawMsg({
-              type: 'success',
-              text: `✅ CONFIRMED: ₦${amt.toLocaleString()} sent to Opay ${OPAY_ACCOUNT}! Ref: ${ref}`
-            });
-            setWithdrawAmount('');
-            setWithdrawPin('');
-            await loadBalance();
-            confirmed = true;
-            break;
+          const checkRes = await fetch('/api/check-transfer', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+            },
+            body: JSON.stringify({ reference: ref, transferId: id })
+          });
+          const check = await checkRes.json();
+          if (check.verified) {
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'success', text: '✅ ' + (check.message || 'Withdrawal confirmed!') });
+            setWithdrawAmount(''); setWithdrawPin('');
+            loadBalance();
+            loadPendingTransfer();
+            setWithdrawBusy(false);
+          } else if (check.status === 'failed') {
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'error', text: '❌ ' + (check.message || 'Transfer failed') });
+            setWithdrawBusy(false);
+          } else if (attempts >= 36) { // ~3 minutes of polling
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'info', text: '⏳ Still processing on Flutterwave. The webhook will confirm it automatically — watch your balance.' });
+            setWithdrawBusy(false);
           }
         } catch (e) {
-          // Keep trying
+          if (attempts >= 36) {
+            clearInterval(poll);
+            setWithdrawMsg({ type: 'info', text: '⚠️ Could not reach server. The webhook will still confirm it automatically.' });
+            setWithdrawBusy(false);
+          }
         }
-      }
-
-      if (!confirmed) {
-        // Not confirmed within 9 seconds — the daily cron / webhook will catch it
-        setWithdrawMsg({
-          type: 'info',
-          text: `⏳ Transfer is processing on Flutterwave (Ref: ${ref}). Once confirmed, your balance updates automatically. You can also click "Check Transfer Now" below.`
-        });
-        setCheckRef(ref); // prefill the manual check box for convenience
-        await loadBalance();
-      }
+      }, 5000);
     } catch (e) {
-      setWithdrawMsg({ type: 'error', text: 'Error: ' + e.message });
+      setWithdrawMsg({ type: 'error', text: '⚠️ Network error: ' + e.message });
+      setWithdrawBusy(false);
     }
-    setWithdrawBusy(false);
   };
 
-  // Manual fallback button to ask Flutterwave directly for transfer status
-  const handleCheckTransfer = async () => {
-    if (!checkRef.trim()) {
-      setCheckMsg({ type: 'error', text: 'Enter a transfer reference (e.g. WDR-1234567890-ABC)' });
-      return;
+  // ===================== LOAD PENDING TRANSFER (reads server balance doc) =====================
+  const loadPendingTransfer = async () => {
+    try {
+      const res = await adminApi('getBalance');
+      setPendingTx(res.data?.pendingWithdrawal || null);
+    } catch (e) {
+      console.error('Load pending transfer error:', e);
     }
+  };
+
+  // ===================== CHECK TRANSFER NOW (manual confirm button) =====================
+  const handleCheckTransfer = async () => {
+    if (!pendingTx) { setCheckMsg({ type: 'error', text: 'No pending transfer to check.' }); return; }
     if (checkBusy) return;
     setCheckBusy(true);
     setCheckMsg({ type: '', text: 'Checking with Flutterwave...' });
     try {
-      const res = await fetch(`/api/check-transfer?ref=${encodeURIComponent(checkRef.trim())}`);
+      const res = await fetch('/api/check-transfer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '')
+        },
+        body: JSON.stringify({ reference: pendingTx.reference, transferId: pendingTx.flutterwaveId })
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Check failed');
+
       if (data.verified) {
-        setCheckMsg({ type: 'success', text: '✅ ' + (data.message || 'Transfer confirmed! Balance updated.') });
-        await loadBalance();
+        setCheckMsg({ type: 'success', text: '✅ ' + (data.message || 'Transfer confirmed!') });
+        setPendingTx(null);
+        loadBalance();
+      } else if (data.status === 'failed') {
+        setCheckMsg({ type: 'error', text: '❌ ' + (data.message || 'Transfer failed') });
+        setPendingTx(null);
+        loadBalance();
       } else {
-        setCheckMsg({ type: 'info', text: 'ℹ️ ' + (data.message || 'Transfer still processing on Flutterwave.') });
+        setCheckMsg({ type: 'info', text: '⏳ ' + (data.message || `Status: ${data.status}`) });
       }
     } catch (e) {
-      setCheckMsg({ type: 'error', text: 'Error checking transfer: ' + e.message });
+      setCheckMsg({ type: 'error', text: '⚠️ ' + e.message });
     }
     setCheckBusy(false);
   };
 
-  // ===================== GENERATE & SAVE ELECTION RESULTS =====================
+  const handleFpAddPosition = () => {
+    if (!fpNewPosition || !fpNewAmount) { alert('Position and amount required'); return; }
+    if (fpPositions.find(p => p.position === fpNewPosition.trim())) { alert('Already exists'); return; }
+    setFpPositions([...fpPositions, { position: fpNewPosition.trim(), amount: Number(fpNewAmount) }]);
+    setFpNewPosition(''); setFpNewAmount('');
+  };
+
+  const handleFpRemovePosition = (i) => setFpPositions(fpPositions.filter((_, idx) => idx !== i));
+
+  const handleFpSaveSettings = async () => {
+    if (!fpPositions.length) { alert('Add at least one position'); return; }
+    setFpSaving(true); setFpMsg('Saving...');
+    const result = await saveFormPurchaseSettings({
+      isActive: fpIsActive, openingDate: fpOpeningDate, closingDate: fpClosingDate,
+      openingTime: fpOpeningTime, closingTime: fpClosingTime, positions: fpPositions
+    });
+    setFpMsg(result.message);
+    if (result.success) setTimeout(() => setFpMsg(''), 3000);
+    setFpSaving(false);
+  };
+
+  // ===================== GENERATE & STORE RESULTS =====================
   const handleGenerateResults = async () => {
+    if (candidates.length === 0) {
+      setPrintMsg('No candidates to generate results for.');
+      return;
+    }
     setPrintLoading(true);
-    setPrintMsg('');
+    setPrintMsg('Generating results...');
+    setResultsGenerated(false);
+
     try {
-      const positionsObj = {};
+      // Check if results already exist (electionData is denied client-side — read via server)
+      const existingResultsRes = await adminApi('getResults');
+      let storedCandidateIds = {};
+
+      if (existingResultsRes.data) {
+        storedCandidateIds = existingResultsRes.data.candidateIds || {};
+      }
+
+      // Count candidates per position for vote points
+      const positionCounts = {};
       candidates.forEach(c => {
-        if (!positionsObj[c.position]) positionsObj[c.position] = [];
-        positionsObj[c.position].push(c);
+        positionCounts[c.position] = (positionCounts[c.position] || 0) + 1;
       });
 
-      const positionTitles = Object.keys(positionsObj);
-      if (positionTitles.length === 0) {
-        setPrintMsg('❌ No candidates found to generate results.');
-        setPrintLoading(false);
-        return;
-      }
+      // Build results array
+      const results = [];
+      const candidateIds = { ...storedCandidateIds };
 
-      let totalOverallVotes = 0;
-      candidates.forEach(c => { totalOverallVotes += (c.votes || 0); });
-
-      const generated = [];
-
-      for (const posTitle of positionTitles) {
-        const candList = positionsObj[posTitle];
-        const sorted = [...candList].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-
-        let posTotalVotes = 0;
-        sorted.forEach(c => { posTotalVotes += (c.votes || 0); });
-
-        const processed = sorted.map((cand, idx) => {
-          const votes = cand.votes || 0;
-          const candidateId = cand.candidateId || generateCandidateId();
-          const votePoints = posTotalVotes > 0 ? ((votes / posTotalVotes) * 100).toFixed(1) : '0.0';
-          const isWinner = idx === 0 && votes > 0;
-
-          return {
-            candidateId,
-            name: cand.name,
-            position: posTitle,
-            department: cand.dept || cand.department || 'N/A',
-            votes,
-            votePoints: `${votePoints}%`,
-            rank: idx + 1,
-            isWinner,
-            photo: cand.photo || cand.photoURL || ''
-          };
-        });
-
-        generated.push({
-          position: posTitle,
-          totalVotes: posTotalVotes,
-          candidates: processed
-        });
-      }
-
-      // Check if results already exist (electionData is denied client-side — read via server)
-      const existingResultsRes = await adminApi('getResults').catch(() => ({ data: null }));
-      if (existingResultsRes.data && existingResultsRes.data.results) {
-        const overwrite = window.confirm('Results already exist for this election. Do you want to overwrite with updated counts?');
-        if (!overwrite) {
-          setElectionResults(existingResultsRes.data.results);
-          setResultsGenerated(true);
-          setPrintLoading(false);
-          return;
+      candidates.forEach((c, index) => {
+        // Generate candidate ID if not already stored
+        if (!candidateIds[c.id]) {
+          candidateIds[c.id] = generateCandidateId();
         }
-      }
 
-      for (const group of generated) {
-        for (const cand of group.candidates) {
-          const match = candidates.find(c => c.name === cand.name && c.position === cand.position);
-          if (match && !match.candidateId) {
-            try {
-              await adminApi('saveCandidate', {
-                id: match.id,
-                data: { candidateId: cand.candidateId }
-              });
-            } catch (e) {
-              console.log('Error saving candidate ID:', e);
-            }
-          }
+        const totalInPosition = positionCounts[c.position] || 1;
+        const votes = c.votes || 0;
+        const votePoint = totalInPosition > 0 ? (votes / totalInPosition).toFixed(2) : '0.00';
+
+        results.push({
+          sNo: index + 1,
+          candidateId: candidateIds[c.id],
+          name: c.name,
+          position: c.position,
+          votes: votes,
+          votePoint: votePoint,
+          dept: c.dept || ''
+        });
+      });
+
+      // Sort by position then by votes descending
+      results.sort((a, b) => {
+        if (a.position !== b.position) return a.position.localeCompare(b.position);
+        return b.votes - a.votes;
+      });
+
+      // Re-assign serial numbers after sorting
+      results.forEach((r, i) => { r.sNo = i + 1; });
+
+      // Store in Firestore (server-side)
+      const year = settings.year || '2026/2027';
+      await adminApi('saveResults', {
+        data: {
+          year: year,
+          generatedAt: new Date().toISOString(),
+          candidateIds: candidateIds,
+          results: results,
+          totalPositions: Object.keys(positionCounts).length,
+          totalCandidates: candidates.length,
+          totalVoters: activeVoters
         }
-      }
+      });
 
-      const resultsPayload = {
-        year: settings.year || '2026/2027',
-        totalVoters: activeVoters,
-        totalVotesCast: totalOverallVotes,
-        totalCandidates: candidates.length,
-        totalPositions: positionTitles.length,
-        generatedAt: new Date().toISOString(),
-        results: generated
-      };
-
-      await adminApi('saveResults', { data: resultsPayload });
-
-      setElectionResults(generated);
+      setElectionResults(results);
       setResultsGenerated(true);
-      setPrintMsg('✅ Election results generated and saved securely!');
-      setTimeout(() => setPrintMsg(''), 5000);
-
+      setPrintMsg(`✅ Results generated and saved! ${results.length} candidates.`);
+      setTimeout(() => setPrintMsg(''), 4000);
     } catch (e) {
-      console.error(e);
-      setPrintMsg('❌ Error generating results: ' + e.message);
+      setPrintMsg('❌ Error: ' + e.message);
     }
     setPrintLoading(false);
   };
 
-  const loadSavedResults = async () => {
+  // Load existing results when entering print view
+  const loadExistingResults = async () => {
+    setPrintLoading(true);
     try {
       const resultsRes = await adminApi('getResults');
-      if (resultsRes.data && resultsRes.data.results) {
+      if (resultsRes.data && resultsRes.data.results && resultsRes.data.results.length > 0) {
         setElectionResults(resultsRes.data.results);
         setResultsGenerated(true);
       }
     } catch (e) {
-      console.log('Could not load saved results:', e);
+      console.error('Load results error:', e);
     }
+    setPrintLoading(false);
   };
 
-  useEffect(() => {
-    if (activeView === 'print-results') {
-      loadSavedResults();
-    }
-  }, [activeView]);
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' }}>
+        <div style={{ color: '#FFD700', fontSize: '20px', fontWeight: 'bold' }}>Loading Admin Panel...</div>
+      </div>
+    );
+  }
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#003366', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <h2>Loading...</h2>
-    </div>
-  );
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+        <h2 style={{ color: '#ef4444' }}>ERROR</h2>
+        <p style={{ color: 'white', textAlign: 'center', maxWidth: '500px' }}>{error}</p>
+        <p style={{ color: '#FFD700', fontSize: '14px' }}>Go to Firebase Console → Firestore Database → Create Database → Test Mode → Publish Rules</p>
+        <button onClick={loadAllData} style={{ padding: '10px 24px', background: '#FFD700', color: '#003366', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginTop: '16px' }}>Retry</button>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Arial, sans-serif', background: '#f5f7fa' }}>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
+      {/* Sidebar overlay */}
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }} />}
 
       {/* Sidebar */}
-      <div style={{ width: '260px', background: '#003366', color: 'white', padding: '24px 16px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        <h2 style={{ color: '#FFD700', margin: '0 0 4px 0', fontSize: '20px' }}>🏛️ NAMATL ADMIN</h2>
-        <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 24px 0' }}>Election Control Panel</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-          <button onClick={() => setActiveView('dashboard')} style={{ ...btnPrimary, background: activeView === 'dashboard' ? '#FFD700' : 'transparent', color: activeView === 'dashboard' ? '#003366' : 'white', textAlign: 'left' }}>📊 Dashboard</button>
-          <button onClick={() => setActiveView('candidates')} style={{ ...btnPrimary, background: activeView === 'candidates' ? '#FFD700' : 'transparent', color: activeView === 'candidates' ? '#003366' : 'white', textAlign: 'left' }}>👥 Candidates ({candidates.length})</button>
-          <button onClick={() => setActiveView('settings')} style={{ ...btnPrimary, background: activeView === 'settings' ? '#FFD700' : 'transparent', color: activeView === 'settings' ? '#003366' : 'white', textAlign: 'left' }}>⚙️ Settings</button>
-          <button onClick={() => setActiveView('activation')} style={{ ...btnPrimary, background: activeView === 'activation' ? '#FFD700' : 'transparent', color: activeView === 'activation' ? '#003366' : 'white', textAlign: 'left' }}>🔘 Activation</button>
-          <button onClick={() => setActiveView('form-purchase')} style={{ ...btnPrimary, background: activeView === 'form-purchase' ? '#FFD700' : 'transparent', color: activeView === 'form-purchase' ? '#003366' : 'white', textAlign: 'left' }}>📋 Form Purchase</button>
-          <button onClick={() => setActiveView('find-key')} style={{ ...btnPrimary, background: activeView === 'find-key' ? '#FFD700' : 'transparent', color: activeView === 'find-key' ? '#003366' : 'white', textAlign: 'left' }}>🔑 Unique Key Finder</button>
-          <button onClick={() => setActiveView('results')} style={{ ...btnPrimary, background: activeView === 'results' ? '#FFD700' : 'transparent', color: activeView === 'results' ? '#003366' : 'white', textAlign: 'left' }}>📈 Results</button>
-          <button onClick={() => setActiveView('print-results')} style={{ ...btnPrimary, background: activeView === 'print-results' ? '#FFD700' : 'transparent', color: activeView === 'print-results' ? '#003366' : 'white', textAlign: 'left' }}>🖨️ Print Results</button>
-          <button onClick={() => setActiveView('withdrawal')} style={{ ...btnPrimary, background: activeView === 'withdrawal' ? '#FFD700' : 'transparent', color: activeView === 'withdrawal' ? '#003366' : 'white', textAlign: 'left' }}>💰 Withdrawal</button>
-          <button onClick={() => setActiveView('support')} style={{ ...btnPrimary, background: activeView === 'support' ? '#FFD700' : 'transparent', color: activeView === 'support' ? '#003366' : 'white', textAlign: 'left' }}>💬 Support ({supportMessages.filter(m => m.status === 'unread').length})</button>
+      <div style={{
+        position: 'fixed', top: 0, left: 0, bottom: 0, width: '250px',
+        background: '#001a33', zIndex: 50, padding: '20px 16px',
+        transform: sidebarOpen ? 'translateX(0)' : 'translateX(-260px)',
+        transition: 'transform 0.3s ease', overflowY: 'auto'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h3 style={{ color: '#FFD700', margin: 0 }}>NAMATLS Admin</h3>
+          <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: 0 }}>×</button>
         </div>
-        <button onClick={handleLogout} style={{ ...btnDanger, marginTop: 'auto' }}>🚪 Logout</button>
+        {sidebarItems.map(item => (
+          <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); if (item.key === 'print-results') loadExistingResults(); }}
+               style={{
+                 display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
+                 marginBottom: '4px', borderRadius: '8px', cursor: 'pointer',
+                 background: activeView === item.key ? 'rgba(255,215,0,0.15)' : 'transparent',
+                 color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.8)',
+                 fontWeight: activeView === item.key ? 'bold' : 'normal'
+               }}>
+            <span>{item.icon}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
+        {/* FIXED: Logout now clears the session token */}
+        <button onClick={() => { localStorage.removeItem('adminToken'); navigate('/admin-login'); }}
+                style={{ width: '100%', padding: '12px', marginTop: '20px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+          Logout
+        </button>
       </div>
 
-      {/* Main Content */}
-      <div style={{ flex: 1, padding: '32px', overflowY: 'auto' }}>
-        {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '12px', borderRadius: '8px', marginBottom: '20px' }}>⚠️ {error}</div>}
-
-        {/* Top bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <div>
-            <h1 style={{ color: '#003366', margin: 0, textTransform: 'capitalize' }}>{activeView.replace('-', ' ')}</h1>
-            <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0 0' }}>Year: {settings.year || '2026/2027'} | Status: {activeMode !== 'none' ? '🟢 Active' : '🔴 Inactive'}</p>
+      {/* Main */}
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+        {/* Header */}
+        <div style={{ background: '#003366', borderRadius: '12px', padding: '16px 24px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button onClick={() => setSidebarOpen(true)}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
+              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
+              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
+            </button>
+            <div>
+              <h2 style={{ margin: 0, color: '#FFD700' }}>Admin Dashboard</h2>
+              <span style={{ fontSize: '12px', opacity: 0.8 }}>BROUTE</span>
+            </div>
           </div>
           <span style={{ fontSize: '13px', opacity: 0.7 }}>₦{withdrawalBalance.toLocaleString()}</span>
         </div>
@@ -845,15 +880,15 @@ export default function AdminDashboard() {
         {activeView === 'settings' && (
           <div style={cardStyle}>
             <h2 style={{ color: '#003366', marginBottom: '16px' }}>⚙️ Election Settings</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>
-                <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Academic Year</label>
-                <input placeholder="e.g. 2026/2027" value={settings.year} onChange={e => setSettings({...settings, year: e.target.value})} style={inputStyle} />
+                <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Year</label>
+                <input value={settings.year} onChange={e => setSettings({...settings, year: e.target.value})} style={inputStyle} placeholder="2026/2027" />
               </div>
               <div>
-                <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Status</label>
+                <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Active</label>
                 <select value={settings.isActive ? 'true' : 'false'} onChange={e => setSettings({...settings, isActive: e.target.value === 'true'})} style={inputStyle}>
-                  <option value="false">Inactive</option>
+                  <option value="false">Disabled</option>
                   <option value="true">Active</option>
                 </select>
               </div>
@@ -902,7 +937,6 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Current Mode Banner */}
               <div style={{
                 textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '8px',
                 marginBottom: '24px'
@@ -925,43 +959,34 @@ export default function AdminDashboard() {
             <div style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                 <div style={{
-                  width: '48px', height: '48px', borderRadius: '12px', background: '#eff6ff',
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#003366',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
                 }}>🗳️</div>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: '0 0 4px 0', color: '#003366' }}>Election Voting Mode</h3>
+                  <h3 style={{ margin: '0 0 2px 0', color: '#003366' }}>Election</h3>
                   <p style={{ margin: 0, color: '#666', fontSize: '13px' }}>
-                    Controls whether students can see candidates and vote on the StudentDashboard.
+                    {activeMode === 'election' || activeMode === 'both'
+                      ? 'Voting is LIVE on StudentDashboard'
+                      : 'Students cannot vote right now'}
                   </p>
+                  {settings.endDate && settings.endTime && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                      Auto-stops: {settings.endDate} at {settings.endTime}
+                    </p>
+                  )}
                 </div>
-                <span style={{
-                  padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold',
+                <div style={{
+                  padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
                   background: (activeMode === 'election' || activeMode === 'both') ? '#d1fae5' : '#fee2e2',
                   color: (activeMode === 'election' || activeMode === 'both') ? '#16a34a' : '#dc2626'
                 }}>
-                  {(activeMode === 'election' || activeMode === 'both') ? '● Active' : '○ Stopped'}
-                </span>
+                  {(activeMode === 'election' || activeMode === 'both') ? '● LIVE' : '○ OFF'}
+                </div>
               </div>
 
               <div style={{
-                background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px',
-                fontSize: '13px', color: '#555'
-              }}>
-                <strong>Current Settings:</strong>
-                <span style={{ marginLeft: '8px' }}>
-                  {settings.startDate ? `${settings.startDate} (${settings.startTime || '00:00'})` : 'No start date'}
-                  {' → '}
-                  {settings.endDate ? `${settings.endDate} (${settings.endTime || '23:59'})` : 'No end date'}
-                </span>
-                <span style={{ marginLeft: '12px', color: '#2563eb' }}>
-                  Year: {settings.year || '2026/2027'}
-                </span>
-              </div>
-
-              {/* Prerequisites check */}
-              <div style={{
-                background: '#fff', border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px',
-                marginBottom: '16px', fontSize: '13px'
+                padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', marginBottom: '20px',
+                fontSize: '13px', color: '#666'
               }}>
                 <strong>Prerequisites:</strong>
                 <span style={{ marginLeft: '8px' }}>
@@ -1004,7 +1029,7 @@ export default function AdminDashboard() {
                     padding: '14px 32px', fontSize: '15px'
                   }}
                 >
-                  {activationLoading ? '⏳...' : '🔴 Stop'}
+                  {activationLoading ? '⏳...' : '⏹️ Stop Election'}
                 </button>
               </div>
             </div>
@@ -1013,43 +1038,34 @@ export default function AdminDashboard() {
             <div style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                 <div style={{
-                  width: '48px', height: '48px', borderRadius: '12px', background: '#f5f3ff',
+                  width: '48px', height: '48px', borderRadius: '12px', background: '#8b5cf6',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px'
                 }}>📋</div>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: '0 0 4px 0', color: '#003366' }}>Form Purchase Mode</h3>
+                  <h3 style={{ margin: '0 0 2px 0', color: '#003366' }}>Form Purchase</h3>
                   <p style={{ margin: 0, color: '#666', fontSize: '13px' }}>
-                    Controls whether candidates can purchase forms on the Form Purchase page.
+                    {activeMode === 'formPurchase' || activeMode === 'both'
+                      ? 'Forms are available for purchase'
+                      : 'Form purchase is closed'}
                   </p>
+                  {fpClosingDate && fpClosingTime && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#888' }}>
+                      Auto-stops: {fpClosingDate} at {fpClosingTime}
+                    </p>
+                  )}
                 </div>
-                <span style={{
-                  padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold',
+                <div style={{
+                  padding: '6px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px',
                   background: (activeMode === 'formPurchase' || activeMode === 'both') ? '#d1fae5' : '#fee2e2',
                   color: (activeMode === 'formPurchase' || activeMode === 'both') ? '#16a34a' : '#dc2626'
                 }}>
-                  {(activeMode === 'formPurchase' || activeMode === 'both') ? '● Active' : '○ Stopped'}
-                </span>
+                  {(activeMode === 'formPurchase' || activeMode === 'both') ? '● LIVE' : '○ OFF'}
+                </div>
               </div>
 
               <div style={{
-                background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px',
-                fontSize: '13px', color: '#555'
-              }}>
-                <strong>Current Settings:</strong>
-                <span style={{ marginLeft: '8px' }}>
-                  {fpOpeningDate ? `${fpOpeningDate} (${fpOpeningTime || '00:00'})` : 'No opening date'}
-                  {' → '}
-                  {fpClosingDate ? `${fpClosingDate} (${fpClosingTime || '23:59'})` : 'No closing date'}
-                </span>
-                <span style={{ marginLeft: '12px', color: '#2563eb' }}>
-                  {fpPositions.length} position(s) configured
-                </span>
-              </div>
-
-              {/* Prerequisites check */}
-              <div style={{
-                background: '#fff', border: '1px solid #e2e8f0', padding: '12px 16px', borderRadius: '8px',
-                marginBottom: '16px', fontSize: '13px'
+                padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', marginBottom: '20px',
+                fontSize: '13px', color: '#666'
               }}>
                 <strong>Prerequisites:</strong>
                 <span style={{ marginLeft: '8px' }}>
@@ -1092,14 +1108,14 @@ export default function AdminDashboard() {
                     padding: '14px 32px', fontSize: '15px'
                   }}
                 >
-                  {activationLoading ? '⏳...' : '🔴 Stop'}
+                  {activationLoading ? '⏳...' : '⏹️ Stop Form Purchase'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Candidates View */}
+        {/* Candidates */}
         {activeView === 'candidates' && (
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1283,242 +1299,243 @@ export default function AdminDashboard() {
 
             {/* Printable Results Document */}
             {resultsGenerated && electionResults.length > 0 && (
-              <div id="printable-results" style={{
-                background: 'white', padding: '32px', borderRadius: '12px',
-                boxShadow: '0 2px 12px rgba(0,0,0,0.08)', color: '#000'
-              }}>
-                <div style={{ textAlign: 'center', borderBottom: '3px solid #003366', paddingBottom: '16px', marginBottom: '24px' }}>
-                  <h1 style={{ color: '#003366', margin: '0 0 6px 0', fontSize: '24px', letterSpacing: '1px' }}>
-                    NATIONAL ASSOCIATION OF MARITIME TRANSPORT AND LOGISTICS STUDENTS
-                  </h1>
-                  <h2 style={{ color: '#888', margin: '0 0 6px 0', fontSize: '16px', fontWeight: 'normal' }}>
-                    FEDERAL UNIVERSITY OF PETROLEUM RESOURCES, EFFURUN
-                  </h2>
-                  <h3 style={{ color: '#003366', margin: '8px 0 0 0', fontSize: '18px' }}>
-                    OFFICIAL ELECTION RESULTS — {settings.year || '2026/2027'} ACADEMIC SESSION
-                  </h3>
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '12px', fontSize: '13px', color: '#555' }}>
-                    <span>Total Voters: <strong>{activeVoters}</strong></span>
-                    <span>Total Candidates: <strong>{candidates.length}</strong></span>
-                    <span>Generated: {new Date().toLocaleDateString('en-GB')}</span>
-                  </div>
-                </div>
-
-                {electionResults.map((group, gIdx) => (
-                  <div key={gIdx} style={{ marginBottom: '32px' }}>
-                    <div style={{
-                      background: '#003366', color: 'white', padding: '10px 16px',
-                      borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      marginBottom: '12px'
-                    }}>
-                      <h3 style={{ margin: 0, fontSize: '16px' }}>🏆 {group.position}</h3>
-                      <span style={{ fontSize: '13px', opacity: 0.9 }}>Total Votes Cast: {group.totalVotes}</span>
+              <div id="printableResults">
+                <style>{`
+                  @media print {
+                    body * { visibility: hidden; }
+                    #printableResults, #printableResults * { visibility: visible; }
+                    #printableResults { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+                    @page { margin: 15mm; size: A4 portrait; }
+                  }
+                `}</style>
+                <div style={{
+                  background: '#001a33',
+                  padding: '40px 20px',
+                  borderRadius: '12px',
+                  fontFamily: 'Arial, sans-serif'
+                }}>
+                  <div style={{
+                    background: 'white',
+                    maxWidth: '900px',
+                    margin: '0 auto',
+                    padding: '40px 35px',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
+                  }}>
+                    {/* Logo */}
+                    <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                      <img
+                        src="/logo.png"
+                        alt="NAMATL Logo"
+                        style={{ width: '80px', height: '80px', objectFit: 'contain' }}
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
                     </div>
 
-                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', fontSize: '14px' }}>
+                    {/* Header */}
+                    <h1 style={{
+                      textAlign: 'center',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      color: '#001a33',
+                      margin: '0 0 4px 0',
+                      lineHeight: '1.4',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px'
+                    }}>
+                      FEDERAL UNIVERSITY OF PETROLEUM RESOURCES EFFURUN
+                    </h1>
+                    <h2 style={{
+                      textAlign: 'center',
+                      fontSize: '15px',
+                      fontWeight: 'bold',
+                      color: '#003366',
+                      margin: '0 0 20px 0',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      NAMATL VOTE RESULTS {settings.year ? `(${settings.year})` : ''}
+                    </h2>
+
+                    <hr style={{ border: '1px solid #003366', marginBottom: '20px' }} />
+
+                    {/* Results Table */}
+                    <table style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: '12px',
+                      marginBottom: '20px'
+                    }}>
                       <thead>
-                        <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Rank</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Candidate ID</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Full Name</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Department</th>
-                          <th style={{ padding: '10px', textAlign: 'center' }}>Votes</th>
-                          <th style={{ padding: '10px', textAlign: 'center' }}>Vote Points</th>
-                          <th style={{ padding: '10px', textAlign: 'center' }}>Status</th>
+                        <tr style={{ background: '#003366', color: 'white' }}>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>S/N</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'left', fontWeight: 'bold' }}>Candidate Name</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'left', fontWeight: 'bold' }}>Position</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>Votes</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>Vote Point</th>
+                          <th style={{ padding: '10px 8px', border: '1px solid #003366', textAlign: 'center', fontWeight: 'bold' }}>Candidate ID</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {group.candidates.map((c) => (
-                          <tr key={c.candidateId} style={{
-                            borderBottom: '1px solid #e2e8f0',
-                            background: c.isWinner ? '#f0fdf4' : 'transparent'
+                        {electionResults.map((r, idx) => (
+                          <tr key={idx} style={{
+                            background: idx % 2 === 0 ? '#f8f9fa' : 'white',
+                            borderBottom: '1px solid #dee2e6'
                           }}>
-                            <td style={{ padding: '10px', fontWeight: 'bold' }}>
-                              {c.rank === 1 ? '🥇 1st' : c.rank === 2 ? '🥈 2nd' : c.rank === 3 ? '🥉 3rd' : `${c.rank}th`}
-                            </td>
-                            <td style={{ padding: '10px', fontFamily: 'monospace', fontSize: '12px', color: '#64748b' }}>
-                              {c.candidateId}
-                            </td>
-                            <td style={{ padding: '10px', fontWeight: c.isWinner ? 'bold' : 'normal' }}>
-                              {c.name}
-                            </td>
-                            <td style={{ padding: '10px', color: '#666' }}>{c.department}</td>
-                            <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', fontSize: '15px' }}>
-                              {c.votes}
-                            </td>
-                            <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: '#2563eb' }}>
-                              {c.votePoints}
-                            </td>
-                            <td style={{ padding: '10px', textAlign: 'center' }}>
-                              {c.isWinner ? (
-                                <span style={{
-                                  background: '#16a34a', color: 'white', padding: '3px 10px',
-                                  borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.5px'
-                                }}>
-                                  ELECTED
-                                </span>
-                              ) : (
-                                <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
-                              )}
-                            </td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold' }}>{r.sNo}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#003366' }}>{r.name}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#555' }}>{r.position}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{r.votes}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold', color: '#003366' }}>{r.votePoint}</td>
+                            <td style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'center', fontFamily: 'monospace', fontSize: '11px', color: '#666' }}>{r.candidateId}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                ))}
 
-                <div style={{
-                  marginTop: '40px', paddingTop: '24px', borderTop: '2px solid #003366',
-                  display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#555'
-                }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: '180px', borderBottom: '1px solid #999', marginBottom: '6px', height: '30px' }}></div>
-                    <div>Electoral Chairman</div>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: '180px', borderBottom: '1px solid #999', marginBottom: '6px', height: '30px' }}></div>
-                    <div>Staff Adviser</div>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: '180px', borderBottom: '1px solid #999', marginBottom: '6px', height: '30px' }}></div>
-                    <div>Head of Department</div>
-                  </div>
-                </div>
+                    {/* Footer */}
+                    <hr style={{ border: '1px solid #003366', marginBottom: '12px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#666' }}>
+                      <span>Generated: {new Date().toLocaleDateString('en-GB')}</span>
+                      <span>Total Candidates: {electionResults.length}</span>
+                      <span>Academic Year: {settings.year || '2026/2027'}</span>
+                    </div>
 
-                <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: '#94a3b8' }}>
-                  Certified by NAMATL Electoral Commission • Official Electronic Result Certificate
+                    <div style={{ marginTop: '16px', fontSize: '11px', color: '#888', fontStyle: 'italic' }}>
+                      <p style={{ margin: '2px 0' }}>Vote Point = Candidate's Votes ÷ Total Number of Candidates in that Position</p>
+                    </div>
+
+                    {/* Signature lines */}
+                    <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                      <div style={{ textAlign: 'center', width: '40%' }}>
+                        <div style={{ borderTop: '1px solid #003366', paddingTop: '6px', marginTop: '30px' }}>
+                          Electoral Commission Chairman
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'center', width: '40%' }}>
+                        <div style={{ borderTop: '1px solid #003366', paddingTop: '6px', marginTop: '30px' }}>
+                          Departmental Representative
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ===================== FORM PURCHASE MANAGEMENT ===================== */}
-        {activeView === 'form-purchase' && (
-          <div>
-            <div style={cardStyle}>
-              <h2 style={{ color: '#003366', marginBottom: '8px' }}>📋 Form Purchase Configuration</h2>
-              <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>
-                Set opening/closing dates, times, and amounts for nomination forms. Maximum of 5 candidates per position.
-              </p>
-
-              {fpMsg.text && (
-                <div style={{
-                  padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold',
-                  background: fpMsg.type === 'error' ? '#fee2e2' : '#d1fae5',
-                  color: fpMsg.type === 'error' ? '#dc2626' : '#16a34a'
-                }}>
-                  {fpMsg.text}
-                </div>
-              )}
-
-              {/* Date & Time Settings */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Date</label>
-                  <input type="date" value={fpOpeningDate} onChange={e => setFpOpeningDate(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Time</label>
-                  <input type="time" value={fpOpeningTime} onChange={e => setFpOpeningTime(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Date</label>
-                  <input type="date" value={fpClosingDate} onChange={e => setFpClosingDate(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Time</label>
-                  <input type="time" value={fpClosingTime} onChange={e => setFpClosingTime(e.target.value)} style={inputStyle} />
-                </div>
-              </div>
-
-              {/* Position and Amount Configuration */}
-              <h3 style={{ color: '#003366', fontSize: '15px', marginBottom: '12px' }}>Positions & Pricing (Max 5 Candidates Each)</h3>
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                <input
-                  placeholder="Position Name (e.g. President)"
-                  value={newPositionName}
-                  onChange={e => setNewPositionName(e.target.value)}
-                  style={{ ...inputStyle, flex: 2, minWidth: '200px', marginBottom: 0 }}
-                />
-                <input
-                  type="number"
-                  placeholder="Amount (₦)"
-                  value={newPositionAmount}
-                  onChange={e => setNewPositionAmount(e.target.value)}
-                  style={{ ...inputStyle, flex: 1, minWidth: '140px', marginBottom: 0 }}
-                />
-                <button onClick={handleAddFpPosition} style={{ ...btnPrimary, background: '#16a34a', padding: '12px 20px' }}>
-                  ➕ Add
-                </button>
-              </div>
-
-              {/* Positions List */}
-              {fpPositions.length === 0 ? (
-                <p style={{ color: '#888', fontSize: '13px', padding: '12px', background: '#f8fafc', borderRadius: '6px' }}>
-                  No positions configured yet. Add positions above.
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                  {fpPositions.map((pos, idx) => (
-                    <div key={idx} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '10px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0'
-                    }}>
-                      <div>
-                        <strong>{pos.position}</strong>
-                        <span style={{ marginLeft: '12px', color: '#16a34a', fontWeight: 'bold' }}>₦{Number(pos.amount).toLocaleString()}</span>
-                      </div>
-                      <button onClick={() => handleRemoveFpPosition(idx)} style={{ ...btnDanger, padding: '4px 10px', fontSize: '12px' }}>
-                        ✕ Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button
-                onClick={handleSaveFpSettings}
-                disabled={fpLoading}
-                style={{ ...btnPrimary, opacity: fpLoading ? 0.6 : 1 }}
-              >
-                {fpLoading ? '💾 Saving...' : '💾 Save Form Purchase Settings'}
-              </button>
+        {/* ===================== PURCHASE LIST VIEW ===================== */}
+        {activeView === 'purchase-list' && (
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ color: '#003366', margin: 0 }}>🛒 Purchase List</h2>
+              <span style={{ fontSize: '12px', color: '#888' }}>
+                {formPurchases.length} total purchase(s) | Max 5 per position
+              </span>
             </div>
+            <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>
+              All students who purchased forms — exactly as they filled it on the Form Purchase page. Use this list to register candidates manually.
+            </p>
+            {formPurchases.length === 0 ? (
+              <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>No purchases yet</p>
+            ) : (
+              purchaseGroups.map((group, gi) => (
+                <div key={gi} style={{ marginBottom: '28px', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                  <div style={{ background: '#003366', color: '#FFD700', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: '15px' }}>🏛️ {group.position}</strong>
+                    <span style={{ fontSize: '12px', opacity: 0.85 }}>{group.purchases.length} purchaser(s)</span>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f0f7ff', color: '#003366' }}>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>S/N</th>
+                          <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Name</th>
+                          <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Department</th>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Level</th>
+                          <th style={{ padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Email</th>
+                          <th style={{ padding: '10px', textAlign: 'right', borderBottom: '1px solid #ddd' }}>Amount</th>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Date</th>
+                          <th style={{ padding: '10px', textAlign: 'center', borderBottom: '1px solid #ddd' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.purchases.map((p, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ padding: '10px', textAlign: 'center' }}>{i + 1}</td>
+                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.fullName || p.name || '—'}</td>
+                            <td style={{ padding: '10px', color: '#666' }}>{p.department || p.dept || '—'}</td>
+                            <td style={{ padding: '10px', textAlign: 'center', color: '#666' }}>{p.level || '—'}</td>
+                            <td style={{ padding: '10px', color: '#666' }}>{p.email || 'Not provided'}</td>
+                            <td style={{ padding: '10px', textAlign: 'right', color: '#16a34a', fontWeight: 'bold' }}>₦{Number(p.amount).toLocaleString()}</td>
+                            <td style={{ padding: '10px', textAlign: 'center', fontSize: '13px', color: '#888' }}>{p.paidAt ? new Date(p.paidAt).toLocaleString() : '—'}</td>
+                            <td style={{ padding: '10px', textAlign: 'center' }}>
+                              <span style={{ background: '#d1fae5', color: '#16a34a', padding: '2px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' }}>Paid</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
-            {/* Purchased Forms List */}
+        {/* Form Purchase */}
+        {activeView === 'form-purchase' && (
+          <>
             <div style={cardStyle}>
-              <h2 style={{ color: '#003366', marginBottom: '16px' }}>📥 Candidates Who Purchased Forms ({formPurchases.length})</h2>
-              {formPurchases.length === 0 ? (
-                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No form purchases recorded yet.</p>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                    <thead>
-                      <tr style={{ background: '#003366', color: 'white' }}>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>#</th>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>Candidate Name</th>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>Position</th>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>Department</th>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>Level</th>
-                        <th style={{ padding: '10px', textAlign: 'center' }}>Amount Paid</th>
-                        <th style={{ padding: '10px', textAlign: 'center' }}>Date</th>
-                      </tr>
-                    </thead>
+              <h2 style={{ color: '#003366', marginBottom: '4px' }}>📋 Form Purchase Settings</h2>
+              <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>Configure positions, prices, availability</p>
+              {fpMsg && <div style={{ padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', background: fpMsg.includes('Error') ? '#fee2e2' : '#d1fae5', color: fpMsg.includes('Error') ? '#dc2626' : '#16a34a', fontWeight: 'bold' }}>{fpMsg}</div>}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Date</label><input type="date" value={fpOpeningDate} onChange={e => setFpOpeningDate(e.target.value)} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Time</label><input type="time" value={fpOpeningTime} onChange={e => setFpOpeningTime(e.target.value)} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Date</label><input type="date" value={fpClosingDate} onChange={e => setFpClosingDate(e.target.value)} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Time</label><input type="time" value={fpClosingTime} onChange={e => setFpClosingTime(e.target.value)} style={inputStyle} /></div>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                  <input type="checkbox" checked={fpIsActive} onChange={e => setFpIsActive(e.target.checked)} style={{ marginRight: '8px' }} />
+                  Form Purchase Active
+                </label>
+              </div>
+              <h3 style={{ color: '#003366', marginBottom: '12px' }}>Positions & Pricing</h3>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'flex-end' }}>
+                <div style={{ flex: 2 }}>
+                  <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '2px' }}>Position</label>
+                  <input value={fpNewPosition} onChange={e => setFpNewPosition(e.target.value)} placeholder="President" style={inputStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '13px', color: '#666', display: 'block', marginBottom: '2px' }}>Amount (₦)</label>
+                  <input type="number" value={fpNewAmount} onChange={e => setFpNewAmount(e.target.value)} placeholder="5000" style={inputStyle} />
+                </div>
+                <button onClick={handleFpAddPosition} style={{ ...btnPrimary, whiteSpace: 'nowrap', padding: '12px 20px' }}>➕ Add</button>
+              </div>
+              {fpPositions.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No positions added</p> : (
+                <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#003366', color: 'white' }}>
+                      <th style={{ padding: '10px' }}>#</th>
+                      <th style={{ padding: '10px' }}>Position</th>
+                      <th style={{ padding: '10px', textAlign: 'right' }}>Amount</th>
+                      <th style={{ padding: '10px', textAlign: 'center' }}>Taken</th>
+                      <th style={{ padding: '10px', textAlign: 'center' }}>Action</th>
+                    </tr></thead>
                     <tbody>
-                      {formPurchases.map((p, idx) => (
-                        <tr key={p.id || idx} style={{ borderBottom: '1px solid #eee' }}>
-                          <td style={{ padding: '10px' }}>{idx + 1}</td>
-                          <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.candidateName}</td>
-                          <td style={{ padding: '10px', color: '#2563eb', fontWeight: 'bold' }}>{p.position}</td>
-                          <td style={{ padding: '10px' }}>{p.department || '—'}</td>
-                          <td style={{ padding: '10px' }}>{p.level || '—'}</td>
-                          <td style={{ padding: '10px', textAlign: 'center', color: '#16a34a', fontWeight: 'bold' }}>
-                            ₦{Number(p.amount || 0).toLocaleString()}
+                      {fpPositions.map((p, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '10px' }}>{i+1}</td>
+                          <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.position}</td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a' }}>₦{Number(p.amount).toLocaleString()}</td>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            <span style={{ background: (fpCandidateCounts[p.position] || 0) >= 5 ? '#fee2e2' : '#d1fae5', color: (fpCandidateCounts[p.position] || 0) >= 5 ? '#dc2626' : '#16a34a', padding: '2px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' }}>{(fpCandidateCounts[p.position] || 0)}/5</span>
                           </td>
-                          <td style={{ padding: '10px', textAlign: 'center', fontSize: '13px', color: '#888' }}>
-                            {p.paidAt ? new Date(p.paidAt).toLocaleDateString() : 'N/A'}
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            <button onClick={() => handleFpRemovePosition(i)} style={{ padding: '6px 12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Remove</button>
                           </td>
                         </tr>
                       ))}
@@ -1526,192 +1543,249 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Unique Key Finder */}
-        {activeView === 'find-key' && (
-          <UniqueKeyFinder />
-        )}
-
-        {/* Withdrawal */}
-        {activeView === 'withdrawal' && (
-          <div style={cardStyle}>
-            <h2 style={{ color: '#003366', marginBottom: '8px' }}>💰 Withdrawal to Opay</h2>
-            <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>
-              Withdraw election funds to your registered Opay account.
-            </p>
-
-            <div style={{
-              background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px',
-              padding: '20px', marginBottom: '24px', textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '13px', color: '#15803d', marginBottom: '4px' }}>Available Balance</div>
-              <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#15803d' }}>
-                ₦{withdrawalBalance.toLocaleString()}
-              </div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>
-                Registered Opay Account: <strong>{OPAY_ACCOUNT}</strong>
-              </div>
-            </div>
-
-            {withdrawMsg.text && (
-              <div style={{
-                padding: '12px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold',
-                background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#eff6ff' : '#d1fae5',
-                color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#1d4ed8' : '#16a34a'
-              }}>
-                {withdrawMsg.text}
-              </div>
-            )}
-
-            <div style={{ maxWidth: '480px' }}>
-              <label style={labelStyle}>Admin ID:</label>
-              <input
-                placeholder="Enter Admin ID"
-                value={withdrawAdminId}
-                onChange={e => setWithdrawAdminId(e.target.value)}
-                style={inputStyle}
-                disabled={withdrawBusy}
-              />
-              <label style={labelStyle}>Admin 4-Digit PIN:</label>
-              <input
-                type="password"
-                placeholder="••••"
-                maxLength={4}
-                value={withdrawPin}
-                onChange={e => setWithdrawPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                style={inputStyle}
-                disabled={withdrawBusy}
-              />
-              <label style={labelStyle}>Amount (₦):</label>
-              <input
-                type="number"
-                placeholder="Amount to withdraw"
-                value={withdrawAmount}
-                onChange={e => setWithdrawAmount(e.target.value)}
-                style={inputStyle}
-                disabled={withdrawBusy}
-              />
-
-              <button
-                onClick={handleWithdraw}
-                disabled={withdrawBusy || withdrawalBalance <= 0}
-                style={{
-                  ...btnSuccess, width: '100%', padding: '14px', fontSize: '16px',
-                  opacity: (withdrawBusy || withdrawalBalance <= 0) ? 0.6 : 1,
-                  cursor: (withdrawBusy || withdrawalBalance <= 0) ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {withdrawBusy ? '⏳ Processing Withdrawal...' : '💸 Process Withdrawal'}
+              <button onClick={handleFpSaveSettings} disabled={fpSaving} style={{ ...btnPrimary, background: fpSaving ? '#999' : '#003366' }}>
+                {fpSaving ? '⏳ Saving...' : '💾 Save Settings'}
               </button>
-
-              <div style={{
-                marginTop: '16px', padding: '12px', background: '#f8fafc',
-                borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', color: '#64748b'
-              }}>
-                🔒 <strong>Secure Transfer:</strong> Withdrawals require Admin credentials and are sent directly to your registered Opay account via Flutterwave.
-              </div>
             </div>
-
-            {/* Manual Check Transfer Section */}
-            <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e2e8f0', maxWidth: '480px' }}>
-              <h3 style={{ color: '#003366', fontSize: '15px', marginBottom: '6px' }}>🔎 Check Pending Transfer Status</h3>
-              <p style={{ color: '#666', fontSize: '12px', margin: '0 0 12px 0' }}>
-                If a withdrawal was accepted but didn't confirm immediately, enter its Reference number here to ask Flutterwave directly.
-              </p>
-              <input
-                placeholder="e.g. WDR-1234567890-ABC"
-                value={checkRef}
-                onChange={e => setCheckRef(e.target.value)}
-                style={inputStyle}
-                disabled={checkBusy}
-              />
-              <button
-                onClick={handleCheckTransfer}
-                disabled={checkBusy}
-                style={{ ...btnPrimary, background: '#2563eb', padding: '10px 20px', fontSize: '13px' }}
-              >
-                {checkBusy ? '⏳ Checking Flutterwave...' : '🔎 Check Transfer Now'}
-              </button>
-              {checkMsg.text && (
-                <div style={{
-                  marginTop: '12px', padding: '10px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold',
-                  background: checkMsg.type === 'error' ? '#fee2e2' : checkMsg.type === 'info' ? '#eff6ff' : '#d1fae5',
-                  color: checkMsg.type === 'error' ? '#dc2626' : checkMsg.type === 'info' ? '#1d4ed8' : '#16a34a'
-                }}>
-                  {checkMsg.text}
+            {formPurchases.length > 0 && (
+              <div style={cardStyle}>
+                <h3 style={{ color: '#003366', marginBottom: '12px' }}>Purchase History ({formPurchases.length})</h3>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#003366', color: 'white' }}>
+                      <th style={{ padding: '10px' }}>Name</th>
+                      <th style={{ padding: '10px' }}>Position</th>
+                      <th style={{ padding: '10px', textAlign: 'right' }}>Amount</th>
+                      <th style={{ padding: '10px' }}>Date</th>
+                      <th style={{ padding: '10px', textAlign: 'center' }}>Status</th>
+                    </tr></thead>
+                    <tbody>
+                      {formPurchases.map((p, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.fullName}</td>
+                          <td style={{ padding: '10px', color: '#666' }}>{p.position}</td>
+                          <td style={{ padding: '10px', textAlign: 'right', color: '#16a34a', fontWeight: 'bold' }}>₦{Number(p.amount).toLocaleString()}</td>
+                          <td style={{ padding: '10px', fontSize: '13px', color: '#888' }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString() : 'N/A'}</td>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            <span style={{ background: '#d1fae5', color: '#16a34a', padding: '2px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold' }}>Paid</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ===================== WITHDRAWAL (fixed — no undefined identifiers) ===================== */}
+        {activeView === 'withdrawal' && (
+          <div>
+            {/* Balance hero banner */}
+            <div style={{
+              background: 'linear-gradient(135deg, #003366 0%, #001a33 100%)',
+              borderRadius: '16px', padding: '28px 32px', marginBottom: '20px',
+              color: 'white', position: 'relative', overflow: 'hidden'
+            }}>
+              <div style={{ position: 'absolute', top: -50, right: -40, width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,215,0,0.07)' }} />
+              <div style={{ position: 'absolute', bottom: -70, left: -30, width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,215,0,0.05)' }} />
+              <div style={{ fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8, marginBottom: '6px' }}>Available Balance</div>
+              <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#FFD700', marginBottom: '14px' }}>₦{withdrawalBalance.toLocaleString()}</div>
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px', opacity: 0.92 }}>
+                <span>🏦 Beneficiary: <strong>{OPAY_ACCOUNT}</strong> (Opay)</span>
+                <span>Min: ₦100</span>
+                <span>Max: ₦1,000,000</span>
+                <span>🕐 Processing: 1–5 mins</span>
+              </div>
+            </div>
+
+            {/* ===================== PENDING TRANSFER CHECK CARD ===================== */}
+            {pendingTx && (
+              <div style={{ ...cardStyle, border: '1px solid #f59e0b', background: '#fffbeb' }}>
+                <h3 style={{ color: '#92400e', margin: '0 0 8px 0', fontSize: '15px' }}>⏳ Pending Transfer</h3>
+                <p style={{ fontSize: '13px', color: '#78350f', margin: '0 0 12px 0' }}>
+                  Ref: <strong>{pendingTx.reference}</strong> · ₦{Number(pendingTx.amount).toLocaleString()} · Status: {pendingTx.status}
+                </p>
+                <button onClick={handleCheckTransfer} disabled={checkBusy} style={{ ...btnWarning, opacity: checkBusy ? 0.6 : 1 }}>
+                  {checkBusy ? '⏳ Checking Flutterwave...' : '🔎 Check Transfer Now'}
+                </button>
+                {checkMsg.text && (
+                  <div style={{
+                    marginTop: '12px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px',
+                    background: checkMsg.type === 'error' ? '#fee2e2' : checkMsg.type === 'info' ? '#fef3c7' : '#d1fae5',
+                    color: checkMsg.type === 'error' ? '#dc2626' : checkMsg.type === 'info' ? '#b45309' : '#16a34a'
+                  }}>{checkMsg.text}</div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
+              {/* Withdraw form */}
+              <div style={cardStyle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <h2 style={{ color: '#003366', margin: 0 }}>💸 Withdraw Funds</h2>
+                </div>
+                <p style={{ fontSize: '13px', color: '#666', marginBottom: '20px' }}>
+                  Funds are sent to your registered Opay account after Flutterwave confirmation.
+                </p>
+
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>🛡️ Admin ID</label>
+                <input placeholder="Enter Admin ID" value={withdrawAdminId} onChange={e => setWithdrawAdminId(e.target.value)} style={inputStyle} />
+
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>🔒 Withdrawal PIN</label>
+                <input type="password" placeholder="Enter withdrawal PIN" value={withdrawPin} onChange={e => setWithdrawPin(e.target.value)} style={inputStyle} />
+
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '6px', color: '#334155' }}>💵 Amount (₦)</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
+                  <button
+                    onClick={() => setWithdrawAmount(String(withdrawalBalance))}
+                    disabled={withdrawBusy || withdrawalBalance <= 0}
+                    style={{
+                      padding: '0 16px', background: '#eef2ff', color: '#4338ca',
+                      border: '1px solid #c7d2fe', borderRadius: '8px', cursor: 'pointer',
+                      fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap',
+                      opacity: (withdrawBusy || withdrawalBalance <= 0) ? 0.5 : 1
+                    }}
+                  >
+                    ⚡ All
+                  </button>
+                </div>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: '-4px 0 14px 0' }}>
+                  Min ₦100 · Max ₦1,000,000 per transfer
+                </p>
+
+                <button
+                  onClick={handleWithdraw}
+                  disabled={withdrawBusy}
+                  style={{
+                    width: '100%', padding: '15px', background: '#f59e0b', color: '#003366',
+                    border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px',
+                    opacity: withdrawBusy ? 0.6 : 1,
+                    cursor: withdrawBusy ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 12px rgba(245,158,11,0.35)'
+                  }}
+                >
+                  {withdrawBusy ? '⏳ Checking Flutterwave...' : '💸 Process Withdrawal'}
+                </button>
+
+                {withdrawMsg.text && (
+                  <div style={{
+                    padding: '12px 14px', borderRadius: '8px', marginTop: '16px',
+                    fontWeight: 'bold', fontSize: '13px',
+                    background: withdrawMsg.type === 'error' ? '#fee2e2' : withdrawMsg.type === 'info' ? '#fef3c7' : '#d1fae5',
+                    color: withdrawMsg.type === 'error' ? '#dc2626' : withdrawMsg.type === 'info' ? '#b45309' : '#16a34a'
+                  }}>
+                    {withdrawMsg.text}
+                  </div>
+                )}
+              </div>
+
+              {/* Sidebar: Account Summary / Security / How it works */}
+              <div>
+                <div style={cardStyle}>
+                  <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>📋 Account Summary</h3>
+                  <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#888', fontSize: '13px' }}>Available Balance</span>
+                    <strong style={{ color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</strong>
+                  </div>
+                  <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#888', fontSize: '13px' }}>Beneficiary</span>
+                    <strong style={{ wordBreak: 'break-all', textAlign: 'right' }}>{OPAY_ACCOUNT}</strong>
+                  </div>
+                  <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#888', fontSize: '13px' }}>Bank</span>
+                    <strong>Opay</strong>
+                  </div>
+                  <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#888', fontSize: '13px' }}>Admin ID</span>
+                    <strong style={{ wordBreak: 'break-all', textAlign: 'right', fontSize: '13px' }}>{ADMIN_ID}</strong>
+                  </div>
+                  <div style={{ padding: '12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#888', fontSize: '13px' }}>Candidates</span>
+                    <strong>{candidates.length}</strong>
+                  </div>
+                </div>
+
+                <div style={{ ...cardStyle, background: '#fefce8', border: '1px solid #fde68a' }}>
+                  <h3 style={{ color: '#92400e', margin: '0 0 8px 0', fontSize: '15px' }}>🛡️ Security Notice</h3>
+                  <p style={{ fontSize: '13px', color: '#78350f', margin: 0, lineHeight: '1.6' }}>
+                    Withdrawals require your Admin ID and PIN. Funds are only released after Flutterwave confirms the transfer. Keep your PIN private.
+                  </p>
+                </div>
+
+                <div style={cardStyle}>
+                  <h3 style={{ color: '#003366', margin: '0 0 14px 0' }}>ℹ️ How It Works</h3>
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>1</div>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter your Admin ID and withdrawal PIN.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>2</div>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Enter the amount (min ₦100, max ₦1,000,000) and submit.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#003366', color: '#FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', flexShrink: 0 }}>3</div>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.5' }}>Your balance updates automatically once Flutterwave confirms the transfer.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Support */}
-        {activeView === 'support' && (
+        {/* Key Finder */}
+        {activeView === 'key-finder' && <UniqueKeyFinder />}
+
+        {/* Messages */}
+        {activeView === 'messages' && (
           <div style={cardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ color: '#003366', margin: 0 }}>💬 Support Messages ({supportMessages.length})</h2>
-              <span style={{ fontSize: '12px', color: '#888' }}>
-                {supportMessages.filter(m => m.status === 'unread').length} unread
-              </span>
-            </div>
-            {supportMessages.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No messages yet</p> : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {supportMessages.map(msg => (
-                  <div key={msg.id} style={{
-                    padding: '16px', borderRadius: '8px', border: '1px solid #eee',
-                    background: msg.status === 'unread' ? '#f0f7ff' : '#fafafa'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <strong>{msg.name} ({msg.matric || 'No matric'})</strong>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '12px', color: '#888' }}>
-                          {msg.timestamp ? new Date(msg.timestamp).toLocaleString() : ''}
-                        </span>
-                        {msg.status === 'unread' && (
-                          <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '11px' }}>New</span>
-                        )}
-                      </div>
+            <h2 style={{ color: '#003366', marginBottom: '16px' }}>✉️ Messages ({supportMessages.length})</h2>
+            {supportMessages.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No messages</p> : (
+              supportMessages.map(msg => (
+                <div key={msg.id} style={{ padding: '16px', borderBottom: '1px solid #eee', background: msg.status === 'unread' ? '#f0f7ff' : 'transparent' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <div>
+                      <strong>{msg.name}</strong>
+                      {msg.email && <span style={{ fontSize: '12px', color: '#888', marginLeft: '8px' }}>&lt;{msg.email}&gt;</span>}
                     </div>
-                    <p style={{ margin: '0 0 12px 0', color: '#333', fontSize: '14px', lineHeight: '1.5' }}>{msg.message}</p>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', fontSize: '13px' }}>
-                      <div style={{ fontWeight: 'bold', color: '#003366', marginBottom: '4px' }}>🤖 Suggested Response:</div>
-                      <div style={{ whiteSpace: 'pre-wrap', color: '#475569', lineHeight: '1.5' }}>{generateAutoReply(msg)}</div>
-                    </div>
-                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await adminApi('markSupportRead', { id: msg.id });
-                            loadAllData();
-                          } catch (e) {}
-                        }}
-                        style={{ ...btnPrimary, background: '#2563eb', padding: '6px 12px', fontSize: '12px' }}
-                      >
-                        ✓ Mark as Read
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Delete message?')) return;
-                          try {
-                            await adminApi('deleteSupport', { id: msg.id });
-                            loadAllData();
-                          } catch (e) {}
-                        }}
-                        style={{ ...btnDanger, padding: '6px 12px', fontSize: '12px' }}
-                      >
-                        🗑️ Delete
-                      </button>
-                    </div>
+                    <span style={{ fontSize: '12px', color: '#888' }}>
+                      {msg.timestamp ? new Date(msg.timestamp).toLocaleString() : ''}
+                      {msg.status === 'unread' && <span style={{ background: '#2563eb', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', marginLeft: '8px' }}>New</span>}
+                    </span>
                   </div>
-                ))}
-              </div>
+                  <p style={{ margin: '0 0 4px 0', color: '#666' }}>{msg.message}</p>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {msg.status === 'unread' && (
+                      <button onClick={async () => { try { await adminApi('markSupportRead', { id: msg.id }); loadAllData(); } catch(e) {} }}
+                              style={{ padding: '4px 10px', background: 'transparent', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                        Mark Read
+                      </button>
+                    )}
+                    {msg.email && (
+                      <a
+                        href={`mailto:${msg.email}?subject=${encodeURIComponent('Re: NAMATL Student E-Voting Support')}&body=${encodeURIComponent(
+`${generateAutoReply(msg)}`
+)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          padding: '4px 10px', background: '#ea4335', color: 'white',
+                          border: 'none', borderRadius: '6px', cursor: 'pointer',
+                          fontSize: '12px', fontWeight: 'bold', textDecoration: 'none'
+                        }}
+                      >
+                        📧 Reply via Gmail
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
-
       </div>
     </div>
   );

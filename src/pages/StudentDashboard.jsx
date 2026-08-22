@@ -132,7 +132,10 @@ export default function StudentDashboard() {
     if (!window.confirm('Vote for this candidate? This action cannot be undone.')) return;
     if (voting) return;
 
-    const uniqueKey = sessionStorage.getItem('studentKey');
+    // ✅ Multi-layer key retrieval (sessionStorage -> student.uniqueKey -> studentSession)
+    const sessionData = JSON.parse(localStorage.getItem('studentSession') || '{}');
+    const uniqueKey = sessionStorage.getItem('studentKey') || student?.uniqueKey || sessionData.uniqueKey;
+
     if (!uniqueKey) {
       alert('Session expired. Please login again.');
       return;

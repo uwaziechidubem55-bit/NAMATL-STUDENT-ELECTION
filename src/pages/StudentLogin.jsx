@@ -18,21 +18,18 @@ export default function StudentLogin() {
   const { loading, message, showMessage, handleSignup, completeSignup, handleLogin, verifyKeyAccess } = useStudentAuth();
   const navigate = useNavigate();
 
-  // CHANGED: Now using crypto.randomUUID() instead of Math.random()
   const generateSecureKey = () => {
-    // Take first 10 chars of UUID and add -NAMATLEC
     const uuid = crypto.randomUUID().replace(/-/g, '').toUpperCase();
     const randomPart = uuid.substring(0, 10);
     return `${randomPart}-NAMATLEC`;
-  }
+  };
 
   const onSignup = async () => {
-    const formWithKey = {...form, uniqueKey: generateSecureKey() };
+    const formWithKey = { ...form, uniqueKey: generateSecureKey() };
     const result = await handleSignup(formWithKey);
     console.log('[StudentLogin] handleSignup result:', result);
     if (result.success && result.phase === 'verify') {
       setTempStudent(result.tempStudent);
-      // ✅ FIX: clear any stale message so old errors never show inside the popup
       showMessage('', '');
       setShowVerifyPopup(true);
       setFiveDigitCode('');
@@ -44,7 +41,7 @@ export default function StudentLogin() {
     console.log('[StudentLogin] completeSignup result:', result);
     if (result.success) {
       setGeneratedKey(result.generatedKey);
-      // ✅ FIX: clear any stale message before showing the key popup
+      sessionStorage.setItem('studentKey', result.generatedKey);
       showMessage('', '');
       setShowVerifyPopup(false);
       setShowKeyPopup(true);
@@ -56,7 +53,6 @@ export default function StudentLogin() {
     console.log('[StudentLogin] handleLogin result:', result);
     if (result.success && result.phase === 'key') {
       setTempStudent(result.tempStudent);
-      // ✅ FIX: clear any stale message before showing the key popup
       showMessage('', '');
       setShowKeyPopup(true);
       setUniqueKeyInput('');
@@ -66,25 +62,22 @@ export default function StudentLogin() {
   const onKeyAccess = async () => {
     const key = uniqueKeyInput.trim();
 
-    // ERROR 1: Empty
     if (!key) {
       showMessage('error', 'Please fill the field');
       return;
     }
 
-    // Call API. If key is wrong, your hook will show "Invalid verification key"
     const result = await verifyKeyAccess(tempStudent, key);
     console.log('[StudentLogin] verifyKeyAccess result:', result);
     if (result.success) {
+      sessionStorage.setItem('studentKey', key);
       setShowKeyPopup(false);
       navigate('/student');
     } else {
-      // If backend returns error, overwrite it to exactly "Invalid verification key"
       showMessage('error', 'Invalid verification key');
     }
   };
 
-  // ===================== COPY GENERATED KEY =====================
   const copyKey = async () => {
     if (!generatedKey) return;
     try {
@@ -128,7 +121,7 @@ export default function StudentLogin() {
   };
 
   const btnSuccess = {
- ...btnPrimary, background: '#16a34a',
+    ...btnPrimary, background: '#16a34a',
   };
 
   // ── Page Layout Styles ──
@@ -159,9 +152,9 @@ export default function StudentLogin() {
     fontSize: '14px',
     fontWeight: 'bold',
     textAlign: 'center',
-    background: message.type === 'error'? '#fee2e2' : '#d1fae5',
-    color: message.type === 'error'? '#dc2626' : '#16a34a',
-    border: message.type === 'error'? '1px solid #fecaca' : '1px solid #bbf7d0'
+    background: message.type === 'error' ? '#fee2e2' : '#d1fae5',
+    color: message.type === 'error' ? '#dc2626' : '#16a34a',
+    border: message.type === 'error' ? '1px solid #fecaca' : '1px solid #bbf7d0'
   };
 
   const logoStyle = {
@@ -178,8 +171,6 @@ export default function StudentLogin() {
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-
-        {/* LOGO - TOP CENTER */}
         <img
           src="/logo.png"
           alt="NAMTLS Logo"
@@ -188,41 +179,41 @@ export default function StudentLogin() {
         />
 
         <h1 style={{ color: '#003366', textAlign: 'center', marginBottom: '4px' }}>
-          {authMode === 'signup'? 'Student Registration' : 'Student Login'}
+          {authMode === 'signup' ? 'Student Registration' : 'Student Login'}
         </h1>
         <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginBottom: '20px' }}>
-          {authMode === 'signup'? 'Create account to continue' : 'Login with your Matric Number'}
+          {authMode === 'signup' ? 'Create account to continue' : 'Login with your Matric Number'}
         </p>
 
         {message.text && (
           <div style={msgBoxStyle}>{message.text}</div>
         )}
 
-        {authMode === 'signup'? (
+        {authMode === 'signup' ? (
           <>
             <input
               placeholder="Full Name"
               value={form.name}
-              onChange={(e) => setForm({...form, name: e.target.value })}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={inputStyle}
               disabled={loading}
             />
             <input
               placeholder="Matric Number"
               value={form.matric}
-              onChange={(e) => setForm({...form, matric: e.target.value })}
+              onChange={(e) => setForm({ ...form, matric: e.target.value })}
               style={inputStyle}
               disabled={loading}
             />
             <input
               placeholder="Level (e.g. 200, 300, 400)"
               value={form.level}
-              onChange={(e) => setForm({...form, level: e.target.value })}
+              onChange={(e) => setForm({ ...form, level: e.target.value })}
               style={inputStyle}
               disabled={loading}
             />
             <button onClick={onSignup} style={btnPrimary} disabled={loading}>
-              {loading? 'Please wait...' : 'Register'}
+              {loading ? 'Please wait...' : 'Register'}
             </button>
             <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#666' }}>
               Already have an account?{' '}
@@ -240,11 +231,11 @@ export default function StudentLogin() {
               placeholder="Matric Number"
               value={loginMatric}
               onChange={(e) => setLoginMatric(e.target.value)}
-              style={{...inputStyle, marginBottom: '16px' }}
+              style={{ ...inputStyle, marginBottom: '16px' }}
               disabled={loading}
             />
             <button onClick={onLogin} style={btnPrimary} disabled={loading}>
-              {loading? 'Please wait...' : 'Login'}
+              {loading ? 'Please wait...' : 'Login'}
             </button>
             <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#666' }}>
               Don't have an account?{' '}
@@ -261,10 +252,8 @@ export default function StudentLogin() {
         <p style={{ textAlign: 'center', marginTop: '20px' }}>
           <Link to="/" style={{ color: '#2563eb', fontSize: '14px' }}>Back to Home</Link>
         </p>
-
       </div>
 
-      {/* ── POPUP 1: 5-Digit Verification ── */}
       {showVerifyPopup && (
         <div style={popupOverlay}>
           <div style={popupBox}>
@@ -273,7 +262,6 @@ export default function StudentLogin() {
               Enter the first 5 digits from your matric number
             </p>
 
-            {/* ✅ FIX: error message now shows INSIDE this popup (was hidden behind the overlay) */}
             {message.text && (
               <div style={msgBoxStyle}>{message.text}</div>
             )}
@@ -288,20 +276,19 @@ export default function StudentLogin() {
               autoFocus
             />
             <button onClick={onVerifyCode} style={btnPrimary} disabled={loading}>
-              {loading? 'Verifying...' : 'Verify'}
+              {loading ? 'Verifying...' : 'Verify'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── POPUP 2: Unique Key ── */}
       {showKeyPopup && (
         <div style={popupOverlay}>
           <div style={popupBox}>
             <h2 style={{ color: '#003366', textAlign: 'center' }}>
-              {generatedKey? 'Your Unique Code — Save This' : 'Access Voting Portal'}
+              {generatedKey ? 'Your Unique Code — Save This' : 'Access Voting Portal'}
             </h2>
-            {generatedKey? (
+            {generatedKey ? (
               <>
                 <p style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
                   This is your one-time access key. Save it now — you will need it to log in later.
@@ -314,7 +301,6 @@ export default function StudentLogin() {
                 }}>
                   {generatedKey}
                 </div>
-                {/* NEW: Copy Code button */}
                 <button
                   onClick={copyKey}
                   style={{
@@ -325,7 +311,14 @@ export default function StudentLogin() {
                 >
                   {copied ? '✅ Copied!' : '📋 Copy Code'}
                 </button>
-                <button onClick={() => { setShowKeyPopup(false); navigate('/student'); }} style={btnSuccess}>
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem('studentKey', generatedKey);
+                    setShowKeyPopup(false);
+                    navigate('/student');
+                  }}
+                  style={btnSuccess}
+                >
                   Continue to Portal
                 </button>
               </>
@@ -335,7 +328,6 @@ export default function StudentLogin() {
                   Enter your unique code to access the voting portal
                 </p>
 
-                {/* ✅ FIX: error message now shows INSIDE this popup (was hidden behind the overlay) */}
                 {message.text && (
                   <div style={msgBoxStyle}>{message.text}</div>
                 )}
@@ -349,14 +341,13 @@ export default function StudentLogin() {
                   autoFocus
                 />
                 <button onClick={onKeyAccess} style={btnPrimary} disabled={loading}>
-                  {loading? 'Verifying...' : 'Access Voting Portal'}
+                  {loading ? 'Verifying...' : 'Access Voting Portal'}
                 </button>
               </>
             )}
           </div>
         </div>
       )}
-
     </div>
   );
 }

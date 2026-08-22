@@ -118,7 +118,7 @@ export default function PurchaseForm({
         customizations: { 
           title: 'NAMATL Form Purchase', 
           description: selectedPosition.position + ' candidacy form',
-          logo: 'https://namtls-election.vercel.app/logo.png'
+          logo: '/logo.png'
         },
         callback: async (response) => {
           if (response.status === 'successful' || response.status === 'completed') {

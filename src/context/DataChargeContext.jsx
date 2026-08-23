@@ -1,5 +1,5 @@
 // v4.3.2 - All privileged Firestore ops moved server-side via /api/admin (rules stay locked)
-// NAMTLS DataCharge v4.3.3 - FIXED: Flutterwave Inline CDN replaces broken class/hook usage
+// NAMTLS DataCharge v4.3.5 - FIXED: loadBalance uses adminApi to read balance through locked Firestore rules
 import { createContext, useContext, useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -84,11 +84,12 @@ export function DataChargeProvider({ children }) {
   const [formPurchaseSettings, setFormPurchaseSettings] = useState(null);
   const [formPurchases, setFormPurchases] = useState([]);
 
+  // ✅ FIXED: Reads balance securely via adminApi (bypasses locked client rules)
   const loadBalance = async () => {
     try {
-      const snap = await getDoc(doc(db, 'finances', 'withdrawalBalance'));
-      if (snap.exists()) {
-        setWithdrawalBalance(Number(snap.data().balance || 0));
+      const res = await adminApi('getBalance');
+      if (res && res.data) {
+        setWithdrawalBalance(Number(res.data.balance || 0));
       }
     } catch (e) {
       console.log('Could not load balance:', e.message);
@@ -160,7 +161,7 @@ export function DataChargeProvider({ children }) {
     return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
   };
 
-  // === Activation Payment (FIXED: uses Flutterwave Inline CDN, not broken class constructor) ===
+  // === Activation Payment ===
   const processActivationPayment = async (academicYear) => {
     if (academicYear === '2026/2027') {
       return { success: true, message: 'Election activated FREE!' };
@@ -180,7 +181,7 @@ export function DataChargeProvider({ children }) {
           customizations: {
             title: 'NAMTLS Activation Payment',
             description: `Activation fee for ${academicYear}`,
-            logo: 'https://namtls-election.vercel.app/logo.png'
+            logo: window.location.origin + '/logo.png'
           },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {
@@ -215,7 +216,7 @@ export function DataChargeProvider({ children }) {
     }
   };
 
-  // === Form Purchase (FIXED: uses Flutterwave Inline CDN, not non-existent package) ===
+  // === Form Purchase ===
   const purchaseForm = async (position, amount, candidateData) => {
     try {
       const FlutterwaveCheckout = await loadFlutterwaveInline();
@@ -232,7 +233,7 @@ export function DataChargeProvider({ children }) {
           customizations: {
             title: 'NAMTLS Form Purchase',
             description: `${position} candidacy form`,
-            logo: 'https://namtls-election.vercel.app/logo.png'
+            logo: window.location.origin + '/logo.png'
           },
           callback: async (response) => {
             if (response.status === 'successful' || response.status === 'completed') {

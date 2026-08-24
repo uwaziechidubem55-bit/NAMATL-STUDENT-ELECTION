@@ -160,7 +160,7 @@ export default function StudentDashboard() {
   const isElectionEnded = endDateTime ? (now >= endDateTime) : false;
   const isVotingOpen = isModeActive && isElectionStarted && !isElectionEnded;
 
-  // ✅ 1. Locked Selection: Once voted in this position, cannot change to another candidate in this position
+  // ✅ 1. Locked Selection: Once voted in this position, choice is locked and cannot be changed
   const handleSelectCandidate = (positionName, candidateId) => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
     if (selectedCandidates[positionName]) {
@@ -172,7 +172,7 @@ export default function StudentDashboard() {
     }));
   };
 
-  // ✅ 2. Final Submission of all selected position votes
+  // ✅ 2. Final Submission of all selected position votes (ONLY counts on submit)
   const handleSubmitFinalBallot = async () => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
 
@@ -217,7 +217,7 @@ export default function StudentDashboard() {
 
       if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
 
-      // Optimistic local bump for all selected candidates
+      // Permanent update after server confirms
       const updated = candidates.map(c =>
         voteIds.includes(c.id) ? { ...c, votes: (c.votes || 0) + 1 } : c
       );
@@ -493,6 +493,9 @@ export default function StudentDashboard() {
                     const isSelected = selectedCandidates[c.position] === c.id;
                     const isPositionAlreadyChosen = Boolean(selectedCandidates[c.position]);
 
+                    // ✅ Shows +1 preview vote for this user locally; other users only see real submitted votes
+                    const displayedVotes = (c.votes || 0) + (isSelected ? 1 : 0);
+
                     return (
                       <div
                         key={c.id}
@@ -519,7 +522,7 @@ export default function StudentDashboard() {
                           alignItems: 'center',
                           gap: '4px'
                         }}>
-                          🗳️ {c.votes || 0} {(c.votes || 0) === 1 ? 'Vote' : 'Votes'}
+                          🗳️ {displayedVotes} {displayedVotes === 1 ? 'Vote' : 'Votes'}
                         </div>
 
                         {/* Photo — top, centered */}

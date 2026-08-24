@@ -12,6 +12,7 @@ export default function StudentDashboard() {
   const [voting, setVoting] = useState(false);
   const [student, setStudent] = useState(null);
   const [currentTime, setCurrentTime] = useState(''); // ← ADDED
+  const [selectedCandidates, setSelectedCandidates] = useState({}); // ← Stores { [position]: candidateId }
   const navigate = useNavigate();
 
   // ← ADDED: Real-time clock
@@ -159,12 +160,26 @@ export default function StudentDashboard() {
   const isElectionEnded = endDateTime ? (now >= endDateTime) : false;
   const isVotingOpen = isModeActive && isElectionStarted && !isElectionEnded;
 
-  const handleVote = async (id) => {
+  // ✅ 1. Instant candidate selection per position (NO alert / confirm popup)
+  const handleSelectCandidate = (positionName, candidateId) => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
-    if (!window.confirm('Vote for this candidate? This action cannot be undone.')) return;
-    if (voting) return;
+    setSelectedCandidates(prev => ({
+      ...prev,
+      [positionName]: candidateId
+    }));
+  };
 
-    // ✅ Multi-layer key retrieval (sessionStorage -> student.uniqueKey -> studentSession)
+  // ✅ 2. Final Submission of all selected position votes
+  const handleSubmitFinalBallot = async () => {
+    if (!isVotingOpen) { alert('Voting is not open.'); return; }
+
+    const voteIds = Object.values(selectedCandidates);
+    if (voteIds.length === 0) {
+      alert('Please select at least one candidate before submitting.');
+      return;
+    }
+
+    // Multi-layer key retrieval
     const sessionData = JSON.parse(localStorage.getItem('studentSession') || '{}');
     const uniqueKey = sessionStorage.getItem('studentKey') || student?.uniqueKey || sessionData.uniqueKey;
 
@@ -178,7 +193,11 @@ export default function StudentDashboard() {
       const res = await fetch('/api/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matric: student.matric, uniqueKey, candidateId: id }),
+        body: JSON.stringify({
+          matric: student.matric,
+          uniqueKey,
+          candidateIds: voteIds
+        }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -195,9 +214,9 @@ export default function StudentDashboard() {
 
       if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
 
-      // optimistic local bump for instant feedback
+      // Optimistic local bump for all selected candidates
       const updated = candidates.map(c =>
-        c.id === id ? { ...c, votes: (c.votes || 0) + 1 } : c
+        voteIds.includes(c.id) ? { ...c, votes: (c.votes || 0) + 1 } : c
       );
       setCandidates(updated);
 
@@ -206,7 +225,6 @@ export default function StudentDashboard() {
       saved.hasVoted = true;
       localStorage.setItem('studentSession', JSON.stringify(saved));
       setHasVoted(true);
-      alert('Vote Submitted! Thank you.');
     } catch (e) {
       alert('Error submitting vote: ' + e.message);
     } finally {
@@ -258,9 +276,7 @@ export default function StudentDashboard() {
     borderRadius: '14px',
     padding: '28px 20px 24px',
     textAlign: 'center',
-    border: '1px solid rgba(255,255,255,0.06)',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+    transition: 'all 0.2s ease',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -316,16 +332,13 @@ export default function StudentDashboard() {
 
   const voteBtnStyle = {
     padding: '12px 36px',
-    background: 'linear-gradient(135deg, #16a34a, #15803d)',
     color: 'white',
-    border: 'none',
     borderRadius: '8px',
     fontWeight: '700',
     cursor: 'pointer',
     fontSize: '16px',
     letterSpacing: '1px',
     textTransform: 'uppercase',
-    boxShadow: '0 4px 15px rgba(22,163,74,0.35)',
     transition: 'transform 0.15s ease',
     width: '100%',
     maxWidth: '200px',
@@ -395,7 +408,7 @@ export default function StudentDashboard() {
 
   // ── Voting Open ──
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif", paddingBottom: '60px' }}>
+    <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif", paddingBottom: '80px' }}>
 
       {/* 🌅 Greeting — top corner (added only) */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', padding: '12px 24px 0' }}>
@@ -434,70 +447,113 @@ export default function StudentDashboard() {
             <h3 style={{ color: '#94a3b8' }}>No Candidates Available</h3>
           </div>
         ) : (
-          positions.map(pos => (
-            <div key={pos} style={sectionStyle}>
+          <>
+            {positions.map(pos => (
+              <div key={pos} style={sectionStyle}>
 
-              {/* Position Heading — Bold, Gold, On Top */}
-              <h2 style={positionHeadingStyle}>
-                {pos}
-              </h2>
+                {/* Position Heading — Bold, Gold, On Top */}
+                <h2 style={positionHeadingStyle}>
+                  {pos}
+                </h2>
 
-              {/* Candidates Grid */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: '24px',
-                justifyContent: 'center',
-              }}>
-                {grouped[pos].map(c => (
-                  <div
-                    key={c.id}
-                    style={cardStyle}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-4px)';
-                      e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.4)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.25)';
-                    }}
-                  >
-                    {/* Photo — top, centered */}
-                    {c.photoURL && (
-                      <img
-                        src={c.photoURL}
-                        alt={c.name}
-                        style={photoStyle}
-                        onError={(e) => { e.target.style.display = 'none'; }}
-                      />
-                    )}
+                {/* Candidates Grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gap: '24px',
+                  justifyContent: 'center',
+                }}>
+                  {grouped[pos].map(c => {
+                    const isSelected = selectedCandidates[c.position] === c.id;
+                    return (
+                      <div
+                        key={c.id}
+                        style={{
+                          ...cardStyle,
+                          border: isSelected ? '2px solid #22c55e' : '1px solid rgba(255,255,255,0.06)',
+                          boxShadow: isSelected ? '0 0 25px rgba(34,197,94,0.35)' : '0 4px 20px rgba(0,0,0,0.25)',
+                        }}
+                      >
+                        {/* Photo — top, centered */}
+                        {c.photoURL && (
+                          <img
+                            src={c.photoURL}
+                            alt={c.name}
+                            style={photoStyle}
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        )}
 
-                    {/* Name — one line: "Chidubem Uwazie" */}
-                    <h3 style={nameStyle}>{c.name}</h3>
+                        {/* Name — one line: "Chidubem Uwazie" */}
+                        <h3 style={nameStyle}>{c.name}</h3>
 
-                    {/* Position — subtle label */}
-                    <p style={positionLabelStyle}>{c.position}</p>
+                        {/* Position — subtle label */}
+                        <p style={positionLabelStyle}>{c.position}</p>
 
-                    {/* Manifesto — fills width like a login/input bar */}
-                    {c.manifesto && (
-                      <p style={manifestoStyle}>"{c.manifesto}"</p>
-                    )}
+                        {/* Manifesto — fills width like a login/input bar */}
+                        {c.manifesto && (
+                          <p style={manifestoStyle}>"{c.manifesto}"</p>
+                        )}
 
-                    {/* Vote Button — disabled while a vote is in flight */}
-                    <button
-                      onClick={() => handleVote(c.id)}
-                      disabled={voting}
-                      style={{ ...voteBtnStyle, opacity: voting ? 0.6 : 1, cursor: voting ? 'not-allowed' : 'pointer' }}
-                      onMouseEnter={(e) => { e.target.style.transform = 'scale(1.03)'; }}
-                      onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; }}
-                    >
-                      {voting ? 'Voting...' : 'Vote'}
-                    </button>
-                  </div>
-                ))}
+                        {/* Vote Button — instant select per position */}
+                        <button
+                          onClick={() => handleSelectCandidate(c.position, c.id)}
+                          disabled={voting}
+                          style={{
+                            ...voteBtnStyle,
+                            background: isSelected ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #334155, #1e293b)',
+                            border: isSelected ? '2px solid #4ade80' : '1px solid rgba(255,255,255,0.15)',
+                            boxShadow: isSelected ? '0 4px 15px rgba(34,197,94,0.4)' : 'none',
+                            cursor: voting ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {isSelected ? '✅ Voted' : 'Vote'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+            ))}
+
+            {/* 🗳️ SUBMIT OFFICIAL BALLOT CARD */}
+            <div style={{
+              marginTop: '40px',
+              background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+              padding: '28px 20px',
+              borderRadius: '16px',
+              border: '2px solid #fbbf24',
+              textAlign: 'center',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+            }}>
+              <h3 style={{ color: '#fbbf24', margin: '0 0 8px 0', fontSize: '22px' }}>🗳️ Complete & Submit Your Ballot</h3>
+              <p style={{ color: '#cbd5e1', fontSize: '14px', margin: '0 0 20px 0' }}>
+                You have voted in <strong>{Object.keys(selectedCandidates).length}</strong> of <strong>{positions.length}</strong> positions. Once submitted, your vote is final and cannot be undone.
+              </p>
+
+              <button
+                onClick={handleSubmitFinalBallot}
+                disabled={voting || Object.keys(selectedCandidates).length === 0}
+                style={{
+                  padding: '16px 40px',
+                  background: Object.keys(selectedCandidates).length === 0 ? '#475569' : 'linear-gradient(135deg, #16a34a, #15803d)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontWeight: 'bold',
+                  fontSize: '18px',
+                  cursor: (voting || Object.keys(selectedCandidates).length === 0) ? 'not-allowed' : 'pointer',
+                  boxShadow: Object.keys(selectedCandidates).length === 0 ? 'none' : '0 4px 20px rgba(22,163,74,0.4)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  width: '100%',
+                  maxWidth: '380px'
+                }}
+              >
+                {voting ? '⏳ Submitting Votes...' : `🗳️ Submit Official Ballot (${Object.keys(selectedCandidates).length} Votes)`}
+              </button>
             </div>
-          ))
+          </>
         )}
       </div>
 

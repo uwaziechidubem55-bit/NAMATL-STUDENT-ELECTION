@@ -47,6 +47,43 @@ export default function StudentDashboard() {
         }
         setStudent(savedStudent);
 
+        // 1. Live Fetch: Query Firestore directly for the live status of the student
+        try {
+          const liveRes = await fetch('/api/student-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matric: savedStudent.matric })
+          });
+          if (liveRes.ok) {
+            const liveData = await liveRes.json();
+            if (liveData.student) {
+              const liveHasVoted = Boolean(liveData.student.hasVoted);
+              setHasVoted(liveHasVoted);
+              // Clean up stale local cache if Firestore is reset
+              if (!liveHasVoted) {
+                localStorage.removeItem('voted_' + savedStudent.matric);
+              } else {
+                localStorage.setItem('voted_' + savedStudent.matric, 'true');
+              }
+              setStudent({ ...savedStudent, ...liveData.student });
+            }
+          } else if (liveRes.status === 404) {
+            // Student was deleted from Firestore
+            localStorage.removeItem('studentSession');
+            localStorage.removeItem('voted_' + savedStudent.matric);
+            sessionStorage.removeItem('studentKey');
+            setError('Student record was removed from database. Please register again.');
+            setLoading(false);
+            return;
+          }
+        } catch (liveErr) {
+          // Fallback only if device is completely offline
+          const votedKey = 'voted_' + savedStudent.matric;
+          const votedStatus = savedStudent.hasVoted === true || localStorage.getItem(votedKey) === 'true';
+          setHasVoted(votedStatus);
+        }
+
+        // 2. Live Fetch: Query candidates collection directly from Firestore
         try {
           const candidatesSnap = await getDocs(collection(db, 'candidates'));
           const candidatesList = [];
@@ -59,8 +96,8 @@ export default function StudentDashboard() {
           setCandidates([]);
         }
 
+        // 3. Live Fetch: Merge settings/main and settings/election from Firestore
         try {
-          // Merge settings/main (where AdminDashboard saves activeMode) and settings/election
           const [mainSnap, electionSnap] = await Promise.all([
             getDoc(doc(db, 'settings', 'main')),
             getDoc(doc(db, 'settings', 'election')).catch(() => null)
@@ -85,11 +122,6 @@ export default function StudentDashboard() {
           const savedSettings = JSON.parse(localStorage.getItem('electionSettings') || '{}');
           setSettings(savedSettings);
         }
-
-        // hasVoted now comes from the server (login response) — localStorage kept as fallback
-        const votedKey = 'voted_' + savedStudent.matric;
-        const votedStatus = savedStudent.hasVoted === true || localStorage.getItem(votedKey) === 'true';
-        setHasVoted(votedStatus);
 
       } catch (e) {
         console.error('Fatal error:', e);

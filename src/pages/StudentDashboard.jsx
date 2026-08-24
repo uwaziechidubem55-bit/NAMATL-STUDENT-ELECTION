@@ -160,9 +160,12 @@ export default function StudentDashboard() {
   const isElectionEnded = endDateTime ? (now >= endDateTime) : false;
   const isVotingOpen = isModeActive && isElectionStarted && !isElectionEnded;
 
-  // ✅ 1. Instant candidate selection per position (NO alert / confirm popup)
+  // ✅ 1. Locked Selection: Once voted in this position, cannot change to another candidate in this position
   const handleSelectCandidate = (positionName, candidateId) => {
     if (!isVotingOpen) { alert('Voting is not open.'); return; }
+    if (selectedCandidates[positionName]) {
+      return; // Locked: selection cannot be changed
+    }
     setSelectedCandidates(prev => ({
       ...prev,
       [positionName]: candidateId
@@ -245,7 +248,30 @@ export default function StudentDashboard() {
     if (!grouped[c.position]) grouped[c.position] = [];
     grouped[c.position].push(c);
   });
-  const positions = Object.keys(grouped);
+
+  // ✅ 3. Hierarchy of Power Ranking (President first, VP second, Sec Gen third, etc.)
+  const getPositionRank = (pos) => {
+    const p = String(pos || '').trim().toLowerCase();
+    if (p === 'president') return 1;
+    if (p.includes('vice president') || p.includes('vice-president') || p.includes('vp')) return 2;
+    if (p.includes('general secretary') || p.includes('secretary general') || p.includes('sec gen')) return 3;
+    if (p.includes('assistant general secretary') || p.includes('assistant sec')) return 4;
+    if (p.includes('financial secretary') || p.includes('fin sec')) return 5;
+    if (p.includes('treasurer')) return 6;
+    if (p.includes('social')) return 7;
+    if (p.includes('sport')) return 8;
+    if (p.includes('public relations') || p.includes('p.r.o') || p.includes('pro')) return 9;
+    if (p.includes('welfare')) return 10;
+    if (p.includes('academic') || p.includes('provost')) return 11;
+    return 100; // All other positions after
+  };
+
+  const positions = Object.keys(grouped).sort((a, b) => {
+    const rankA = getPositionRank(a);
+    const rankB = getPositionRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b);
+  });
 
   // ── Styles ──
   const sectionStyle = {
@@ -280,6 +306,7 @@ export default function StudentDashboard() {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    position: 'relative', // ← Position relative for top-right vote count badge
   };
 
   const photoStyle = {
@@ -335,7 +362,6 @@ export default function StudentDashboard() {
     color: 'white',
     borderRadius: '8px',
     fontWeight: '700',
-    cursor: 'pointer',
     fontSize: '16px',
     letterSpacing: '1px',
     textTransform: 'uppercase',
@@ -465,6 +491,8 @@ export default function StudentDashboard() {
                 }}>
                   {grouped[pos].map(c => {
                     const isSelected = selectedCandidates[c.position] === c.id;
+                    const isPositionAlreadyChosen = Boolean(selectedCandidates[c.position]);
+
                     return (
                       <div
                         key={c.id}
@@ -474,6 +502,26 @@ export default function StudentDashboard() {
                           boxShadow: isSelected ? '0 0 25px rgba(34,197,94,0.35)' : '0 4px 20px rgba(0,0,0,0.25)',
                         }}
                       >
+                        {/* 🗳️ Live Vote Count Badge (Top-Right Corner) */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '14px',
+                          right: '14px',
+                          background: 'rgba(251, 191, 36, 0.15)',
+                          border: '1px solid rgba(251, 191, 36, 0.4)',
+                          color: '#fbbf24',
+                          padding: '4px 10px',
+                          borderRadius: '16px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          letterSpacing: '0.4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          🗳️ {c.votes || 0} {(c.votes || 0) === 1 ? 'Vote' : 'Votes'}
+                        </div>
+
                         {/* Photo — top, centered */}
                         {c.photoURL && (
                           <img
@@ -495,19 +543,26 @@ export default function StudentDashboard() {
                           <p style={manifestoStyle}>"{c.manifesto}"</p>
                         )}
 
-                        {/* Vote Button — instant select per position */}
+                        {/* Vote Button — locked if chosen or if another candidate in this position is chosen */}
                         <button
                           onClick={() => handleSelectCandidate(c.position, c.id)}
-                          disabled={voting}
+                          disabled={voting || isPositionAlreadyChosen}
                           style={{
                             ...voteBtnStyle,
-                            background: isSelected ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #334155, #1e293b)',
-                            border: isSelected ? '2px solid #4ade80' : '1px solid rgba(255,255,255,0.15)',
+                            background: isSelected 
+                              ? 'linear-gradient(135deg, #16a34a, #15803d)' 
+                              : isPositionAlreadyChosen 
+                                ? '#1e293b' 
+                                : 'linear-gradient(135deg, #334155, #1e293b)',
+                            border: isSelected 
+                              ? '2px solid #4ade80' 
+                              : '1px solid rgba(255,255,255,0.15)',
                             boxShadow: isSelected ? '0 4px 15px rgba(34,197,94,0.4)' : 'none',
-                            cursor: voting ? 'not-allowed' : 'pointer'
+                            opacity: (!isSelected && isPositionAlreadyChosen) ? 0.35 : 1,
+                            cursor: (voting || isPositionAlreadyChosen) ? 'not-allowed' : 'pointer'
                           }}
                         >
-                          {isSelected ? '✅ Voted' : 'Vote'}
+                          {isSelected ? '✅ VOTED' : 'VOTE'}
                         </button>
                       </div>
                     );

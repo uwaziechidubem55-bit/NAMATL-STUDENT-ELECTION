@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
@@ -394,12 +394,9 @@ export default function AdminDashboard() {
     setActivationLoading(false);
   };
 
-  const loadAllData = async ({ silent = false } = {}) => {
-    // silent = background live-sync refresh → do NOT flash the full loading screen
-    if (!silent) {
-      setLoading(true);
-      setError('');
-    }
+  const loadAllData = async () => {
+    setLoading(true);
+    setError('');
     try {
       const [candidatesRes, settingsRes, votersRes, supportRes] = await Promise.all([
         adminApi('listCandidates'),
@@ -427,45 +424,17 @@ export default function AdminDashboard() {
       try { await loadActivation(); } catch (e) {}
       try { await loadPendingTransfer(); } catch (e) {}
 
-      if (!silent) setLoading(false);
+      setLoading(false);
     } catch (e) {
       console.error('Admin load error:', e);
-      if (!silent) {
-        setError(e.message && e.message.includes('Unauthorized')
-          ? 'Admin session expired. Please login again.'
-          : 'Failed to load data. Make sure Firestore database is created in Firebase Console.');
-        setLoading(false);
-      }
+      setError(e.message && e.message.includes('Unauthorized')
+        ? 'Admin session expired. Please login again.'
+        : 'Failed to load data. Make sure Firestore database is created in Firebase Console.');
+      setLoading(false);
     }
   };
 
   useEffect(() => { loadAllData(); }, []);
-
-  // ===================== LIVE DATABASE SYNC =====================
-  // This is the part that keeps the dashboard ACTIVE with the database:
-  // it re-fetches ALL data from Firestore every 30 seconds while the tab
-  // is open, and instantly when you switch back to the tab. So anything
-  // you update or DELETE in the Firebase Console disappears / updates
-  // here automatically — no manual browser refresh needed.
-  const syncingRef = useRef(false);
-
-  const refreshSilent = async () => {
-    if (syncingRef.current || document.visibilityState !== 'visible') return;
-    syncingRef.current = true;
-    try { await loadAllData({ silent: true }); }
-    finally { syncingRef.current = false; }
-  };
-
-  useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') refreshSilent(); };
-    document.addEventListener('visibilitychange', onVisible);
-    const id = setInterval(onVisible, 30000);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(id);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (formPurchaseSettings) {

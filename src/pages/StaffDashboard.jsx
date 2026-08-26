@@ -1,7 +1,21 @@
 // NAMATLS Staff Dashboard v1.0 — Real-time election monitoring for Lecturers & HOD
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { adminApi } from '../utils/adminApi';
+
+// Staff API helper — uses staffToken instead of adminToken
+async function staffApi(action, payload = {}) {
+  const res = await fetch('/api/staff-data', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (localStorage.getItem('staffToken') || ''),
+    },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+  return data;
+}
 
 export default function StaffDashboard() {
   const [candidates, setCandidates] = useState([]);
@@ -36,13 +50,13 @@ export default function StaffDashboard() {
     return () => clearInterval(t);
   }, []);
 
-  // Load all data
+  // Load all data via staff API
   const loadData = async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
       const [candRes, studRes] = await Promise.all([
-        adminApi('listCandidates'),
-        adminApi('listStudents'),
+        staffApi('listCandidates'),
+        staffApi('listStudents'),
       ]);
       setCandidates(candRes.items || []);
       setStudents(studRes.items || []);
@@ -50,6 +64,11 @@ export default function StaffDashboard() {
       setError(null);
     } catch (e) {
       setError(e.message);
+      // If unauthorized, redirect to login
+      if (e.message === 'Unauthorized' || e.message.includes('401')) {
+        localStorage.removeItem('staffToken');
+        navigate('/staff-login', { replace: true });
+      }
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -517,7 +536,6 @@ export default function StaffDashboard() {
                   </span>
                 </div>
 
-                {/* Candidate bars */}
                 {posCandidates.map((c) => {
                   const voteCount = c.votes || 0;
                   const pct = posTotalVotes > 0 ? ((voteCount / posTotalVotes) * 100) : 0;

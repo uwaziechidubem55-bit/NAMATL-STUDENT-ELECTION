@@ -18,6 +18,7 @@ const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const Support = lazy(() => import('./pages/Support'));
 const PurchaseForm = lazy(() => import('./pages/PurchaseForm'));
+const StaffDashboard = lazy(() => import('./pages/StaffDashboard')); // ← ADDED
 
 function LoadingScreen() {
   return (
@@ -100,6 +101,7 @@ function App() {
             <Route path="/admin-dashboard" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
             <Route path="/support" element={<Support />} />
             <Route path="/purchase-form" element={<PurchaseForm />} />
+            <Route path="/staff-dashboard" element={<StaffDashboard />} /> {/* ← ADDED */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

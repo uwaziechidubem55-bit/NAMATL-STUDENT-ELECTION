@@ -202,7 +202,7 @@ export default function Landing() {
               🔐 Restricted Admin Access 
             </Link>
             <Link
-              to="/staff-dashboard"
+              to="/staff-login"
               onClick={() => setMenuOpen(false)}
               style={menuItemStyle}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f5f5'; }}

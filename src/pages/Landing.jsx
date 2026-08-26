@@ -138,7 +138,6 @@ export default function Landing() {
     whiteSpace: 'nowrap'
   };
 
-  // ===== MODIFIED: Footer wrapper for marquee =====
   const footerWrapperStyle = {
     position: 'absolute',
     bottom: '15px',
@@ -201,6 +200,15 @@ export default function Landing() {
               onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; }}
             >
               🔐 Restricted Admin Access 
+            </Link>
+            <Link
+              to="/staff-dashboard"
+              onClick={() => setMenuOpen(false)}
+              style={menuItemStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#f5f5f5'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'white'; }}
+            >
+              📊 Staff Monitoring Dashboard
             </Link>
             <Link
               to="/support"

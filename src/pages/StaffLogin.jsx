@@ -1,4 +1,3 @@
-let the logo be at the center touch nothing else 
 // NAMATLS Staff Login v1.0 — Password-only access for Lecturers & HOD
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';

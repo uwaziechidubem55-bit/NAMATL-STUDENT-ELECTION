@@ -1,3 +1,4 @@
+let the logo be at the center touch nothing else 
 // NAMATLS Staff Login v1.0 — Password-only access for Lecturers & HOD
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -79,8 +80,6 @@ export default function StaffLogin() {
     border: '4px solid #FFD700',
     boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
     marginBottom: '16px',
-    display: 'block', // CHANGED 1
-    margin: '0 auto 16px auto', // CHANGED 2: centers it
   };
 
   const titleStyle = {

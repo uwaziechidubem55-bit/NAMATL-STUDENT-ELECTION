@@ -1,5 +1,5 @@
 // NAMATLS Staff Login v1.0 — Password-only access for Lecturers & HOD
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
 export default function StaffLogin() {
@@ -10,10 +10,10 @@ export default function StaffLogin() {
   const navigate = useNavigate();
 
   // Check if already logged in
-  useEffect(() => {
+  useState(() => {
     const token = localStorage.getItem('staffToken');
     if (token) navigate('/staff-dashboard', { replace: true });
-  }, [navigate]);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -71,13 +71,6 @@ export default function StaffLogin() {
     textAlign: 'center',
   };
 
-  const logoWrapperStyle = {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: '16px',
-  };
-
   const logoStyle = {
     width: '90px',
     height: '90px',
@@ -85,6 +78,9 @@ export default function StaffLogin() {
     objectFit: 'cover',
     border: '4px solid #FFD700',
     boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)',
+    marginBottom: '16px',
+    display: 'block', // CHANGED 1
+    margin: '0 auto 16px auto', // CHANGED 2: centers it
   };
 
   const titleStyle = {
@@ -135,17 +131,17 @@ export default function StaffLogin() {
     width: '100%',
     padding: '14px',
     background: loading
-     ? '#94a3b8'
+      ? '#94a3b8'
       : 'linear-gradient(135deg, #003366, #004080)',
-    color: loading? '#ccc' : '#FFD700',
+    color: loading ? '#ccc' : '#FFD700',
     border: 'none',
     borderRadius: '10px',
     fontWeight: 'bold',
     fontSize: '16px',
-    cursor: loading? 'not-allowed' : 'pointer',
+    cursor: loading ? 'not-allowed' : 'pointer',
     transition: 'all 0.2s',
     letterSpacing: '0.5px',
-    boxShadow: loading? 'none' : '0 4px 12px rgba(0,51,102,0.3)',
+    boxShadow: loading ? 'none' : '0 4px 12px rgba(0,51,102,0.3)',
   };
 
   const errorStyle = {
@@ -156,7 +152,7 @@ export default function StaffLogin() {
     background: '#fef2f2',
     borderRadius: '8px',
     border: '1px solid #fecaca',
-    display: error? 'block' : 'none',
+    display: error ? 'block' : 'none',
   };
 
   const backLinkStyle = {
@@ -183,15 +179,13 @@ export default function StaffLogin() {
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        {/* Logo perfectly centered */}
-        <div style={logoWrapperStyle}>
-          <img
-            src="/logo.png"
-            alt="NAMATL Logo"
-            style={logoStyle}
-            onError={(e) => { e.target.style.display = 'none'; }}
-          />
-        </div>
+        {/* Logo at top center */}
+        <img
+          src="/logo.png"
+          alt="NAMATL Logo"
+          style={logoStyle}
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
 
         <h1 style={titleStyle}>Staff Access</h1>
         <p style={subtitleStyle}>Lecturers & HOD — Election Monitoring Portal</p>
@@ -201,13 +195,13 @@ export default function StaffLogin() {
 
           <div style={inputWrapperStyle}>
             <input
-              type={showPassword? 'text' : 'password'}
+              type={showPassword ? 'text' : 'password'}
               placeholder="Enter staff password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={{
-               ...inputStyle,
-                borderColor: error? '#dc2626' : '#e0e0e0',
+                ...inputStyle,
+                borderColor: error ? '#dc2626' : '#e0e0e0',
               }}
               onFocus={(e) => { e.target.style.borderColor = '#003366'; }}
               onBlur={(e) => { e.target.style.borderColor = '#e0e0e0'; }}
@@ -219,7 +213,7 @@ export default function StaffLogin() {
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
-              {showPassword? '🙈' : '👁'}
+              {showPassword ? '🙈' : '👁'}
             </button>
           </div>
 
@@ -240,7 +234,7 @@ export default function StaffLogin() {
               }
             }}
           >
-            {loading? 'Verifying...' : '🔐 Enter Dashboard'}
+            {loading ? 'Verifying...' : '🔐 Enter Dashboard'}
           </button>
         </form>
 

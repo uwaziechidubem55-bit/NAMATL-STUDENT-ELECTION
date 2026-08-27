@@ -169,12 +169,12 @@ export default function StaffDashboard() {
   // ====== STYLES ======
   const pageStyle = {
     minHeight: '100vh',
-    background: '#f0f2f5',
+    background: 'linear-gradient(180deg, #eef2f7 0%, #e7ecf4 100%)',
     fontFamily: "'Segoe UI', Arial, sans-serif",
   };
 
   const headerStyle = {
-    background: 'linear-gradient(135deg, #002b54 0%, #003d6b 55%, #004a80 100%)',
+    background: 'linear-gradient(135deg, #04152e 0%, #0a2b52 45%, #0f3d6e 100%)',
     padding: '18px 24px',
     display: 'flex',
     justifyContent: 'space-between',
@@ -182,7 +182,21 @@ export default function StaffDashboard() {
     borderBottom: '3px solid #FFD700',
     flexWrap: 'wrap',
     gap: '12px',
-    boxShadow: '0 4px 18px rgba(0,43,84,0.35)',
+    boxShadow: '0 4px 18px rgba(2,12,28,0.45)',
+    position: 'relative',
+    overflow: 'hidden',
+  };
+
+  // Decorative glow in the header background (rendered as a child overlay)
+  const headerGlowStyle = {
+    position: 'absolute',
+    top: '-60px',
+    right: '-40px',
+    width: '300px',
+    height: '300px',
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(255,215,0,0.18) 0%, rgba(255,215,0,0) 70%)',
+    pointerEvents: 'none',
   };
 
   const headerTitleStyle = {
@@ -261,24 +275,25 @@ export default function StaffDashboard() {
   };
 
   const statCardStyle = {
-    background: 'white',
-    borderRadius: '12px',
+    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+    borderRadius: '14px',
     padding: '16px 18px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+    boxShadow: '0 4px 14px rgba(2,12,28,0.08)',
     borderLeft: '4px solid #003366',
     textAlign: 'center',
+    border: '1px solid rgba(2,12,28,0.05)',
   };
 
   const statValueStyle = {
     fontSize: '26px',
     fontWeight: 'bold',
-    color: '#003366',
+    color: '#0a2b52',
     margin: '4px 0',
   };
 
   const statLabelStyle = {
     fontSize: '12px',
-    color: '#888',
+    color: '#8894a6',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     fontWeight: '600',
@@ -638,16 +653,22 @@ export default function StaffDashboard() {
     <div style={pageStyle}>
       {/* Print stylesheet — hides interactive chrome when printing/saving PDF */}
       <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes livePulse {
+          0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
+          70% { box-shadow: 0 0 0 12px rgba(34,197,94,0); }
+          100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+        }
         @media print {
           .no-print { display: none !important; }
           .print-block { display: block !important; }
           body { background: #fff !important; }
-          ${pageStyle.background}  {}
         }
       `}</style>
 
       {/* HEADER */}
       <div style={headerStyle} className="no-print">
+        <div style={headerGlowStyle}></div>
         <div style={headerTitleStyle}>
           <div style={crestStyle}>⚖️</div>
           <div>
@@ -685,6 +706,43 @@ export default function StaffDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button style={segBtnStyle(view === 'bar')} onClick={() => setView('bar')}>📊 Bars</button>
             <button style={segBtnStyle(view === 'table')} onClick={() => setView('table')}>📋 Table</button>
+          </div>
+        </div>
+
+        {/* LIVE STATUS BANNER */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+          border: '1px solid #86efac',
+          borderRadius: '12px',
+          padding: '12px 18px',
+          marginBottom: '16px',
+          boxShadow: '0 2px 10px rgba(34,197,94,0.12)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '14px',
+              height: '14px',
+              borderRadius: '50%',
+              background: '#22c55e',
+              boxShadow: '0 0 0 0 rgba(34,197,94,0.7)',
+              animation: 'livePulse 1.6s infinite',
+            }}></div>
+            <div>
+              <div style={{ fontWeight: 'bold', color: '#15803d', fontSize: '15px' }}>
+                Election is LIVE
+              </div>
+              <div style={{ color: '#16a34a', fontSize: '12px' }}>
+                Results updating automatically every 12 seconds
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', color: '#15803d', fontWeight: '600', fontSize: '13px' }}>
+            {totalVotes.toLocaleString()} vote{totalVotes !== 1 ? 's' : ''} cast so far
           </div>
         </div>
 
@@ -851,7 +909,13 @@ export default function StaffDashboard() {
                           </div>
                         </div>
                         <div style={barOuterStyle}>
-                          <div style={barFillStyle(pct)}>
+                          <div style={{
+                            ...barFillStyle(pct),
+                            background: isLeader
+                              ? 'linear-gradient(90deg, #b8860b, #FFD700)'
+                              : 'linear-gradient(90deg, #003366, #0055a5)',
+                            boxShadow: isLeader ? '0 0 12px rgba(255,215,0,0.35)' : 'none',
+                          }}>
                             {pct > 12 && <span style={barPctStyle}>{pct.toFixed(1)}%</span>}
                           </div>
                         </div>
@@ -905,12 +969,12 @@ export default function StaffDashboard() {
       {/* BOTTOM ACTION BAR — Back button at the bottom */}
       <div style={bottomBarStyle} className="no-print">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/staff-login', { replace: true })}
           style={primaryBtnStyle}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg,#004a80,#00609f)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg,#003366,#004a80)'; }}
         >
-          ← Back to Home
+          ← Back to Login
         </button>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button onClick={() => window.print()} style={ghostBtnStyle} title="Print or save results as PDF">

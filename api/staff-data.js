@@ -32,6 +32,16 @@ export default async function handler(req, res) {
       const snap = await db.collection('students').get();
       return res.json({ success: true, items: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
     }
+    case 'getSettings': {
+      const [mainSnap, electionSnap] = await Promise.all([
+        db.doc('settings/main').get(),
+        db.doc('settings/election').get().catch(() => null),
+      ]);
+      let merged = {};
+      if (electionSnap && electionSnap.exists) merged = { ...electionSnap.data() };
+      if (mainSnap && mainSnap.exists) merged = { ...merged, ...mainSnap.data() };
+      return res.json({ success: true, settings: merged });
+    }
     default:
       return res.status(400).json({ success: false, message: 'Unknown action: ' + action });
   }

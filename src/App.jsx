@@ -1,6 +1,6 @@
 // NAMTLS v2.0.1 - FORCE UPDATE - DO NOT REMOVE THIS LINE
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -103,6 +103,8 @@ function App() {
             <Route path="/support" element={<Support />} />
             <Route path="/purchase-form" element={<PurchaseForm />} />
             <Route path="/staff-login" element={<StaffLogin />} />
+            {/* Secret staff shortcut → always resolves to Staff Login (works despite service-worker caching) */}
+            <Route path="/staff-monitor" element={<Navigate to="/staff-login" replace />} />
             <Route path="/staff-dashboard" element={<StaffDashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

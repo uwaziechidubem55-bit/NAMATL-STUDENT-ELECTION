@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
@@ -7,6 +7,12 @@ import UniqueKeyFinder from '../components/UniqueKeyFinder';
 const MAX_PER_POSITION = 5;
 const MAX_PHOTO_KB = 500; // Max candidate photo size in KB (passport-photo size)
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/jpg'];
+
+// Refresh protected database data without reloading or flashing the dashboard.
+const DATABASE_SYNC_INTERVAL_MS = 10000;
+const EMPTY_ELECTION_SETTINGS = {
+  year: '', startDate: '', startTime: '', endDate: '', endTime: '', isActive: false
+};
 
 // Helper to generate random candidate ID
 const generateCandidateId = () => {
@@ -214,6 +220,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Prevent overlapping background refreshes and protect unsaved settings edits.
+  const databaseSyncInProgressRef = useRef(false);
+  const databaseSyncQueuedRef = useRef(false);
+  const settingsDirtyRef = useRef(false);
+  const formPurchaseSettingsDirtyRef = useRef(false);
+
   const [candidates, setCandidates] = useState([]);
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
@@ -234,6 +246,7 @@ export default function AdminDashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMsg, setWithdrawMsg] = useState({ type: '', text: '' });
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [liveWithdrawalBalance, setLiveWithdrawalBalance] = useState(null);
 
   const [voters, setVoters] = useState([]);
   const [supportMessages, setSupportMessages] = useState([]);
@@ -270,6 +283,12 @@ export default function AdminDashboard() {
   const loadActivation = async () => {
     try {
       const mainRes = await adminApi('getMainSettings');
+      if (!mainRes.data) {
+        // The settings/main document was deleted: remove its old value from the UI.
+        setActiveMode('none');
+        return;
+      }
+
       if (mainRes.data) {
         const data = mainRes.data;
         let currentMode = data.activeMode || 'none';
@@ -394,59 +413,190 @@ export default function AdminDashboard() {
     setActivationLoading(false);
   };
 
-  const loadAllData = async () => {
-    setLoading(true);
-    setError('');
+  // Apply form-purchase settings, including clearing the UI when the document is deleted.
+  const applyFormPurchaseSettings = (data) => {
+    if (formPurchaseSettingsDirtyRef.current) return;
+    const next = data || {};
+    setFpPositions(next.positions || []);
+    setFpOpeningDate(next.openingDate || '');
+    setFpClosingDate(next.closingDate || '');
+    setFpOpeningTime(next.openingTime || '');
+    setFpClosingTime(next.closingTime || '');
+    setFpIsActive(next.isActive || false);
+  };
+
+  // Keep the printable result visible only for candidates that still exist.
+  // This prevents a candidate deleted from candidates/ from remaining on screen
+  // because electionData/results contains an older generated copy.
+  const applyStoredResults = (storedData, currentCandidates = null) => {
+    let nextResults = Array.isArray(storedData?.results) ? [...storedData.results] : [];
+    const candidateIds = storedData?.candidateIds || {};
+
+    if (Array.isArray(currentCandidates) && Object.keys(candidateIds).length > 0) {
+      const positionCounts = {};
+      const liveByGeneratedId = new Map();
+
+      currentCandidates.forEach((candidate) => {
+        positionCounts[candidate.position] = (positionCounts[candidate.position] || 0) + 1;
+        const generatedId = candidateIds[candidate.id];
+        if (generatedId) liveByGeneratedId.set(generatedId, candidate);
+      });
+
+      nextResults = nextResults
+        .filter(result => liveByGeneratedId.has(result.candidateId))
+        .map(result => {
+          const liveCandidate = liveByGeneratedId.get(result.candidateId);
+          const totalInPosition = positionCounts[liveCandidate.position] || 1;
+          const votes = Number(liveCandidate.votes || 0);
+          return {
+            ...result,
+            name: liveCandidate.name,
+            position: liveCandidate.position,
+            votes,
+            votePoint: (votes / totalInPosition).toFixed(2),
+            dept: liveCandidate.dept || ''
+          };
+        })
+        .sort((a, b) => {
+          if (a.position !== b.position) return a.position.localeCompare(b.position);
+          return b.votes - a.votes;
+        })
+        .map((result, index) => ({ ...result, sNo: index + 1 }));
+    }
+
+    setElectionResults(nextResults);
+    setResultsGenerated(nextResults.length > 0);
+  };
+
+  // Initial load shows the loading screen. Later calls are silent database syncs.
+  const loadAllData = async (showLoadingScreen = true) => {
+    if (databaseSyncInProgressRef.current) {
+      databaseSyncQueuedRef.current = true;
+      return;
+    }
+    databaseSyncInProgressRef.current = true;
+
+    if (showLoadingScreen) {
+      setLoading(true);
+      setError('');
+    }
+
     try {
-      const [candidatesRes, settingsRes, votersRes, supportRes] = await Promise.all([
+      const [
+        candidatesResult,
+        settingsResult,
+        votersResult,
+        supportResult,
+        formSettingsResult,
+        resultsResult,
+        balanceResult
+      ] = await Promise.allSettled([
         adminApi('listCandidates'),
-        adminApi('getElectionSettings').catch(() => ({ data: null })),
-        adminApi('listStudents').catch(() => ({ items: [] })),
-        adminApi('listSupport').catch(() => ({ items: [] })),
+        adminApi('getElectionSettings'),
+        adminApi('listStudents'),
+        adminApi('listSupport'),
+        adminApi('getFormPurchaseSettings'),
+        adminApi('getResults'),
+        adminApi('getBalance')
       ]);
 
-      const cData = candidatesRes.items || [];
-      setCandidates(cData);
+      let currentCandidates = null;
 
-      const counts = {};
-      cData.forEach(c => { counts[c.position] = (counts[c.position] || 0) + 1; });
-      setFpCandidateCounts(counts);
+      if (candidatesResult.status === 'fulfilled') {
+        currentCandidates = candidatesResult.value.items || [];
+        setCandidates(currentCandidates);
 
-      if (settingsRes.data) {
-        setSettings(settingsRes.data);
+        const counts = {};
+        currentCandidates.forEach(candidate => {
+          counts[candidate.position] = (counts[candidate.position] || 0) + 1;
+        });
+        setFpCandidateCounts(counts);
+      } else {
+        throw candidatesResult.reason;
       }
 
-      setVoters(votersRes.items || []);
-      setSupportMessages(supportRes.items || []);
+      if (settingsResult.status === 'fulfilled' && !settingsDirtyRef.current) {
+        // A null response means settings/election was deleted.
+        setSettings(settingsResult.value.data || { ...EMPTY_ELECTION_SETTINGS });
+      }
 
-      try { await loadBalance(); } catch (e) {}
-      try { await loadFormPurchases(); } catch (e) {}
-      try { await loadActivation(); } catch (e) {}
-      try { await loadPendingTransfer(); } catch (e) {}
+      if (votersResult.status === 'fulfilled') {
+        setVoters(votersResult.value.items || []);
+      }
 
-      setLoading(false);
+      if (supportResult.status === 'fulfilled') {
+        setSupportMessages(supportResult.value.items || []);
+      }
+
+      if (formSettingsResult.status === 'fulfilled') {
+        applyFormPurchaseSettings(formSettingsResult.value.data);
+      }
+
+      if (resultsResult.status === 'fulfilled') {
+        applyStoredResults(resultsResult.value.data, currentCandidates);
+      }
+
+      if (balanceResult.status === 'fulfilled') {
+        const balanceData = balanceResult.value.data;
+        // A deleted finances/withdrawalBalance document must display as zero.
+        setLiveWithdrawalBalance(Number(balanceData?.balance || 0));
+        setPendingTx(balanceData?.pendingWithdrawal || null);
+      }
+
+      // These existing context loaders update the context-owned values used here.
+      await Promise.allSettled([
+        loadBalance(),
+        loadFormPurchases(),
+        loadActivation()
+      ]);
+
+      if (showLoadingScreen) setError('');
     } catch (e) {
-      console.error('Admin load error:', e);
-      setError(e.message && e.message.includes('Unauthorized')
-        ? 'Admin session expired. Please login again.'
-        : 'Failed to load data. Make sure Firestore database is created in Firebase Console.');
-      setLoading(false);
+      console.error(showLoadingScreen ? 'Admin load error:' : 'Admin background sync error:', e);
+      const message = e?.message || '';
+      if (showLoadingScreen || message.includes('Unauthorized')) {
+        setError(message.includes('Unauthorized')
+          ? 'Admin session expired. Please login again.'
+          : 'Failed to load data. Make sure Firestore database is created in Firebase Console.');
+      }
+    } finally {
+      databaseSyncInProgressRef.current = false;
+      if (showLoadingScreen) setLoading(false);
+
+      if (databaseSyncQueuedRef.current) {
+        databaseSyncQueuedRef.current = false;
+        window.setTimeout(() => loadAllData(false), 0);
+      }
     }
   };
 
-  useEffect(() => { loadAllData(); }, []);
+  useEffect(() => {
+    loadAllData(true);
+
+    const syncIfVisible = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData(false);
+      }
+    };
+
+    const syncTimer = window.setInterval(syncIfVisible, DATABASE_SYNC_INTERVAL_MS);
+    window.addEventListener('focus', syncIfVisible);
+    document.addEventListener('visibilitychange', syncIfVisible);
+
+    return () => {
+      window.clearInterval(syncTimer);
+      window.removeEventListener('focus', syncIfVisible);
+      document.removeEventListener('visibilitychange', syncIfVisible);
+    };
+  }, []);
 
   useEffect(() => {
-    if (formPurchaseSettings) {
-      setFpPositions(formPurchaseSettings.positions || []);
-      setFpOpeningDate(formPurchaseSettings.openingDate || '');
-      setFpClosingDate(formPurchaseSettings.closingDate || '');
-      setFpOpeningTime(formPurchaseSettings.openingTime || '');
-      setFpClosingTime(formPurchaseSettings.closingTime || '');
-      setFpIsActive(formPurchaseSettings.isActive || false);
+    if (!formPurchaseSettingsDirtyRef.current) {
+      applyFormPurchaseSettings(formPurchaseSettings);
     }
   }, [formPurchaseSettings]);
 
+  const displayedWithdrawalBalance = liveWithdrawalBalance ?? withdrawalBalance;
   const sortedByVotes = [...candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0));
   const unreadMessages = supportMessages.filter(m => m.status === 'unread').length;
   const activeVoters = voters.filter(v => v.hasVoted).length;
@@ -513,7 +663,11 @@ export default function AdminDashboard() {
   };
 
   const handleSaveSettings = async () => {
-    try { await adminApi('saveElectionSettings', { data: settings }); alert('✅ Saved!'); }
+    try {
+      await adminApi('saveElectionSettings', { data: settings });
+      settingsDirtyRef.current = false;
+      alert('✅ Saved!');
+    }
     catch (e) { alert('Error: ' + e.message); }
   };
 
@@ -681,6 +835,7 @@ export default function AdminDashboard() {
   const loadPendingTransfer = async () => {
     try {
       const res = await adminApi('getBalance');
+      setLiveWithdrawalBalance(Number(res.data?.balance || 0));
       setPendingTx(res.data?.pendingWithdrawal || null);
     } catch (e) {
       console.error('Load pending transfer error:', e);
@@ -709,10 +864,12 @@ export default function AdminDashboard() {
         setCheckMsg({ type: 'success', text: '✅ ' + (data.message || 'Transfer confirmed!') });
         setPendingTx(null);
         loadBalance();
+        loadPendingTransfer();
       } else if (data.status === 'failed') {
         setCheckMsg({ type: 'error', text: '❌ ' + (data.message || 'Transfer failed') });
         setPendingTx(null);
         loadBalance();
+        loadPendingTransfer();
       } else {
         setCheckMsg({ type: 'info', text: '⏳ ' + (data.message || `Status: ${data.status}`) });
       }
@@ -725,11 +882,15 @@ export default function AdminDashboard() {
   const handleFpAddPosition = () => {
     if (!fpNewPosition || !fpNewAmount) { alert('Position and amount required'); return; }
     if (fpPositions.find(p => p.position === fpNewPosition.trim())) { alert('Already exists'); return; }
+    formPurchaseSettingsDirtyRef.current = true;
     setFpPositions([...fpPositions, { position: fpNewPosition.trim(), amount: Number(fpNewAmount) }]);
     setFpNewPosition(''); setFpNewAmount('');
   };
 
-  const handleFpRemovePosition = (i) => setFpPositions(fpPositions.filter((_, idx) => idx !== i));
+  const handleFpRemovePosition = (i) => {
+    formPurchaseSettingsDirtyRef.current = true;
+    setFpPositions(fpPositions.filter((_, idx) => idx !== i));
+  };
 
   const handleFpSaveSettings = async () => {
     if (!fpPositions.length) { alert('Add at least one position'); return; }
@@ -739,7 +900,10 @@ export default function AdminDashboard() {
       openingTime: fpOpeningTime, closingTime: fpClosingTime, positions: fpPositions
     });
     setFpMsg(result.message);
-    if (result.success) setTimeout(() => setFpMsg(''), 3000);
+    if (result.success) {
+      formPurchaseSettingsDirtyRef.current = false;
+      setTimeout(() => setFpMsg(''), 3000);
+    }
     setFpSaving(false);
   };
 
@@ -831,10 +995,8 @@ export default function AdminDashboard() {
     setPrintLoading(true);
     try {
       const resultsRes = await adminApi('getResults');
-      if (resultsRes.data && resultsRes.data.results && resultsRes.data.results.length > 0) {
-        setElectionResults(resultsRes.data.results);
-        setResultsGenerated(true);
-      }
+      // Also clears old printable results when electionData/results is deleted.
+      applyStoredResults(resultsRes.data, candidates);
     } catch (e) {
       console.error('Load results error:', e);
     }
@@ -912,7 +1074,7 @@ export default function AdminDashboard() {
               <span style={{ fontSize: '12px', opacity: 0.8 }}>BROUTE</span>
             </div>
           </div>
-          <span style={{ fontSize: '13px', opacity: 0.7 }}>₦{withdrawalBalance.toLocaleString()}</span>
+          <span style={{ fontSize: '13px', opacity: 0.7 }}>₦{displayedWithdrawalBalance.toLocaleString()}</span>
         </div>
 
         {/* Dashboard */}
@@ -936,7 +1098,7 @@ export default function AdminDashboard() {
               </div>
               <div style={statCardStyle}>
                 <div style={{ fontSize: '28px', marginBottom: '8px' }}>💰</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a' }}>₦{displayedWithdrawalBalance.toLocaleString()}</div>
                 <div style={{ fontSize: '13px', color: '#666' }}>Balance</div>
               </div>
             </div>
@@ -976,30 +1138,30 @@ export default function AdminDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Year</label>
-                <input value={settings.year} onChange={e => setSettings({...settings, year: e.target.value})} style={inputStyle} placeholder="2026/2027" />
+                <input value={settings.year} onChange={e => { settingsDirtyRef.current = true; setSettings({...settings, year: e.target.value}); }} style={inputStyle} placeholder="2026/2027" />
               </div>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Active</label>
-                <select value={settings.isActive ? 'true' : 'false'} onChange={e => setSettings({...settings, isActive: e.target.value === 'true'})} style={inputStyle}>
+                <select value={settings.isActive ? 'true' : 'false'} onChange={e => { settingsDirtyRef.current = true; setSettings({...settings, isActive: e.target.value === 'true'}); }} style={inputStyle}>
                   <option value="false">Disabled</option>
                   <option value="true">Active</option>
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Date</label>
-                <input type="date" value={settings.startDate} onChange={e => setSettings({...settings, startDate: e.target.value})} style={inputStyle} />
+                <input type="date" value={settings.startDate} onChange={e => { settingsDirtyRef.current = true; setSettings({...settings, startDate: e.target.value}); }} style={inputStyle} />
               </div>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Time</label>
-                <input type="time" value={settings.startTime} onChange={e => setSettings({...settings, startTime: e.target.value})} style={inputStyle} />
+                <input type="time" value={settings.startTime} onChange={e => { settingsDirtyRef.current = true; setSettings({...settings, startTime: e.target.value}); }} style={inputStyle} />
               </div>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>End Date</label>
-                <input type="date" value={settings.endDate} onChange={e => setSettings({...settings, endDate: e.target.value})} style={inputStyle} />
+                <input type="date" value={settings.endDate} onChange={e => { settingsDirtyRef.current = true; setSettings({...settings, endDate: e.target.value}); }} style={inputStyle} />
               </div>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>End Time</label>
-                <input type="time" value={settings.endTime} onChange={e => setSettings({...settings, endTime: e.target.value})} style={inputStyle} />
+                <input type="time" value={settings.endTime} onChange={e => { settingsDirtyRef.current = true; setSettings({...settings, endTime: e.target.value}); }} style={inputStyle} />
               </div>
             </div>
             <button onClick={handleSaveSettings} style={{ ...btnPrimary, marginTop: '16px' }}>💾 Save</button>
@@ -1573,8 +1735,8 @@ export default function AdminDashboard() {
             {formPurchases.length === 0 ? (
               <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>No purchases yet</p>
             ) : (
-              purchaseGroups.map((group, gi) => (
-                <div key={gi} style={{ marginBottom: '28px', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+              purchaseGroups.map((group) => (
+                <div key={group.position} style={{ marginBottom: '28px', border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
                   <div style={{ background: '#003366', color: '#FFD700', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <strong style={{ fontSize: '15px' }}>🏛️ {group.position}</strong>
                     <span style={{ fontSize: '12px', opacity: 0.85 }}>{group.purchases.length} purchaser(s)</span>
@@ -1595,7 +1757,7 @@ export default function AdminDashboard() {
                       </thead>
                       <tbody>
                         {group.purchases.map((p, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                          <tr key={p.id || i} style={{ borderBottom: '1px solid #eee' }}>
                             <td style={{ padding: '10px', textAlign: 'center' }}>{i + 1}</td>
                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.fullName || p.name || '—'}</td>
                             <td style={{ padding: '10px', color: '#666' }}>{p.department || p.dept || '—'}</td>
@@ -1625,14 +1787,14 @@ export default function AdminDashboard() {
               <p style={{ color: '#666', fontSize: '13px', marginBottom: '20px' }}>Configure positions, prices, availability</p>
               {fpMsg && <div style={{ padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', background: fpMsg.includes('Error') ? '#fee2e2' : '#d1fae5', color: fpMsg.includes('Error') ? '#dc2626' : '#16a34a', fontWeight: 'bold' }}>{fpMsg}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Date</label><input type="date" value={fpOpeningDate} onChange={e => setFpOpeningDate(e.target.value)} style={inputStyle} /></div>
-                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Time</label><input type="time" value={fpOpeningTime} onChange={e => setFpOpeningTime(e.target.value)} style={inputStyle} /></div>
-                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Date</label><input type="date" value={fpClosingDate} onChange={e => setFpClosingDate(e.target.value)} style={inputStyle} /></div>
-                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Time</label><input type="time" value={fpClosingTime} onChange={e => setFpClosingTime(e.target.value)} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Date</label><input type="date" value={fpOpeningDate} onChange={e => { formPurchaseSettingsDirtyRef.current = true; setFpOpeningDate(e.target.value); }} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Opening Time</label><input type="time" value={fpOpeningTime} onChange={e => { formPurchaseSettingsDirtyRef.current = true; setFpOpeningTime(e.target.value); }} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Date</label><input type="date" value={fpClosingDate} onChange={e => { formPurchaseSettingsDirtyRef.current = true; setFpClosingDate(e.target.value); }} style={inputStyle} /></div>
+                <div><label style={{ fontSize: '14px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Closing Time</label><input type="time" value={fpClosingTime} onChange={e => { formPurchaseSettingsDirtyRef.current = true; setFpClosingTime(e.target.value); }} style={inputStyle} /></div>
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                  <input type="checkbox" checked={fpIsActive} onChange={e => setFpIsActive(e.target.checked)} style={{ marginRight: '8px' }} />
+                  <input type="checkbox" checked={fpIsActive} onChange={e => { formPurchaseSettingsDirtyRef.current = true; setFpIsActive(e.target.checked); }} style={{ marginRight: '8px' }} />
                   Form Purchase Active
                 </label>
               </div>
@@ -1694,7 +1856,7 @@ export default function AdminDashboard() {
                     </tr></thead>
                     <tbody>
                       {formPurchases.map((p, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                        <tr key={p.id || i} style={{ borderBottom: '1px solid #eee' }}>
                           <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.fullName}</td>
                           <td style={{ padding: '10px', color: '#666' }}>{p.position}</td>
                           <td style={{ padding: '10px', textAlign: 'right', color: '#16a34a', fontWeight: 'bold' }}>₦{Number(p.amount).toLocaleString()}</td>
@@ -1724,7 +1886,7 @@ export default function AdminDashboard() {
               <div style={{ position: 'absolute', top: -50, right: -40, width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,215,0,0.07)' }} />
               <div style={{ position: 'absolute', bottom: -70, left: -30, width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,215,0,0.05)' }} />
               <div style={{ fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.8, marginBottom: '6px' }}>Available Balance</div>
-              <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#FFD700', marginBottom: '14px' }}>₦{withdrawalBalance.toLocaleString()}</div>
+              <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#FFD700', marginBottom: '14px' }}>₦{displayedWithdrawalBalance.toLocaleString()}</div>
               <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px', opacity: 0.92 }}>
                 <span>🏦 Beneficiary: <strong>{OPAY_ACCOUNT}</strong> (Opay)</span>
                 <span>Min: ₦100</span>
@@ -1773,13 +1935,13 @@ export default function AdminDashboard() {
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                   <input type="number" placeholder="0.00" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }} />
                   <button
-                    onClick={() => setWithdrawAmount(String(withdrawalBalance))}
-                    disabled={withdrawBusy || withdrawalBalance <= 0}
+                    onClick={() => setWithdrawAmount(String(displayedWithdrawalBalance))}
+                    disabled={withdrawBusy || displayedWithdrawalBalance <= 0}
                     style={{
                       padding: '0 16px', background: '#eef2ff', color: '#4338ca',
                       border: '1px solid #c7d2fe', borderRadius: '8px', cursor: 'pointer',
                       fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap',
-                      opacity: (withdrawBusy || withdrawalBalance <= 0) ? 0.5 : 1
+                      opacity: (withdrawBusy || displayedWithdrawalBalance <= 0) ? 0.5 : 1
                     }}
                   >
                     ⚡ All
@@ -1821,7 +1983,7 @@ export default function AdminDashboard() {
                   <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>📋 Account Summary</h3>
                   <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: '#888', fontSize: '13px' }}>Available Balance</span>
-                    <strong style={{ color: '#16a34a' }}>₦{withdrawalBalance.toLocaleString()}</strong>
+                    <strong style={{ color: '#16a34a' }}>₦{displayedWithdrawalBalance.toLocaleString()}</strong>
                   </div>
                   <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: '#888', fontSize: '13px' }}>Beneficiary</span>

@@ -1,19 +1,42 @@
 {
   "framework": "vite",
+
   "rewrites": [
+
     { "source": "/api/student-login", "destination": "/api/student?action=login" },
+
     { "source": "/api/student-register", "destination": "/api/student?action=register" },
+
     { "source": "/api/student-verify-key", "destination": "/api/student?action=verifyKey" },
+
     { "source": "/api/admin-login", "destination": "/api/admin-auth?action=login" },
+
     { "source": "/api/verify-session", "destination": "/api/admin-auth?action=verify" },
+
     { "source": "/api/verify-activation", "destination": "/api/verify-payment?action=activation" },
+
     { "source": "/api/verify-form-payment", "destination": "/api/verify-payment?action=form" },
+
     { "source": "/(.*)", "destination": "/index.html" }
+
   ],
+
+  "redirects": [
+
+    { "source": "/staff-monitor", "destination": "/staff-login", "statusCode": 302 }
+
+  ],
+
   "crons": [
+
     { "path": "/api/check-transfer", "schedule": "0 1 * * *" }
+
   ],
+
   "headers": [
+
     { "source": "/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] }
+
   ]
+
 }

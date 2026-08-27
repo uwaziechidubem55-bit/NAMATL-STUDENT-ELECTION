@@ -98,6 +98,8 @@ export default function StudentDashboard() {
         }
 
         // 3. Live Fetch: Merge settings/main and settings/election from Firestore
+        // NOTE: If Firestore returns NO settings (e.g. they were deleted from the DB),
+        // we show a clean/empty state instead of re-using a stale localStorage copy.
         try {
           const [mainSnap, electionSnap] = await Promise.all([
             getDoc(doc(db, 'settings', 'main')),
@@ -115,10 +117,13 @@ export default function StudentDashboard() {
             setSettings(merged);
             localStorage.setItem('electionSettings', JSON.stringify(merged));
           } else {
-            const savedSettings = JSON.parse(localStorage.getItem('electionSettings') || '{}');
-            setSettings(savedSettings);
+            // DB has no election settings — clear the stale cache and show a clean state.
+            localStorage.removeItem('electionSettings');
+            setSettings({});
           }
         } catch (e) {
+          // Only fall back to the cache on a REAL error (network / Firestore failure),
+          // never on an empty DB response.
           console.error('Error loading settings:', e);
           const savedSettings = JSON.parse(localStorage.getItem('electionSettings') || '{}');
           setSettings(savedSettings);
@@ -272,6 +277,46 @@ export default function StudentDashboard() {
     if (rankA !== rankB) return rankA - rankB;
     return a.localeCompare(b);
   });
+
+  // ✅ Per-position percentage map: candidateId -> formatted percent string
+  // - Before the first vote in a position, every candidate shows a neutral 100%.
+  // - After votes come in, the 100% is divided proportionally across the position.
+  //   Whole-number rounding is nudged so each position always sums to exactly 100%.
+  const buildPositionPercentages = (posCandidates) => {
+    const map = {};
+    const totalVotes = posCandidates.reduce((s, c) => s + (c.votes || 0), 0);
+
+    if (totalVotes <= 0) {
+      // Election just started — no votes cast in this position yet.
+      posCandidates.forEach(c => { map[c.id] = '100%'; });
+      return map;
+    }
+
+    // Real proportional percentages.
+    const raw = posCandidates.map(c => {
+      const pct = ((c.votes || 0) / totalVotes) * 100;
+      return { id: c.id, pct, floor: Math.floor(pct) };
+    });
+
+    const flooredSum = raw.reduce((s, r) => s + r.floor, 0);
+    let remainder = 100 - flooredSum;
+
+    // Nudge the candidates with the largest leftover fraction first, until we hit 100%.
+    const sorted = [...raw].sort((a, b) =>
+      (b.pct - b.floor) - (a.pct - a.floor)
+    );
+    const adjusted = new Map(raw.map(r => [r.id, r.floor]));
+    for (const r of sorted) {
+      if (remainder <= 0) break;
+      adjusted.set(r.id, adjusted.get(r.id) + 1);
+      remainder--;
+    }
+
+    raw.forEach(r => {
+      map[r.id] = `${adjusted.get(r.id)}%`;
+    });
+    return map;
+  };
 
   // ── Styles ──
   const sectionStyle = {
@@ -474,13 +519,42 @@ export default function StudentDashboard() {
           </div>
         ) : (
           <>
-            {positions.map(pos => (
+            {positions.map(pos => {
+              const posCandidates = grouped[pos];
+              const isUnopposed = posCandidates.length === 1;
+              const posPctMap = buildPositionPercentages(posCandidates);
+              const posTotalVotes = posCandidates.reduce((s, c) => s + (c.votes || 0), 0);
+
+              return (
               <div key={pos} style={sectionStyle}>
 
                 {/* Position Heading — Bold, Gold, On Top */}
                 <h2 style={positionHeadingStyle}>
                   {pos}
                 </h2>
+
+                {/* Unopposed — single candidate is automatically the winner */}
+                {isUnopposed && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px',
+                    marginBottom: '24px',
+                    padding: '10px 20px',
+                    background: 'linear-gradient(135deg, rgba(22,163,74,0.18), rgba(22,163,74,0.08))',
+                    border: '1px solid rgba(34,197,94,0.45)',
+                    borderRadius: '999px',
+                    color: '#4ade80',
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase',
+                    boxShadow: '0 2px 12px rgba(34,197,94,0.2)',
+                  }}>
+                    🏆 Running Unopposed — Auto-Winner
+                  </div>
+                )}
 
                 {/* Candidates Grid */}
                 <div style={{
@@ -489,12 +563,15 @@ export default function StudentDashboard() {
                   gap: '24px',
                   justifyContent: 'center',
                 }}>
-                  {grouped[pos].map(c => {
+                  {posCandidates.map(c => {
                     const isSelected = selectedCandidates[c.position] === c.id;
                     const isPositionAlreadyChosen = Boolean(selectedCandidates[c.position]);
 
                     // ✅ Shows +1 preview vote for this user locally; other users only see real submitted votes
                     const displayedVotes = (c.votes || 0) + (isSelected ? 1 : 0);
+
+                    // ✅ Percentage for this candidate in this position
+                    const pctText = posPctMap[c.id] || '0%';
 
                     return (
                       <div
@@ -505,6 +582,25 @@ export default function StudentDashboard() {
                           boxShadow: isSelected ? '0 0 25px rgba(34,197,94,0.35)' : '0 4px 20px rgba(0,0,0,0.25)',
                         }}
                       >
+                        {/* 🏆 Winner Ribbon — unopposed auto-winner (top-left corner) */}
+                        {isUnopposed && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '14px',
+                            left: '14px',
+                            background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                            color: 'white',
+                            padding: '4px 10px',
+                            borderRadius: '16px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            letterSpacing: '0.4px',
+                            boxShadow: '0 2px 10px rgba(34,197,94,0.4)',
+                          }}>
+                            🏆 WINNER
+                          </div>
+                        )}
+
                         {/* 🗳️ Live Vote Count Badge (Top-Right Corner) */}
                         <div style={{
                           position: 'absolute',
@@ -523,6 +619,27 @@ export default function StudentDashboard() {
                           gap: '4px'
                         }}>
                           🗳️ {displayedVotes} {displayedVotes === 1 ? 'Vote' : 'Votes'}
+                        </div>
+
+                        {/* 📊 Percentage Badge — top-center corner, per position */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '14px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          background: posTotalVotes <= 0 ? 'rgba(148, 163, 184, 0.18)' : 'rgba(59, 130, 246, 0.18)',
+                          border: posTotalVotes <= 0
+                            ? '1px solid rgba(148, 163, 184, 0.45)'
+                            : '1px solid rgba(96, 165, 250, 0.55)',
+                          color: posTotalVotes <= 0 ? '#cbd5e1' : '#60a5fa',
+                          padding: '4px 10px',
+                          borderRadius: '16px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          letterSpacing: '0.4px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          📊 {pctText}
                         </div>
 
                         {/* Photo — top, centered */}
@@ -572,7 +689,8 @@ export default function StudentDashboard() {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {/* 🗳️ SUBMIT OFFICIAL BALLOT CARD */}
             <div style={{

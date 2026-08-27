@@ -28,6 +28,7 @@ export default function StaffDashboard() {
   const [search, setSearch] = useState('');            // Search / filter candidates
   const [view, setView] = useState('bar');             // 'bar' | 'table'
   const [isFullscreen, setIsFullscreen] = useState(false); // Projector mode for HOD
+  const [settings, setSettings] = useState({});        // Election settings (status, dates)
   const navigate = useNavigate();
   const intervalRef = useRef(null);
 
@@ -57,12 +58,14 @@ export default function StaffDashboard() {
   const loadData = async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const [candRes, studRes] = await Promise.all([
+      const [candRes, studRes, setRes] = await Promise.all([
         staffApi('listCandidates'),
         staffApi('listStudents'),
+        staffApi('getSettings').catch(() => ({ settings: {} })),
       ]);
       setCandidates(candRes.items || []);
       setStudents(studRes.items || []);
+      setSettings(setRes.settings || {});
       setLastUpdated(new Date().toLocaleTimeString());
       setError(null);
     } catch (e) {
@@ -165,6 +168,30 @@ export default function StaffDashboard() {
     if (ib === -1) return -1;
     return ia - ib;
   });
+
+  // ---- Election live status (from Firestore settings) ----
+  const isModeActive = settings.activeMode === 'election' || settings.activeMode === 'both' || settings.isActive === true || settings.isActive === 'true';
+
+  let startDateTime = null;
+  if (settings.startDate) {
+    startDateTime = new Date(`${settings.startDate}T${settings.startTime || '00:00'}`);
+  }
+  let endDateTime = null;
+  if (settings.endDate) {
+    endDateTime = new Date(`${settings.endDate}T${settings.endTime || '23:59'}`);
+  }
+
+  const nowDate = new Date();
+  const electionStarted = startDateTime ? (nowDate >= startDateTime) : true;
+  const electionEnded = endDateTime ? (nowDate >= endDateTime) : false;
+  const electionLive = isModeActive && electionStarted && !electionEnded;
+
+  const electionStatus = (() => {
+    if (!isModeActive) return { label: 'Election Not Configured', dot: '#f59e0b', bg: 'linear-gradient(135deg,#fffbeb,#fef3c7)', border: '#fcd34d', strong: '#b45309', sub: '#92400e' };
+    if (!electionStarted) return { label: 'Election Not Yet Started', dot: '#f59e0b', bg: 'linear-gradient(135deg,#fffbeb,#fef3c7)', border: '#fcd34d', strong: '#b45309', sub: '#92400e' };
+    if (electionEnded) return { label: 'Election Ended', dot: '#dc2626', bg: 'linear-gradient(135deg,#fef2f2,#fee2e2)', border: '#fca5a5', strong: '#b91c1c', sub: '#991b1b' };
+    return { label: 'Election is LIVE', dot: '#22c55e', bg: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', border: '#86efac', strong: '#15803d', sub: '#16a34a' };
+  })();
 
   // ====== STYLES ======
   const pageStyle = {
@@ -709,39 +736,43 @@ export default function StaffDashboard() {
           </div>
         </div>
 
-        {/* LIVE STATUS BANNER */}
+        {/* ELECTION STATUS BANNER */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '12px',
-          background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-          border: '1px solid #86efac',
+          background: electionStatus.bg,
+          border: `1px solid ${electionStatus.border}`,
           borderRadius: '12px',
           padding: '12px 18px',
           marginBottom: '16px',
-          boxShadow: '0 2px 10px rgba(34,197,94,0.12)',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
               width: '14px',
               height: '14px',
               borderRadius: '50%',
-              background: '#22c55e',
-              boxShadow: '0 0 0 0 rgba(34,197,94,0.7)',
-              animation: 'livePulse 1.6s infinite',
+              background: electionStatus.dot,
+              boxShadow: `0 0 0 0 ${electionStatus.dot}`,
+              animation: electionLive ? 'livePulse 1.6s infinite' : 'none',
             }}></div>
             <div>
-              <div style={{ fontWeight: 'bold', color: '#15803d', fontSize: '15px' }}>
-                Election is LIVE
+              <div style={{ fontWeight: 'bold', color: electionStatus.strong, fontSize: '15px' }}>
+                {electionStatus.label}
               </div>
-              <div style={{ color: '#16a34a', fontSize: '12px' }}>
-                Results updating automatically every 12 seconds
+              <div style={{ color: electionStatus.sub, fontSize: '12px' }}>
+                {electionLive
+                  ? 'Results updating automatically every 12 seconds'
+                  : (settings.startDate
+                      ? `Scheduled: ${settings.startDate} ${settings.startTime || ''}`
+                      : 'Set up and activate the election from the Admin Dashboard')}
               </div>
             </div>
           </div>
-          <div style={{ textAlign: 'right', color: '#15803d', fontWeight: '600', fontSize: '13px' }}>
+          <div style={{ textAlign: 'right', color: electionStatus.strong, fontWeight: '600', fontSize: '13px' }}>
             {totalVotes.toLocaleString()} vote{totalVotes !== 1 ? 's' : ''} cast so far
           </div>
         </div>

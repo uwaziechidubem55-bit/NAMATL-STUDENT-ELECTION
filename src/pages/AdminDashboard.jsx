@@ -279,6 +279,28 @@ export default function AdminDashboard() {
   const [activationLoading, setActivationLoading] = useState(false);
   const [activationMsg, setActivationMsg] = useState({ type: '', text: '' });
 
+  // ===================== SUPER ADMIN (control room) STATE =====================
+  const [superCode, setSuperCode] = useState('');
+  const [superCodeBusy, setSuperCodeBusy] = useState(false);
+  const [superCodeMsg, setSuperCodeMsg] = useState({ type: '', text: '' });
+  const saveSuperCode = async () => {
+    if (!superCode.trim()) {
+      setSuperCodeMsg({ type: 'error', text: 'Enter a code first (at least 6 characters).' });
+      return;
+    }
+    setSuperCodeBusy(true);
+    setSuperCodeMsg({ type: '', text: '' });
+    try {
+      const res = await adminApi('setSuperAdminCode', { newCode: superCode.trim() });
+      setSuperCodeMsg({ type: 'success', text: res.message || 'Super admin code saved.' });
+      setSuperCode('');
+    } catch (e) {
+      setSuperCodeMsg({ type: 'error', text: e.message || 'Failed to save code.' });
+    } finally {
+      setSuperCodeBusy(false);
+    }
+  };
+
   // ===================== LOAD ACTIVATION (server-side now) =====================
   const loadActivation = async () => {
     try {
@@ -633,6 +655,7 @@ export default function AdminDashboard() {
     { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
     { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
     { key: 'key-finder', label: 'Key Finder', icon: '🔑' },
+    { key: 'super-admin', label: 'Super Admin', icon: '🛡️' },
   ];
 
   const inputStyle = {
@@ -2031,6 +2054,47 @@ export default function AdminDashboard() {
         )}
 
         {/* Key Finder */}
+        {activeView === 'super-admin' && (
+          <div style={cardStyle}>
+            <h2 style={{ color: '#003366', marginBottom: '8px' }}>🛡️ Super Admin</h2>
+            <p style={{ color: '#666', fontSize: '14px', marginBottom: '20px' }}>
+              The control room: live monitoring of every page, logins, votes and payments — plus the
+              activation price book (Database Maintenance, Site Update, Database Upgrading).
+              It can only be reached from here and needs the super admin login code.
+            </p>
+
+            <button
+              onClick={() => navigate('/super-admin-login')}
+              style={{ ...btnPrimary, marginBottom: '28px' }}
+            >
+              🚪 Open Super Admin Login
+            </button>
+
+            <h3 style={{ color: '#003366', margin: '0 0 8px 0' }}>🔑 Set Super Admin Login Code</h3>
+            <p style={{ color: '#666', fontSize: '13px', margin: '0 0 12px 0' }}>
+              This code is checked against Firestore when you log in to the Super Admin Dashboard.
+              Saving a new code immediately replaces the old one. Minimum 6 characters.
+            </p>
+            <input
+              type="password"
+              value={superCode}
+              onChange={(e) => setSuperCode(e.target.value)}
+              placeholder="Enter new super admin code"
+              style={{ width: '100%', maxWidth: '380px', padding: '12px 14px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box', fontSize: '14px', fontFamily: 'monospace', outline: 'none' }}
+            />
+            <br />
+            <button onClick={saveSuperCode} disabled={superCodeBusy}
+              style={{ ...btnSuccess, opacity: superCodeBusy ? 0.6 : 1, cursor: superCodeBusy ? 'not-allowed' : 'pointer' }}>
+              {superCodeBusy ? '⏳ Saving...' : '💾 Save Code'}
+            </button>
+            {superCodeMsg.text && (
+              <div style={{ marginTop: '16px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', background: superCodeMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: superCodeMsg.type === 'error' ? '#991b1b' : '#166534' }}>
+                {superCodeMsg.text}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeView === 'key-finder' && <UniqueKeyFinder />}
 
         {/* Messages */}

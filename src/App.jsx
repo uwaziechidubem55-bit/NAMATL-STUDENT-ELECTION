@@ -22,6 +22,8 @@ const Support = lazy(() => import('./pages/Support'));
 const PurchaseForm = lazy(() => import('./pages/PurchaseForm'));
 const StaffLogin = lazy(() => import('./pages/StaffLogin'));
 const StaffDashboard = lazy(() => import('./pages/StaffDashboard'));
+const SuperAdminLogin = lazy(() => import('./pages/SuperAdminLogin'));
+const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 
 function LoadingScreen() {
   return (

@@ -1,5 +1,6 @@
 // NAMATLS Student API — login / register / verify-key in ONE function.
 import { getAdminDb } from './_admin.js';
+import { writeAudit } from './_audit.js';
 
 const normalizeMatric = (matric) => matric.trim().toUpperCase().replace(/\s+/g, '');
 const toDocId = (matric) => normalizeMatric(matric).replace(/\//g, '_');
@@ -19,6 +20,7 @@ async function login(req, res) {
     return res.status(404).json({ success: false, message: 'Matric Number not registered. Please sign up first.' });
   }
   const s = snap.data();
+  await writeAudit({ db: getAdminDb(), actor: s.matric || matric, action: 'STUDENT_LOGIN', details: { level: s.level } });
   return res.status(200).json({
     success: true,
     student: { name: s.name, matric: s.matric, level: s.level, hasVoted: !!s.hasVoted },
@@ -50,7 +52,30 @@ async function register(req, res) {
     createdAt: new Date().toISOString(),
   });
 
+  await writeAudit({ db: getAdminDb(), actor: normalized, action: 'STUDENT_REGISTER', details: { level: level.trim() } });
+
   return res.status(200).json({ success: true, uniqueKey });
+}
+
+// ---- Super Admin live monitoring: who is on which page (no login needed) ----
+// Called by PresenceContext on every page change + every 45s per visitor.
+// Online = seen in the last 2 minutes (counted in admin.js superStats).
+async function presence(req, res) {
+  const { anonId, page, role } = req.body || {};
+  const safeId = String(anonId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+  if (!safeId || !page) {
+    return res.status(400).json({ success: false, message: 'anonId and page are required' });
+  }
+  const now = new Date().toISOString();
+  const ref = getAdminDb().doc(`presence/${safeId}`);
+  const existing = await ref.get();
+  await ref.set({
+    page: String(page).slice(0, 60),
+    role: String(role || 'visitor').slice(0, 20),
+    lastSeen: now,
+    firstSeen: existing.exists && existing.data().firstSeen ? existing.data().firstSeen : now,
+  }, { merge: true });
+  return res.status(200).json({ success: true });
 }
 
 async function verifyKey(req, res) {
@@ -79,6 +104,7 @@ export default async function handler(req, res) {
     case 'login': return login(req, res);
     case 'register': return register(req, res);
     case 'verifyKey': return verifyKey(req, res);
+    case 'presence': return presence(req, res);
     default:
       return res.status(400).json({ success: false, message: 'Unknown action: ' + action });
   }

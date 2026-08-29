@@ -1,5 +1,6 @@
 // NAMATLS Support — public contact form write, server-side (bypasses rules via firebase-admin).
 import { getAdminDb } from './_admin.js';
+import { writeAudit } from './_audit.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
@@ -21,6 +22,8 @@ export default async function handler(req, res) {
     timestamp: FieldValue.serverTimestamp(),   // same type your admin dashboard already renders
     status: 'unread',
   });
+
+  await writeAudit({ db: getAdminDb(), actor: name.trim(), action: 'SUPPORT_MESSAGE', details: { email: (email && email.trim()) ? email.trim() : 'Not provided' } });
 
   return res.status(200).json({ success: true, id: ref.id });
 }

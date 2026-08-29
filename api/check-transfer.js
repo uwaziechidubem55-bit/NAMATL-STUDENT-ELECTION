@@ -5,6 +5,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from './_firebase.js';
 import { verifyToken } from './_session.js';
+import { writeAudit } from './_audit.js';
 
 // Reusable function to verify a single transfer ID/reference against Flutterwave
 async function verifySingleTransfer(db, secretKey, reference, transferId) {
@@ -81,6 +82,7 @@ async function verifySingleTransfer(db, secretKey, reference, transferId) {
       }, { merge: true });
     });
 
+    await writeAudit({ db, actor: 'system', action: 'WITHDRAWAL_CONFIRMED', details: { reference: ref, transferId: flwTransferId } });
     return { success: true, verified: true, status: 'successful', reference: ref, message: `CONFIRMED: Transfer ${flwTransferId} successful. Balance updated.` };
   }
 

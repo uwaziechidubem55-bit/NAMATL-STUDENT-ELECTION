@@ -10,7 +10,7 @@
 // 3) transfer.completed -> withdrawal transfers: finalizes the record + balance
 //    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
 import { FieldValue } from 'firebase-admin/firestore';
-import { getDb, missingFirebaseEnv, creditPaymentOnce, parseActivationYear } from './_firebase.js';
+import { getDb, missingFirebaseEnv, creditPaymentOnce, parseActivationYear, getActivationPricing } from './_firebase.js';
 
 // ================= AI PROJECT FORWARDING CONFIG =================
 // Set these in Vercel env vars for the OLD (election) project:
@@ -106,8 +106,12 @@ export default async function handler(req, res) {
         return res.status(200).json({ status: 'skipped - form payment' });
       }
 
-      if (Number(amount) < 25000) {
-        console.log(`Webhook: Skipping payment under N25,000 (N${amount})`);
+      // Activation minimum now comes from the Super Admin price book
+      // (settings/activationPricing). Falls back to the old ₦25,000 if unset.
+      const pricing = await getActivationPricing();
+      const minimum = pricing.usingFallback ? 25000 : pricing.total;
+      if (Number(amount) < minimum) {
+        console.log(`Webhook: Skipping payment under N${minimum.toLocaleString()} (N${amount})`);
         return res.status(200).json({ status: 'skipped - below threshold' });
       }
 

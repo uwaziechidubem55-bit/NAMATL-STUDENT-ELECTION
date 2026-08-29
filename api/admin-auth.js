@@ -1,5 +1,7 @@
 // NAMATLS Admin auth — login + session verification in ONE function.
 import { signToken, verifyToken } from './_session.js';
+import { getAdminDb } from './_admin.js';
+import { writeAudit } from './_audit.js';
 
 const safeEqual = (a, b) => {
   if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
@@ -20,6 +22,7 @@ async function login(req, res) {
     return res.status(500).json({ success: false, message: 'Admin credentials not configured on server.' });
   }
   if (!safeEqual(String(username), expectedUser) || !safeEqual(String(password), expectedPass)) {
+    await writeAudit({ getDb: getAdminDb, actor: String(username).slice(0, 60), action: 'LOGIN_FAILED', details: { kind: 'admin' } });
     return res.status(401).json({ success: false, message: 'Invalid username or password' });
   }
   if (!process.env.SERVER_SESSION_SECRET) {
@@ -28,6 +31,7 @@ async function login(req, res) {
 
   const now = Math.floor(Date.now() / 1000);
   const token = signToken({ role: 'admin', iat: now, exp: now + 3600 }, process.env.SERVER_SESSION_SECRET);
+  await writeAudit({ getDb: getAdminDb, actor: expectedUser, action: 'ADMIN_LOGIN', details: {} });
   return res.status(200).json({ success: true, token, expiresIn: 3600 });
 }
 

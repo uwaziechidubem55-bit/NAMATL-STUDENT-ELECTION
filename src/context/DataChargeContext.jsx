@@ -155,15 +155,33 @@ export function DataChargeProvider({ children }) {
   };
 
   const checkActivationCost = async (academicYear) => {
-    if (academicYear === '2026/2027') {
-      return { free: true, cost: 0, message: 'FREE activation for 2026/2027!', canActivate: true };
+    // Activation fee now comes from the Super Admin price book (Firestore:
+    // settings/activationPricing). Falls back to the old fixed ₦25,000 if
+    // the price book is unreachable or has not been set yet.
+    try {
+      const res = await adminApi('getActivationPricing');
+      const p = res.pricing || {};
+      if ((p.freeYears || []).includes(academicYear)) {
+        return { free: true, cost: 0, message: `FREE activation for ${academicYear}!`, canActivate: true };
+      }
+      const total = Number(p.total) || 0;
+      const breakdown = p.usingFallback
+        ? ''
+        : ` — Database Maintenance ₦${(p.maintenance || 0).toLocaleString()} + Site Update ₦${(p.siteUpdate || 0).toLocaleString()} + Database Upgrading ₦${(p.databaseUpgrading || 0).toLocaleString()}`;
+      return { free: false, cost: total, breakdown: p, message: `Activation for ${academicYear} costs ₦${total.toLocaleString()}${breakdown}.`, canActivate: true };
+    } catch (e) {
+      if (academicYear === '2026/2027') {
+        return { free: true, cost: 0, message: 'FREE activation for 2026/2027!', canActivate: true };
+      }
+      return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
     }
-    return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
   };
 
   // === Activation Payment ===
   const processActivationPayment = async (academicYear) => {
-    if (academicYear === '2026/2027') {
+    // Free/paid + the exact amount now come from the Super Admin price book.
+    const costInfo = await checkActivationCost(academicYear);
+    if (costInfo.free) {
       return { success: true, message: 'Election activated FREE!' };
     }
     try {
@@ -174,7 +192,7 @@ export function DataChargeProvider({ children }) {
         FlutterwaveCheckout({
           public_key: import.meta.env.VITE_FLW_PUBLIC_KEY,
           tx_ref: txRef,
-          amount: 25000,
+          amount: costInfo.cost, // from the Super Admin price book
           currency: 'NGN',
           payment_options: 'card,ussd,transfer,banktransfer',
           customer: { email: 'officialelectoralcommission@gmail.com', name: 'NAMTLS Admin' },

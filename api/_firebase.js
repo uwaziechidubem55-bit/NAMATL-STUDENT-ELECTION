@@ -33,6 +33,35 @@ export function getDb() {
 const ACTIVATION_MIN_AMOUNT = 25000;
 const ACTIVATION_REF_RE = /^ACT-(\d{4})-(\d{4})-/;
 
+// =====================================================================
+// ACTIVATION PRICE BOOK — the fee is no longer hard-coded.
+// The Super Admin Dashboard writes: settings/activationPricing =
+//   { maintenance, siteUpdate, databaseUpgrading, freeYears: [...] }
+// Until that document exists we keep the OLD behaviour (₦25,000) so
+// nothing changes until you deliberately set a price from the control room.
+// =====================================================================
+export async function getActivationPricing(db) {
+  const database = db || getDb();
+  const fallback = { maintenance: 0, siteUpdate: 0, databaseUpgrading: 0, total: ACTIVATION_MIN_AMOUNT, freeYears: ['2026/2027'], usingFallback: true };
+  try {
+    const snap = await database.doc('settings/activationPricing').get();
+    if (!snap.exists) return fallback;
+    const d = snap.data();
+    const nums = [d.maintenance, d.siteUpdate, d.databaseUpgrading].map(Number);
+    if (nums.some(n => !Number.isFinite(n))) return fallback;
+    return {
+      maintenance: nums[0],
+      siteUpdate: nums[1],
+      databaseUpgrading: nums[2],
+      total: nums[0] + nums[1] + nums[2],
+      freeYears: Array.isArray(d.freeYears) ? d.freeYears : [],
+      usingFallback: false,
+    };
+  } catch (e) {
+    return fallback;
+  }
+}
+
 /** Extract "YYYY/YYYY" from an ACT- tx_ref, or null if it doesn't match. */
 export function parseActivationYear(txRef) {
   const m = String(txRef || '').match(ACTIVATION_REF_RE);
@@ -73,7 +102,11 @@ export async function creditPaymentOnce({ transactionId, txRef, amount, kind, ac
     if (academicYear && parseActivationYear(ref) !== academicYear) {
       return { credited: false, reason: 'year-mismatch' };
     }
-    if (paid < ACTIVATION_MIN_AMOUNT) {
+    // Minimum now comes from the Super Admin price book (settings/activationPricing).
+    // Falls back to the old fixed ₦25,000 until a price book is saved.
+    const pricing = await getActivationPricing(db);
+    const minimum = pricing.usingFallback ? ACTIVATION_MIN_AMOUNT : pricing.total;
+    if (paid < minimum) {
       return { credited: false, reason: 'below-minimum' };
     }
   }

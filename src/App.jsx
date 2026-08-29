@@ -3,6 +3,8 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import SuperAdminRoute from './components/SuperAdminRoute';
+import { PresenceProvider } from './context/PresenceContext';
 
 // 👇 ONLY ADDITION — Import the install popup
 import InstallPrompt from './components/InstallPrompt';
@@ -86,6 +88,9 @@ function App() {
       {/* 👇 ONLY ADDITION — Renders the install popup on every page */}
       <InstallPrompt />
 
+      {/* Super Admin live monitoring — heartbeat for every page. Renders nothing. */}
+      <PresenceProvider />
+
       {/*
         ===== FIX: Wrap Routes in ErrorBoundary =====
         Without this, ANY runtime error in any lazy-loaded page
@@ -106,6 +111,9 @@ function App() {
             {/* Secret staff shortcut → always resolves to Staff Login (works despite service-worker caching) */}
             <Route path="/staff-monitor" element={<Navigate to="/staff-login" replace />} />
             <Route path="/staff-dashboard" element={<StaffDashboard />} />
+            {/* Super Admin control room — only reachable via the Admin Dashboard link */}
+            <Route path="/super-admin-login" element={<SuperAdminLogin />} />
+            <Route path="/super-admin-dashboard" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

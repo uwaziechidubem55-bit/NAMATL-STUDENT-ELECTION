@@ -1,4 +1,7 @@
 // NAMATLS Staff Login API — password check against Vercel environment variable
+import { getAdminDb } from './_admin.js';
+import { writeAudit } from './_audit.js';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -15,6 +18,7 @@ export default async function handler(req, res) {
   const staffPassword = process.env.STAFF_PASSWORD || 'NAMATLSTAFF@FUPRE';
 
   if (password.trim() !== staffPassword) {
+    await writeAudit({ getDb: getAdminDb, actor: 'staff', action: 'LOGIN_FAILED', details: { kind: 'staff' } });
     return res.status(401).json({ success: false, message: 'Access Denied. Incorrect password.' });
   }
 
@@ -22,6 +26,8 @@ export default async function handler(req, res) {
   const token = 'staff_' + Buffer.from(
     `staff:${Date.now()}:${Math.random().toString(36).substr(2, 16)}`
   ).toString('base64');
+
+  await writeAudit({ getDb: getAdminDb, actor: 'staff', action: 'STAFF_LOGIN', details: {} });
 
   return res.status(200).json({
     success: true,

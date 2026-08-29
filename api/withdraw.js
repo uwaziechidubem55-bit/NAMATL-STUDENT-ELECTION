@@ -5,6 +5,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv } from './_firebase.js';
 import { verifyToken } from './_session.js';
+import { writeAudit } from './_audit.js';
 
 export const config = { maxDuration: 60 };
 
@@ -208,6 +209,8 @@ export default async function handler(req, res) {
         console.log(`[NAMTLS] Poll error on attempt ${attempts + 1}: ${pollError.message}`);
       }
     }
+
+    await writeAudit({ db, actor: 'admin', action: 'WITHDRAWAL_REQUESTED', details: { amount: Number(amount) || 0, accountNumber: String(accountNumber).slice(-4).padStart(10, '*'), reference } });
 
     return res.status(200).json({
       success: true,

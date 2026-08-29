@@ -1,5 +1,6 @@
 // NAMATLS Vote — server-side: key check + one-vote enforcement + multi-position atomic increment.
 import { getAdminDb } from './_admin.js';
+import { writeAudit } from './_audit.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req, res) {
@@ -64,5 +65,6 @@ export default async function handler(req, res) {
     throw e;
   }
 
+  await writeAudit({ db, actor: docId, action: 'VOTE_CAST', details: { positions: voteIds.length } });
   return res.status(200).json({ success: true, message: 'Votes recorded successfully!' });
 }

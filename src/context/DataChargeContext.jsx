@@ -170,10 +170,10 @@ export function DataChargeProvider({ children }) {
         : ` — Database Maintenance ₦${(p.maintenance || 0).toLocaleString()} + Site Update ₦${(p.siteUpdate || 0).toLocaleString()} + Database Upgrading ₦${(p.databaseUpgrading || 0).toLocaleString()}`;
       return { free: false, cost: total, breakdown: p, message: `Activation for ${academicYear} costs ₦${total.toLocaleString()}${breakdown}.`, canActivate: true };
     } catch (e) {
-      if (academicYear === '2026/2027') {
-        return { free: true, cost: 0, message: 'FREE activation for 2026/2027!', canActivate: true };
-      }
-      return { free: false, cost: 25000, message: `Activation for ${academicYear} costs ₦25,000.`, canActivate: true };
+      // SAFETY: if the price book cannot be read, NEVER guess — block activation.
+      // (Previously this fell back to "2026/2027 = free", which could silently
+      // skip payment on a network error. Free must ALWAYS come from the price book.)
+      return { free: false, cost: 0, canActivate: false, message: '⚠️ Could not read the activation price book. Check your connection (or log out and log back in) and try again.' };
     }
   };
 
@@ -181,6 +181,9 @@ export function DataChargeProvider({ children }) {
   const processActivationPayment = async (academicYear) => {
     // Free/paid + the exact amount now come from the Super Admin price book.
     const costInfo = await checkActivationCost(academicYear);
+    if (!costInfo.canActivate) {
+      return { success: false, message: costInfo.message };
+    }
     if (costInfo.free) {
       return { success: true, message: 'Election activated FREE!' };
     }

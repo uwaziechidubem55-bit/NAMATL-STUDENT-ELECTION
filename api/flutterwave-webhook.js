@@ -11,6 +11,7 @@
 //    EXACTLY ONCE, the moment Flutterwave confirms the money moved.
 import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, missingFirebaseEnv, creditPaymentOnce, parseActivationYear, getActivationPricing } from './_firebase.js';
+import { writeAudit } from './_audit.js';
 
 // ================= AI PROJECT FORWARDING CONFIG =================
 // Set these in Vercel env vars for the OLD (election) project:
@@ -94,6 +95,7 @@ export default async function handler(req, res) {
         await forwardToAIProject(payload);
         // Always 200: the event was received. If the AI project was down,
         // its verify-on-redirect fallback credits the payment later.
+        await writeAudit({ db, actor: 'flutterwave', action: 'AI_PAYMENT_FORWARDED', details: { tx_ref, amount: Number(payload.data?.amount || 0) } });
         return res.status(200).json({ status: 'forwarded to AI project' });
       }
 
@@ -112,6 +114,7 @@ export default async function handler(req, res) {
       const minimum = pricing.usingFallback ? 25000 : pricing.total;
       if (Number(amount) < minimum) {
         console.log(`Webhook: Skipping payment under N${minimum.toLocaleString()} (N${amount})`);
+        await writeAudit({ db, actor: 'flutterwave', action: 'PAYMENT_SKIPPED', details: { amount: Number(amount), minimum, tx_ref } });
         return res.status(200).json({ status: 'skipped - below threshold' });
       }
 
@@ -170,12 +173,14 @@ export default async function handler(req, res) {
           }, { merge: true });
         });
         console.log(`Webhook: Withdrawal ${reference} CONFIRMED and balance updated`);
+        await writeAudit({ db, actor: 'flutterwave', action: 'WITHDRAWAL_CONFIRMED', details: { reference, amount, transferId: String(transferId) } });
       }
 
       if (status === 'failed') {
         await recordRef.set({ status: 'failed', failedAt: new Date().toISOString() }, { merge: true });
         await db.doc('finances/withdrawalBalance').set({ pendingWithdrawal: null }, { merge: true });
         console.log(`Webhook: Withdrawal ${reference} FAILED - cleared pending lock`);
+        await writeAudit({ db, actor: 'flutterwave', action: 'WITHDRAWAL_FAILED', details: { reference, amount, transferId: String(transferId) } });
       }
     }
 

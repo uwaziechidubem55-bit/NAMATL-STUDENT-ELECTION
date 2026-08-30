@@ -1,4 +1,4 @@
-// NAMATLS Super Admin Dashboard — the control room.
+// NAMTLS Super Admin Dashboard — the control room.
 // Structure is a twin of AdminDashboard.jsx (same sidebar, topbar, cards,
 // buttons, colors) so it feels native to the app.
 // Powers:
@@ -50,6 +50,7 @@ export default function SuperAdminDashboard() {
   const [priceMsg, setPriceMsg] = useState({ type: '', text: '' });
   const [priceBusy, setPriceBusy] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState('');
+  const [txTab, setTxTab] = useState('all'); // all | activation | forms | withdrawals
 
   const loadStats = useCallback(async () => {
     const t0 = Date.now();
@@ -157,6 +158,23 @@ export default function SuperAdminDashboard() {
   const s = stats;
   const audit = (s && s.audit) || [];
   const loginEvents = audit.filter(a => String(a.action).includes('LOGIN') || a.action === 'LOGIN_FAILED');
+
+  // ---- Transactions Center data ----
+  const withdrawals = (s && s.money && s.money.withdrawals) || [];
+  const formPurchases = (s && s.money && s.money.formPurchases) || [];
+  const successfulWithdrawn = withdrawals
+    .filter(w => String(w.status || '').toLowerCase() === 'successful')
+    .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+  const allTx = s ? [
+    ...(s.money.receipts || []).map(r => ({ when: r.creditedAt, label: r.kind === 'activation' ? '🔘 Activation Payment' : '📋 Form Purchase', ref: r.txRef || r.transactionId, amount: Number(r.amount) || 0, dir: 'in' })),
+    ...withdrawals.map(w => ({ when: w.createdAt || w.verifiedAt, label: '🏧 Withdrawal', ref: w.reference, amount: Number(w.amount) || 0, dir: 'out' })),
+  ].sort((a, b) => String(b.when || '').localeCompare(String(a.when || ''))).slice(0, 50) : [];
+  const txBadge = (status) => {
+    const st = String(status || 'unknown').toLowerCase();
+    if (st === 'successful') return { bg: '#d1fae5', color: '#166534', icon: '🟢', text: 'Successful' };
+    if (st === 'failed') return { bg: '#fee2e2', color: '#991b1b', icon: '🔴', text: 'Failed' };
+    return { bg: '#fef3c7', color: '#92400e', icon: '🟡', text: st.charAt(0).toUpperCase() + st.slice(1) };
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
@@ -375,6 +393,26 @@ export default function SuperAdminDashboard() {
                 </table>
               ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No login activity recorded yet today.</p>}
             </div>
+            <div style={cardStyle}>
+              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>
+                ✉️ Support Messages {s.support && s.support.unread ? `(${s.support.unread} unread)` : ''}
+              </h3>
+              {(s.support && s.support.recent && s.support.recent.length > 0) ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr><th style={thStyle}>When</th><th style={thStyle}>From</th><th style={thStyle}>Message</th><th style={thStyle}>Status</th></tr></thead>
+                  <tbody>
+                    {s.support.recent.map(m => (
+                      <tr key={m.id}>
+                        <td style={tdStyle}>{dayMonth(m.timestamp)}</td>
+                        <td style={{ ...tdStyle, fontWeight: 'bold' }}>{m.name || '—'}</td>
+                        <td style={{ ...tdStyle, maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(m.message || '').slice(0, 60)}</td>
+                        <td style={tdStyle}>{m.status === 'unread' ? '🔵 Unread' : '✅ Read'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No support messages yet.</p>}
+            </div>
           </>
         )}
 
@@ -469,6 +507,16 @@ export default function SuperAdminDashboard() {
                 <div style={{ fontSize: '13px', color: '#666' }}>Total Ever Received</div>
               </div>
               <div style={statCardStyle}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🏧</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{naira(successfulWithdrawn)}</div>
+                <div style={{ fontSize: '13px', color: '#666' }}>Total Withdrawn</div>
+              </div>
+              <div style={statCardStyle}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{formPurchases.length}</div>
+                <div style={{ fontSize: '13px', color: '#666' }}>Form Purchases</div>
+              </div>
+              <div style={statCardStyle}>
                 <div style={{ fontSize: '28px', marginBottom: '8px' }}>📅</div>
                 <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s.money.paymentsToday} ({naira(s.money.paymentsTodaySum)})</div>
                 <div style={{ fontSize: '13px', color: '#666' }}>Payments Today</div>
@@ -476,22 +524,91 @@ export default function SuperAdminDashboard() {
             </div>
 
             <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🧾 Recent Payments</h3>
-              {s.money.receipts.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Reference</th><th style={thStyle}>Type</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
-                  <tbody>
-                    {s.money.receipts.map(r => (
-                      <tr key={r.id}>
-                        <td style={tdStyle}>{dayMonth(r.creditedAt)}</td>
-                        <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.txRef}</td>
-                        <td style={tdStyle}>{r.kind === 'activation' ? '🔘 Activation' : '📋 Form'}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(r.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No payments recorded yet.</p>}
+              <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>🧾 Transactions Center — every naira in and out</h3>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                {[['all', '🧾 All'], ['activation', '🔘 Activation'], ['forms', '📋 Form Purchases'], ['withdrawals', '🏧 Withdrawals']].map(([k, l]) => (
+                  <button key={k} onClick={() => setTxTab(k)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: txTab === k ? '#003366' : '#e8ecf0', color: txTab === k ? '#FFD700' : '#334155' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              {txTab === 'all' && (
+                allTx.length > 0 ? (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Activity</th><th style={thStyle}>Reference</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
+                    <tbody>
+                      {allTx.map((t, i) => (
+                        <tr key={i}>
+                          <td style={tdStyle}>{dayMonth(t.when)}</td>
+                          <td style={tdStyle}>{t.label}</td>
+                          <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{t.ref}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', color: t.dir === 'in' ? '#16a34a' : '#dc2626' }}>{t.dir === 'in' ? '+' : '−'}{naira(t.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No transactions yet.</p>
+              )}
+
+              {txTab === 'activation' && (
+                (s.money.receipts || []).filter(r => r.kind === 'activation').length > 0 ? (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Reference</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
+                    <tbody>
+                      {(s.money.receipts || []).filter(r => r.kind === 'activation').map(r => (
+                        <tr key={r.id}>
+                          <td style={tdStyle}>{dayMonth(r.creditedAt)}</td>
+                          <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{r.txRef}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(r.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No activation payments yet.</p>
+              )}
+
+              {txTab === 'forms' && (
+                formPurchases.length > 0 ? (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Name</th><th style={thStyle}>Position</th><th style={thStyle}>Email</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
+                    <tbody>
+                      {formPurchases.map(r => (
+                        <tr key={r.id}>
+                          <td style={tdStyle}>{dayMonth(r.paidAt)}</td>
+                          <td style={{ ...tdStyle, fontWeight: 'bold' }}>{r.name || (r.candidateData && r.candidateData.name) || '—'}</td>
+                          <td style={tdStyle}>{r.position || (r.candidateData && r.candidateData.position) || '—'}</td>
+                          <td style={{ ...tdStyle, fontSize: '11px' }}>{r.email || (r.candidateData && r.candidateData.email) || '—'}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(r.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No form purchases yet.</p>
+              )}
+
+              {txTab === 'withdrawals' && (
+                withdrawals.length > 0 ? (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Reference</th><th style={thStyle}>Account</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th><th style={thStyle}>Status</th></tr></thead>
+                    <tbody>
+                      {withdrawals.map(w => {
+                        const b = txBadge(w.status);
+                        return (
+                          <tr key={w.id}>
+                            <td style={tdStyle}>{dayMonth(w.createdAt || w.verifiedAt)}</td>
+                            <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{w.reference}</td>
+                            <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{w.accountNumber || '—'}</td>
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(w.amount)}</td>
+                            <td style={tdStyle}><span style={{ background: b.bg, color: b.color, padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold' }}>{b.icon} {b.text}</span></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No withdrawals yet.</p>
+              )}
             </div>
 
             <div style={cardStyle}>

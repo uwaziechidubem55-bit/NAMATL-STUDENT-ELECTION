@@ -395,6 +395,30 @@ export default function AdminDashboard() {
     setActivationLoading(true);
     setActivationMsg({ type: '', text: '' });
     try {
+      // ===== PAYMENT GUARD =====
+      // Free year → activate freely. Paid year → must have paid the activation
+      // fee first (in the 🎓 Academic Year Activation card), otherwise block.
+      const year = settings.year || '2026/2027';
+      const costInfo = await checkActivationCost(year);
+      if (!costInfo.canActivate) {
+        setActivationLoading(false);
+        setActivationMsg({ type: 'error', text: costInfo.message });
+        return;
+      }
+      if (!costInfo.free) {
+        let alreadyPaid = false;
+        try {
+          const st = await adminApi('getActivationStatus');
+          alreadyPaid = !!(st.activations && st.activations[year] && st.activations[year].paid);
+        } catch (e) { alreadyPaid = false; }
+        if (!alreadyPaid) {
+          setActivationLoading(false);
+          setActivationMsg({ type: 'error', text: `🔒 ${year} is NOT a free year. Pay its activation fee in the "🎓 Academic Year Activation" card above first — then come back and activate. (Free years are set in the Super Admin price book.)` });
+          return;
+        }
+      }
+      // ===== END PAYMENT GUARD =====
+
       let newMode;
       if (type === 'election') {
         newMode = activeMode === 'formPurchase' ? 'both' : 'election';

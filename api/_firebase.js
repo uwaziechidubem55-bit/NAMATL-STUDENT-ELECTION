@@ -1,6 +1,7 @@
 // NAMTLS server-side Firebase init (ADMIN SDK only).
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { writeAudit } from './_audit.js';
 
 export const missingFirebaseEnv = process.env.FIREBASE_SERVICE_ACCOUNT
   ? []
@@ -174,6 +175,12 @@ export async function creditPaymentOnce({ transactionId, txRef, amount, kind, ac
 
     outcome = { credited: true, reason: 'credited' };
   });
+
+  // Master diary hook: ONE line records EVERY crediting path (webhook or verify,
+  // activation or form). writeAudit never throws, so it can't affect the money.
+  if (outcome.credited) {
+    await writeAudit({ db: getDb(), actor: 'payment-engine', action: 'PAYMENT_CREDITED', details: { kind, amount: paid, txRef: ref, transactionId: tid, ...(year ? { academicYear: year } : {}) } });
+  }
 
   return outcome;
 }

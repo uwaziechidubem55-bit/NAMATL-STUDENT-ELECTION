@@ -212,7 +212,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const {
     withdrawalBalance, withdraw, loadBalance, loadFormPurchases, saveFormPurchaseSettings,
-    formPurchaseSettings, formPurchases, ADMIN_ID, OPAY_ACCOUNT
+    formPurchaseSettings, formPurchases, ADMIN_ID, OPAY_ACCOUNT, checkActivationCost, processActivationPayment
   } = useDataCharge();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -298,6 +298,38 @@ export default function AdminDashboard() {
       setSuperCodeMsg({ type: 'error', text: e.message || 'Failed to save code.' });
     } finally {
       setSuperCodeBusy(false);
+    }
+  };
+
+  // ===================== ACADEMIC YEAR ACTIVATION PAYMENT =====================
+  const [yearCost, setYearCost] = useState(null);
+  const [yearCostLoading, setYearCostLoading] = useState(false);
+  const [yearPayMsg, setYearPayMsg] = useState({ type: '', text: '' });
+  const checkYearCost = async () => {
+    setYearCostLoading(true);
+    setYearPayMsg({ type: '', text: '' });
+    setYearCost(null);
+    try {
+      const info = await checkActivationCost(settings.year || '2026/2027');
+      setYearCost(info);
+      setYearPayMsg({ type: info.canActivate ? 'success' : 'error', text: info.message });
+    } catch (e) {
+      setYearPayMsg({ type: 'error', text: e.message || 'Could not check activation cost.' });
+    } finally {
+      setYearCostLoading(false);
+    }
+  };
+  const payYearActivation = async () => {
+    setYearCostLoading(true);
+    setYearPayMsg({ type: '', text: '' });
+    try {
+      const r = await processActivationPayment(settings.year || '2026/2027');
+      setYearPayMsg({ type: r.success ? 'success' : 'error', text: r.message });
+      if (r.success) await loadBalance();
+    } catch (e) {
+      setYearPayMsg({ type: 'error', text: e.message || 'Payment failed.' });
+    } finally {
+      setYearCostLoading(false);
     }
   };
 
@@ -1194,6 +1226,34 @@ export default function AdminDashboard() {
         {/* ===================== ACTIVATION VIEW ===================== */}
         {activeView === 'activation' && (
           <div>
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', marginBottom: '8px' }}>🎓 Academic Year Activation</h2>
+              <p style={{ color: '#666', fontSize: '14px', marginBottom: '16px' }}>
+                Pay the activation fee for the academic year below (set in ⚙️ Election Settings).
+                The price comes from the Super Admin price book — years marked free cost nothing.
+              </p>
+              <div style={{ background: '#f0f7ff', color: '#2563eb', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', marginBottom: '16px', fontSize: '14px' }}>
+                Academic Year: {settings.year || '2026/2027'}
+              </div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button onClick={checkYearCost} disabled={yearCostLoading}
+                  style={{ ...btnPrimary, opacity: yearCostLoading ? 0.6 : 1, cursor: yearCostLoading ? 'not-allowed' : 'pointer' }}>
+                  {yearCostLoading ? '⏳ Checking...' : '🔄 Check Activation Cost'}
+                </button>
+                {yearCost && yearCost.canActivate && (
+                  <button onClick={payYearActivation} disabled={yearCostLoading}
+                    style={{ ...btnSuccess, opacity: yearCostLoading ? 0.6 : 1, cursor: yearCostLoading ? 'not-allowed' : 'pointer' }}>
+                    {yearCost.free ? '✅ Activate (FREE)' : `💳 Pay ₦${Number(yearCost.cost || 0).toLocaleString()} & Activate`}
+                  </button>
+                )}
+              </div>
+              {yearPayMsg.text && (
+                <div style={{ marginTop: '16px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', background: yearPayMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: yearPayMsg.type === 'error' ? '#991b1b' : '#166534' }}>
+                  {yearPayMsg.text}
+                </div>
+              )}
+            </div>
+
             <div style={cardStyle}>
               <h2 style={{ color: '#003366', marginBottom: '8px' }}>🔘 Activation Control</h2>
               <p style={{ color: '#666', fontSize: '14px', marginBottom: '20px' }}>

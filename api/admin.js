@@ -155,6 +155,11 @@ export default async function handler(req, res) {
         const snap = await db.doc('finances/withdrawalBalance').get();
         return res.json({ success: true, data: snap.exists ? snap.data() : null });
       }
+      case 'getActivationStatus': {
+        // Has this academic year's activation fee been paid? (finances/activations)
+        const snap = await db.doc('finances/activations').get();
+        return res.json({ success: true, activations: snap.exists ? snap.data() : {} });
+      }
       case 'listStudents': {
         const snap = await db.collection('students').get();
         return res.json({ success: true, items: snap.docs.map(d => ({ id: d.id, ...d.data() })) });

@@ -304,15 +304,18 @@ export default async function handler(req, res) {
         const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
         const dayStartIso = dayStart.toISOString();
 
-        const [presenceSnap, studentsSnap, candidatesSnap, auditSnap, receiptsSnap, balanceSnap, activationsSnap, mainSnap] = await Promise.all([
+        const [presenceSnap, studentsSnap, candidatesSnap, auditSnap, receiptsSnap, balanceSnap, activationsSnap, mainSnap, withdrawalsSnap, formsSnap, supportSnap] = await Promise.all([
           db.collection('presence').get(),
           db.collection('students').get(),
           db.collection('candidates').get(),
           db.collection('auditLogs').orderBy('at', 'desc').limit(100).get(),
-          db.collection('paymentReceipts').limit(50).get(),
+          db.collection('paymentReceipts').limit(500).get(),
           db.doc('finances/withdrawalBalance').get(),
           db.doc('finances/activations').get(),
           db.doc('settings/main').get(),
+          db.collection('withdrawals').limit(200).get(),
+          db.collection('formPurchases').limit(200).get(),
+          db.collection('supportMessages').limit(100).get(),
         ]);
 
         // ---- presence: online = seen in the last 2 minutes ----
@@ -345,13 +348,29 @@ export default async function handler(req, res) {
         });
         Object.values(byPosition).forEach(arr => arr.sort((a, b) => b.votes - a.votes));
 
-        // ---- money ----
-        const receipts = receiptsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // ---- money (FULL transaction history for the control room) ----
+        const receipts = receiptsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => String(b.creditedAt || '').localeCompare(String(a.creditedAt || '')));
         const paymentsToday = receipts.filter(r => (r.creditedAt || '') >= dayStartIso);
         const paymentsTodaySum = paymentsToday.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
         const balance = balanceSnap.exists ? (Number(balanceSnap.data().balance) || 0) : 0;
         const totalReceived = balanceSnap.exists ? (Number(balanceSnap.data().totalReceived) || 0) : 0;
+        const totalWithdrawn = balanceSnap.exists ? (Number(balanceSnap.data().totalWithdrawn) || 0) : 0;
         const activations = activationsSnap.exists ? activationsSnap.data() : {};
+
+        const withdrawals = withdrawalsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        const formPurchases = formsSnap.docs.map(d => {
+          const data = d.data();
+          return { id: d.id, ...data, paidAt: serializeTs(data.paidAt) };
+        }).sort((a, b) => String(b.paidAt || '').localeCompare(String(a.paidAt || '')));
+
+        // ---- support messages (super admin oversight) ----
+        const supportMessages = supportSnap.docs.map(d => {
+          const data = d.data();
+          return { id: d.id, ...data, timestamp: serializeTs(data.timestamp) };
+        }).sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+        const unreadSupport = supportMessages.filter(m => m.status === 'unread').length;
 
         // ---- diary ----
         const audit = auditSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -368,7 +387,8 @@ export default async function handler(req, res) {
             online: { count: online.length, byPage, list: online },
             people: { totalStudents, voted, registrationsToday, loginsToday, failedLogins },
             election: { byPosition, votesToday, activeMode: mainSnap.exists ? (mainSnap.data().activeMode || 'none') : 'none' },
-            money: { balance, totalReceived, paymentsToday: paymentsToday.length, paymentsTodaySum, activations, receipts },
+            money: { balance, totalReceived, totalWithdrawn, paymentsToday: paymentsToday.length, paymentsTodaySum, activations, receipts: receipts.slice(0, 100), withdrawals, formPurchases },
+            support: { unread: unreadSupport, recent: supportMessages.slice(0, 10) },
             audit,
           },
         });

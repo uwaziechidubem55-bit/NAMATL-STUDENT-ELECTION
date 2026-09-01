@@ -1,8 +1,4 @@
-// NAMATLS Staff Dashboard v3.0 — Real-time election monitoring for Lecturers & HOD
-// New in v3.0: settings panel (refresh interval, sound, density, photos),
-// donut chart view, live vote trend graph, CSV export, sort selector,
-// turnout ring, sound alert on new votes, keyboard shortcuts.
-// Keyboard: R = refresh · F = fullscreen · P = print · / = search · S = settings
+// NAMATLS Staff Dashboard v2.0 — Real-time election monitoring for Lecturers & HOD
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -21,121 +17,6 @@ async function staffApi(action, payload = {}) {
   return data;
 }
 
-// ---- v3.0: CSV export helpers (client-side, no backend needed) ----
-const csvCell = (v) => {
-  const s = String(v === undefined || v === null ? '' : v);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-};
-const downloadCSV = (filename, rows) => {
-  if (!rows || rows.length === 0) return;
-  const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
-  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-};
-
-// ---- v3.0: sound alert (Web Audio, no assets needed) ----
-const playBeep = (freq = 880) => {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'sine'; osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-    osc.start(); osc.stop(ctx.currentTime + 0.4);
-    setTimeout(() => { try { ctx.close(); } catch (e) { /* ignore */ } }, 600);
-  } catch (e) { /* ignore */ }
-};
-
-// ---- v3.0: mini SVG sparkline (no dependencies) ----
-function Sparkline({ data, width = 600, height = 56, color = '#16a34a', fill = 'rgba(22,163,74,0.10)' }) {
-  if (!data || data.length < 2) {
-    return <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>Collecting data… (one point per refresh)</span>;
-  }
-  const min = Math.min(...data), max = Math.max(...data);
-  const range = (max - min) || 1;
-  const step = width / (data.length - 1);
-  const pts = data.map((v, i) => `${(i * step).toFixed(1)},${(height - 4 - ((v - min) / range) * (height - 8)).toFixed(1)}`);
-  return (
-    <svg width={width} height={height} style={{ display: 'block', maxWidth: '100%' }}>
-      <polygon points={`0,${height} ${pts.join(' ')} ${width},${height}`} fill={fill} />
-      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-// ---- v3.0: SVG donut chart for a position (no dependencies) ----
-function Donut({ list, size = 180 }) {
-  const total = list.reduce((s, c) => s + (c.votes || 0), 0);
-  const colors = ['#003366', '#FFD700', '#16a34a', '#2563eb', '#9333ea', '#f59e0b', '#dc2626', '#0d9488', '#6366f1', '#be185d'];
-  const r = size / 2 - 14;
-  const c = size / 2;
-  const circumference = 2 * Math.PI * r;
-  let offset = 0;
-  if (total <= 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '20px' }}>
-        <svg width={size} height={size}>
-          <circle cx={c} cy={c} r={r} fill="none" stroke="#e8ecf0" strokeWidth="26" />
-        </svg>
-        <div style={{ color: '#999', fontSize: '12px', marginTop: '6px' }}>No votes yet</div>
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }}>
-      <svg width={size} height={size} style={{ flexShrink: 0 }}>
-        {list.map((cnd, i) => {
-          const share = (cnd.votes || 0) / total;
-          const dash = share * circumference;
-          const el = (
-            <circle key={cnd.id || i} cx={c} cy={c} r={r} fill="none"
-              stroke={i === 0 && (cnd.votes || 0) > 0 ? '#b8860b' : colors[i % colors.length]}
-              strokeWidth="26"
-              strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeDashoffset={-offset}
-              transform={`rotate(-90 ${c} ${c})`}
-            />
-          );
-          const dash = dashOf(i, list);
-          function dashOf(idx, l) { return ((l[idx].votes || 0) / total) * circumference; }
-          offset += dash;
-          return el;
-        })}
-        <text x={c} y={c - 4} textAnchor="middle" fontSize="22" fontWeight="bold" fill="#0a2b52">{total.toLocaleString()}</text>
-        <text x={c} y={c + 16} textAnchor="middle" fontSize="10" fill="#8894a6">total votes</text>
-      </svg>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '180px' }}>
-        {list.map((cnd, i) => (
-          <div key={cnd.id || i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-            <span style={{ width: '12px', height: '12px', borderRadius: '3px', flexShrink: 0, background: i === 0 && (cnd.votes || 0) > 0 ? '#b8860b' : colors[i % colors.length] }}></span>
-            <span style={{ color: '#1a1a2e', fontWeight: '600', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cnd.name}</span>
-            <span style={{ color: '#003366', fontWeight: 'bold' }}>{cnd.votes || 0}</span>
-            <span style={{ color: '#888', fontSize: '11px', minWidth: '44px', textAlign: 'right' }}>{total > 0 ? (((cnd.votes || 0) / total) * 100).toFixed(1) : '0.0'}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---- v3.0: persisted dashboard settings ----
-const SETTINGS_KEY = 'staffDashSettings';
-const DEFAULT_SETTINGS = { interval: 12, sound: false, compact: false, showPhotos: true };
-const loadSettings = () => {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : { ...DEFAULT_SETTINGS };
-  } catch (e) { return { ...DEFAULT_SETTINGS }; }
-};
-
 export default function StaffDashboard() {
   const [candidates, setCandidates] = useState([]);
   const [students, setStudents] = useState([]);
@@ -145,27 +26,11 @@ export default function StaffDashboard() {
   const [lastUpdated, setLastUpdated] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [search, setSearch] = useState('');            // Search / filter candidates
-  const [view, setView] = useState('bar');             // 'bar' | 'donut' | 'table'
+  const [view, setView] = useState('bar');             // 'bar' | 'table'
   const [isFullscreen, setIsFullscreen] = useState(false); // Projector mode for HOD
   const [settings, setSettings] = useState({});        // Election settings (status, dates)
   const navigate = useNavigate();
   const intervalRef = useRef(null);
-
-  // ---- v3.0 dashboard settings (persisted) ----
-  const [prefs, setPrefs] = useState(loadSettings);
-  const prefsRef = useRef(prefs);
-  prefsRef.current = prefs;
-  const [showSettings, setShowSettings] = useState(false);
-  const savePrefs = (next) => {
-    setPrefs(next);
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch (e) { /* ignore */ }
-  };
-  const [sortMode, setSortMode] = useState('votes');   // 'votes' | 'name'
-
-  // ---- v3.0 live vote trend + sound alert tracking ----
-  const [voteHistory, setVoteHistory] = useState([]);
-  const lastTotalVotesRef = useRef(null);
-  const [sessionStart] = useState(() => new Date().toLocaleTimeString());
 
   // 🔒 Auth guard — redirect to login if no valid staff token
   useEffect(() => {
@@ -198,20 +63,11 @@ export default function StaffDashboard() {
         staffApi('listStudents'),
         staffApi('getSettings').catch(() => ({ settings: {} })),
       ]);
-      const cands = candRes.items || [];
-      setCandidates(cands);
+      setCandidates(candRes.items || []);
       setStudents(studRes.items || []);
       setSettings(setRes.settings || {});
       setLastUpdated(new Date().toLocaleTimeString());
       setError(null);
-
-      // v3.0: track vote trend (last 120 samples) + sound on new votes
-      const total = cands.reduce((sum, c) => sum + (c.votes || 0), 0);
-      setVoteHistory(h => [...h.slice(-119), total]);
-      if (prefsRef.current.sound && lastTotalVotesRef.current !== null && total > lastTotalVotesRef.current) {
-        playBeep(880);
-      }
-      lastTotalVotesRef.current = total;
     } catch (e) {
       setError(e.message);
       // If unauthorized, redirect to login
@@ -230,33 +86,14 @@ export default function StaffDashboard() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  // Auto-refresh — interval configurable in Settings (default 12s)
+  // Auto-refresh every 12 seconds
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (autoRefresh) {
-      intervalRef.current = setInterval(() => loadData(false), (prefs.interval || 12) * 1000);
+      intervalRef.current = setInterval(() => loadData(false), 12000);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [autoRefresh, prefs.interval]);
-
-  // ---- v3.0 keyboard shortcuts: R refresh · F fullscreen · P print · / search · S settings ----
-  useEffect(() => {
-    const onKey = (e) => {
-      const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'r' || e.key === 'R') loadData(false);
-      else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
-      else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); window.print(); }
-      else if (e.key === 's' || e.key === 'S') setShowSettings(v => !v);
-      else if (e.key === '/') {
-        e.preventDefault();
-        const el = document.getElementById('staff-search');
-        if (el) el.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [autoRefresh]);
 
   // Fullscreen toggle for projector / big-screen display (HOD presentations)
   const toggleFullscreen = () => {
@@ -311,7 +148,6 @@ export default function StaffDashboard() {
   const totalStudents = students.length;
   const turnoutPct = totalStudents > 0 ? ((votedStudents / totalStudents) * 100).toFixed(1) : 0;
   const totalCandidates = candidates.length;
-  const yetToVote = Math.max(0, totalStudents - votedStudents);
 
   // Current leader per position (for the summary strip) + unopposed detection
   const leaderByPosition = {};
@@ -332,24 +168,6 @@ export default function StaffDashboard() {
     if (ib === -1) return -1;
     return ia - ib;
   });
-
-  // ---- v3.0 CSV export of full results ----
-  const exportResults = () => downloadCSV(`namatl-election-results-${new Date().toISOString().slice(0, 10)}.csv`, [
-    ['Position', 'Rank', 'Candidate', 'Votes', 'Share %', 'Status'],
-    ...candidates.reduce((rows, c) => {
-      const pos = c.position || 'Unknown';
-      const list = candidates.filter(x => (x.position || 'Unknown') === pos);
-      const posTotal = list.reduce((s, x) => s + (x.votes || 0), 0);
-      const posMax = Math.max(...list.map(x => x.votes || 0), 0);
-      const share = posTotal > 0 ? ((c.votes || 0) / posTotal * 100).toFixed(1) : '0.0';
-      const status = list.length === 1 ? 'Auto-Winner' : ((c.votes || 0) === posMax && (c.votes || 0) > 0 ? 'Leading' : '');
-      rows.push([pos, '', c.name, c.votes || 0, share, status]);
-      return rows;
-    }, []),
-    [],
-    ['Turnout', `${votedStudents}/${totalStudents}`, `${turnoutPct}%`],
-    ['Exported', new Date().toLocaleString()],
-  ]);
 
   // ---- Election live status (from Firestore settings) ----
   const isModeActive = settings.activeMode === 'election' || settings.activeMode === 'both' || settings.isActive === true || settings.isActive === 'true';
@@ -650,4 +468,571 @@ export default function StaffDashboard() {
   };
 
   const barOuterStyle = {
-    width:
+    width: '100%',
+    height: '28px',
+    background: '#e8ecf0',
+    borderRadius: '14px',
+    overflow: 'hidden',
+    position: 'relative',
+  };
+
+  const barFillStyle = (pct) => ({
+    height: '100%',
+    width: `${Math.max(pct, 1)}%`,
+    background: 'linear-gradient(90deg, #003366, #0055a5)',
+    borderRadius: '14px',
+    transition: 'width 0.6s ease-out',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingRight: '10px',
+    minWidth: pct > 0 ? '40px' : '0',
+  });
+
+  const barPctStyle = {
+    color: 'white',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+  };
+
+  const loadingStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    flexDirection: 'column',
+    gap: '16px',
+    background: '#002b54',
+    color: '#FFD700',
+    fontFamily: "'Segoe UI', Arial, sans-serif",
+  };
+
+  const spinnerStyle = {
+    width: '48px',
+    height: '48px',
+    border: '4px solid rgba(255,215,0,0.2)',
+    borderTop: '4px solid #FFD700',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  };
+
+  const errorContainerStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    background: '#f0f2f5',
+    fontFamily: "'Segoe UI', Arial, sans-serif",
+    padding: '20px',
+  };
+
+  const errorCardStyle = {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '40px',
+    maxWidth: '480px',
+    textAlign: 'center',
+    boxShadow: '0 8px 30px rgba(0,0,0,0.1)',
+  };
+
+  const leaderBadgeStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2px 10px',
+    borderRadius: '12px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    background: 'rgba(34,197,94,0.12)',
+    color: '#16a34a',
+    border: '1px solid rgba(34,197,94,0.3)',
+    whiteSpace: 'nowrap',
+  };
+
+  const autoWinBadgeStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2px 10px',
+    borderRadius: '12px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    background: 'rgba(217,119,6,0.12)',
+    color: '#b45309',
+    border: '1px solid rgba(217,119,6,0.35)',
+    whiteSpace: 'nowrap',
+  };
+
+  const badgeWrapStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    minWidth: 0,
+    flex: 1,
+    overflow: 'hidden',
+  };
+
+  const bottomBarStyle = {
+    position: 'sticky',
+    bottom: 0,
+    zIndex: 20,
+    background: 'white',
+    borderTop: '2px solid #FFD700',
+    boxShadow: '0 -4px 16px rgba(0,0,0,0.12)',
+    padding: '14px 24px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
+  };
+
+  const primaryBtnStyle = {
+    padding: '12px 26px',
+    background: 'linear-gradient(135deg, #003366, #004a80)',
+    color: '#FFD700',
+    border: 'none',
+    borderRadius: '10px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    fontSize: '14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    boxShadow: '0 3px 12px rgba(0,51,102,0.3)',
+    transition: 'all 0.2s',
+  };
+
+  const ghostBtnStyle = {
+    padding: '10px 18px',
+    background: 'white',
+    color: '#003366',
+    border: '1.5px solid #003366',
+    borderRadius: '10px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    fontSize: '13px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '7px',
+    transition: 'all 0.2s',
+  };
+
+  const dangerBtnStyle = {
+    padding: '10px 18px',
+    background: 'white',
+    color: '#dc2626',
+    border: '1.5px solid #dc2626',
+    borderRadius: '10px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    fontSize: '13px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '7px',
+    transition: 'all 0.2s',
+  };
+
+  if (loading) {
+    return (
+      <div style={loadingStyle}>
+        <div style={spinnerStyle}></div>
+        <div style={{ fontSize: '18px' }}>Loading Staff Dashboard...</div>
+      </div>
+    );
+  }
+
+  if (error && candidates.length === 0) {
+    return (
+      <div style={errorContainerStyle}>
+        <div style={errorCardStyle}>
+          <div style={{ fontSize: '48px', marginBottom: '12px' }}>⚠️</div>
+          <h2 style={{ color: '#003366', margin: '0 0 8px 0' }}>Connection Error</h2>
+          <p style={{ color: '#666', margin: '0 0 20px 0', fontSize: '14px' }}>{error}</p>
+          <button onClick={() => loadData(true)} style={{
+            padding: '12px 32px',
+            background: '#003366',
+            color: '#FFD700',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}>Retry</button>
+          <br />
+          <button onClick={() => navigate('/')} style={{
+            marginTop: '12px',
+            padding: '8px 20px',
+            background: 'transparent',
+            color: '#666',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '13px',
+          }}>Back to Home</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={pageStyle}>
+      {/* Print stylesheet — hides interactive chrome when printing/saving PDF */}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes livePulse {
+          0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
+          70% { box-shadow: 0 0 0 12px rgba(34,197,94,0); }
+          100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+        }
+        @media print {
+          .no-print { display: none !important; }
+          .print-block { display: block !important; }
+          body { background: #fff !important; }
+        }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={headerStyle} className="no-print">
+        <div style={headerGlowStyle}></div>
+        <div style={headerTitleStyle}>
+          <div style={crestStyle}>⚖️</div>
+          <div>
+            <div style={{ fontSize: 'clamp(15px, 2.6vw, 20px)' }}>NAMATL Election Monitor</div>
+            <div style={{ fontSize: '11px', fontWeight: 'normal', color: 'rgba(255,215,0,0.7)' }}>
+              National Association of Maritime Transport &amp; Logistics Students, FUPRE
+            </div>
+          </div>
+        </div>
+        <div style={headerRightStyle}>
+          <span style={timeStyle}>🕐 {currentTime}</span>
+          <button onClick={() => { setAutoRefresh(!autoRefresh); }} style={refreshBtnStyle} title={autoRefresh ? 'Auto-refresh ON (every 12s)' : 'Auto-refresh OFF'}>
+            {autoRefresh ? '🔵 Live' : '⏸ Paused'}
+          </button>
+          <button onClick={() => loadData(false)} style={iconBtnStyle} title="Refresh now">🔄</button>
+          <button onClick={toggleFullscreen} style={iconBtnStyle} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen (projector)'}>
+            {isFullscreen ? '🗗 Exit' : '⛶ Screen'}
+          </button>
+        </div>
+      </div>
+
+      <div style={containerStyle}>
+
+        {/* TOOLBAR: search + view toggle */}
+        <div style={toolbarStyle} className="no-print">
+          <div style={{ flex: '1 1 220px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>🔍</span>
+            <input
+              style={searchInputStyle}
+              placeholder="Search by candidate name or position…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button style={segBtnStyle(view === 'bar')} onClick={() => setView('bar')}>📊 Bars</button>
+            <button style={segBtnStyle(view === 'table')} onClick={() => setView('table')}>📋 Table</button>
+          </div>
+        </div>
+
+        {/* ELECTION STATUS BANNER */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          background: electionStatus.bg,
+          border: `1px solid ${electionStatus.border}`,
+          borderRadius: '12px',
+          padding: '12px 18px',
+          marginBottom: '16px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '14px',
+              height: '14px',
+              borderRadius: '50%',
+              background: electionStatus.dot,
+              boxShadow: `0 0 0 0 ${electionStatus.dot}`,
+              animation: electionLive ? 'livePulse 1.6s infinite' : 'none',
+            }}></div>
+            <div>
+              <div style={{ fontWeight: 'bold', color: electionStatus.strong, fontSize: '15px' }}>
+                {electionStatus.label}
+              </div>
+              <div style={{ color: electionStatus.sub, fontSize: '12px' }}>
+                {electionLive
+                  ? 'Results updating automatically every 12 seconds'
+                  : (settings.startDate
+                      ? `Scheduled: ${settings.startDate} ${settings.startTime || ''}`
+                      : 'Set up and activate the election from the Admin Dashboard')}
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', color: electionStatus.strong, fontWeight: '600', fontSize: '13px' }}>
+            {totalVotes.toLocaleString()} vote{totalVotes !== 1 ? 's' : ''} cast so far
+          </div>
+        </div>
+
+        {/* STATS BANNER */}
+        <div style={statsBarStyle}>
+          <div style={{ ...statCardStyle, borderLeftColor: '#FFD700' }}>
+            <div style={statValueStyle}>{totalCandidates}</div>
+            <div style={statLabelStyle}>Total Candidates</div>
+          </div>
+          <div style={{ ...statCardStyle, borderLeftColor: '#2563eb' }}>
+            <div style={statValueStyle}>{totalVotes.toLocaleString()}</div>
+            <div style={statLabelStyle}>Total Votes Cast</div>
+          </div>
+          <div style={{ ...statCardStyle, borderLeftColor: '#16a34a' }}>
+            <div style={statValueStyle}>{votedStudents.toLocaleString()}</div>
+            <div style={statLabelStyle}>Voters Participated</div>
+          </div>
+          <div style={{ ...statCardStyle, borderLeftColor: '#9333ea' }}>
+            <div style={statValueStyle}>{totalStudents.toLocaleString()}</div>
+            <div style={statLabelStyle}>Registered Voters</div>
+          </div>
+          <div style={{ ...statCardStyle, borderLeftColor: '#f59e0b' }}>
+            <div style={{ ...statValueStyle, color: turnoutPct > 50 ? '#16a34a' : '#f59e0b' }}>
+              {turnoutPct}%
+            </div>
+            <div style={statLabelStyle}>Voter Turnout</div>
+          </div>
+        </div>
+
+        {/* TURNOUT PROGRESS BAR */}
+        <div style={{
+          background: 'white',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          border: '1px solid #e8ecf0',
+          marginBottom: '16px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+            <span style={{ fontWeight: 'bold', color: '#003366' }}>📈 Voter Turnout</span>
+            <span style={{ color: '#666' }}>{votedStudents} / {totalStudents} voted</span>
+          </div>
+          <div style={{ height: '16px', background: '#e8ecf0', borderRadius: '8px', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.min(Number(turnoutPct) || 0, 100)}%`,
+              background: 'linear-gradient(90deg, #16a34a, #4ade80)',
+              borderRadius: '8px',
+              transition: 'width 0.6s ease-out',
+            }}></div>
+          </div>
+        </div>
+
+        {/* POSITION LEADERS STRIP */}
+        {sortedPositions.length > 0 && (
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            border: '1px solid #e8ecf0',
+            marginBottom: '18px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+          }}>
+            <div style={{ fontWeight: 'bold', color: '#003366', fontSize: '13px', marginBottom: '10px' }}>
+              🏁 Current Leaders by Position
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {sortedPositions.map(pos => {
+                const list = [...grouped[pos]].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+                const totalInPos = grouped[pos].reduce((s, c) => s + (c.votes || 0), 0);
+                const top = list[0];
+                const leadPct = top && totalInPos > 0 ? (((top.votes || 0) / totalInPos) * 100).toFixed(0) : 0;
+                const unopposed = grouped[pos].length === 1;
+                return (
+                  <div key={pos} style={{
+                    background: '#f7fafc',
+                    border: '1px solid #e8ecf0',
+                    borderRadius: '10px',
+                    padding: '8px 14px',
+                    fontSize: '12px',
+                    flex: '1 1 180px',
+                  }}>
+                    <div style={{ color: '#888', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.5px', fontWeight: '600' }}>{pos}</div>
+                    <div style={{ color: '#003366', fontWeight: 'bold', fontSize: '13px', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {top && top.votes > 0 ? top.name : (unopposed ? (top ? top.name : '—') : '—')}
+                    </div>
+                    <div style={{ color: '#16a34a', fontWeight: 'bold' }}>
+                      {top && (top.votes > 0 || unopposed) ? `${leadPct}%` : 'No votes yet'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Last updated */}
+        <div style={{
+          textAlign: 'right',
+          fontSize: '12px',
+          color: '#999',
+          marginBottom: '16px',
+        }}>
+          Last updated: {lastUpdated}
+          {autoRefresh && <span style={{ color: '#22c55e', marginLeft: '8px' }}>● Auto-refresh active</span>}
+        </div>
+
+        {/* CANDIDATE SECTIONS */}
+        {sortedPositions.length === 0 ? (
+          <div style={{ ...positionSectionStyle, textAlign: 'center', padding: '60px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
+            <h3 style={{ color: '#666', margin: '0' }}>
+              {q ? 'No candidates match your search' : 'No candidates available yet'}
+            </h3>
+            <p style={{ color: '#999', fontSize: '14px', marginTop: '8px' }}>
+              Candidates will appear here once added by the admin.
+            </p>
+          </div>
+        ) : (
+          sortedPositions.map(pos => {
+            const posCandidates = [...grouped[pos]].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+            const posMaxVotes = Math.max(...posCandidates.map(c => c.votes || 0), 1);
+            const posTotalVotes = posCandidates.reduce((s, c) => s + (c.votes || 0), 0);
+            const isUnopposed = posCandidates.length === 1;
+
+            return (
+              <div key={pos} style={positionSectionStyle}>
+                <div style={positionTitleStyle}>
+                  <span>{pos}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 'normal', color: '#888' }}>
+                    ({posCandidates.length} candidate{posCandidates.length > 1 ? 's' : ''} · {posTotalVotes} total votes)
+                  </span>
+                  {isUnopposed && (
+                    <span style={autoWinBadgeStyle}>🏆 Auto-Winner (unopposed)</span>
+                  )}
+                </div>
+
+                {/* BAR VIEW */}
+                {view === 'bar' && posCandidates.map((c, idx) => {
+                  const voteCount = c.votes || 0;
+                  const pct = posTotalVotes > 0 ? ((voteCount / posTotalVotes) * 100) : 0;
+                  const isLeader = voteCount === posMaxVotes && voteCount > 0;
+                  return (
+                    <div key={c.id} style={candidateRowStyle}>
+                      <div style={rankCircleStyle}>{idx + 1}</div>
+                      {c.photoURL ? (
+                        <img src={c.photoURL} alt={c.name} style={photoCircleStyle} onError={(e) => { e.target.style.display = 'none'; }} />
+                      ) : (
+                        <div style={photoPlaceholderStyle}>{c.name ? c.name.charAt(0).toUpperCase() : '?'}</div>
+                      )}
+
+                      <div style={barContainerStyle}>
+                        <div style={barLabelRowStyle}>
+                          <div style={badgeWrapStyle}>
+                            <span style={candidateNameStyle}>{c.name}</span>
+                            {isLeader && <span style={leaderBadgeStyle}>🏆 Leading</span>}
+                            {isUnopposed && <span style={autoWinBadgeStyle}>WINNER</span>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                            <span style={voteCountStyle}>🗳️ {voteCount.toLocaleString()} vote{voteCount !== 1 ? 's' : ''}</span>
+                            <span style={{ fontSize: '12px', color: '#888', fontWeight: '600', minWidth: '40px', textAlign: 'right' }}>
+                              {pct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div style={barOuterStyle}>
+                          <div style={{
+                            ...barFillStyle(pct),
+                            background: isLeader
+                              ? 'linear-gradient(90deg, #b8860b, #FFD700)'
+                              : 'linear-gradient(90deg, #003366, #0055a5)',
+                            boxShadow: isLeader ? '0 0 12px rgba(255,215,0,0.35)' : 'none',
+                          }}>
+                            {pct > 12 && <span style={barPctStyle}>{pct.toFixed(1)}%</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* TABLE VIEW */}
+                {view === 'table' && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                    <thead>
+                      <tr style={{ background: '#f7fafc', color: '#003366' }}>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>#</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Candidate</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Votes</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Share</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {posCandidates.map((c, idx) => {
+                        const voteCount = c.votes || 0;
+                        const pct = posTotalVotes > 0 ? ((voteCount / posTotalVotes) * 100) : 0;
+                        const isLeader = voteCount === posMaxVotes && voteCount > 0;
+                        return (
+                          <tr key={c.id} style={{ borderBottom: '1px solid #f0f2f5' }}>
+                            <td style={{ padding: '10px 12px', color: '#888', fontWeight: 'bold' }}>{idx + 1}</td>
+                            <td style={{ padding: '10px 12px', fontWeight: '600', color: '#1a1a2e' }}>
+                              {c.name}
+                              {isLeader && <span style={{ ...leaderBadgeStyle, marginLeft: '8px' }}>🏆 Leading</span>}
+                              {isUnopposed && <span style={{ ...autoWinBadgeStyle, marginLeft: '8px' }}>WINNER</span>}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#003366' }}>{voteCount.toLocaleString()}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{pct.toFixed(1)}%</td>
+                            <td style={{ padding: '10px 12px', color: '#888', fontSize: '13px' }}>
+                              {isUnopposed ? 'Auto-Winner' : isLeader ? 'Currently leading' : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* BOTTOM ACTION BAR — Back button at the bottom */}
+      <div style={bottomBarStyle} className="no-print">
+        <button
+          onClick={() => navigate('/staff-login', { replace: true })}
+          style={primaryBtnStyle}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg,#004a80,#00609f)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg,#003366,#004a80)'; }}
+        >
+          ← Back to Login
+        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={() => window.print()} style={ghostBtnStyle} title="Print or save results as PDF">
+            🖨️ Print / PDF
+          </button>
+          <button onClick={toggleFullscreen} style={ghostBtnStyle} title="Projector / fullscreen mode">
+            {isFullscreen ? '🗗 Exit Screen' : '⛶ Projector Mode'}
+          </button>
+          <button onClick={handleLogout} style={dangerBtnStyle}>⏻ Logout</button>
+        </div>
+      </div>
+
+      {/* FOOTER (prints with the document) */}
+      <div style={{
+        textAlign: 'center',
+        padding: '20px 24px',
+        color: '#aaa',
+        fontSize: '12px',
+      }}>
+        <div style={{ marginBottom: '4px' }}>
+          NAMATL Staff Monitoring Dashboard — Official Election Portal
+        </div>
+        <div>
+          National Association of Maritime Transport and Logistics Students, FUPRE
+           &copy; {new Date().getFullYear()}
+        </div>
+      </div>
+    </div>
+  );
+} touch nothing else.

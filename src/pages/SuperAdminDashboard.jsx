@@ -12,112 +12,535 @@
 //   📖 Diary      — the audit trail (every recorded action)
 // Data refreshes by itself every 10 seconds.
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { superAdminApi } from '../utils/superAdminApi';
 import { adminApi } from '../utils/adminApi';
 
 const SUPER_VIEWS = [
   { key: 'overview', label: 'Overview', icon: '📊' },
-  { key: 'live', label: 'Live Monitor', icon: '👀' },
-  { key: 'people', label: 'People', icon: '👥' },
+  { key: 'activity', label: 'Live Monitor', icon: '👀' },
   { key: 'election', label: 'Election', icon: '🗳️' },
-  { key: 'money', label: 'Money & Pricing', icon: '💰' },
+  { key: 'finance', label: 'Finance', icon: '💰' },
   { key: 'system', label: 'System', icon: '🛠️' },
-  { key: 'diary', label: 'Audit Diary', icon: '📖' },
+  { key: 'audit', label: 'Audit Log', icon: '📖' },
 ];
 
-const naira = (n) => '₦' + (Number(n) || 0).toLocaleString();
-const clock = (iso) => {
-  try { return new Date(iso).toLocaleTimeString(); } catch (e) { return '—'; }
+const COLORS = {
+  bg: '#f4f7fb',
+  panel: '#ffffff',
+  navy: '#0f2d52',
+  navySoft: '#183d6b',
+  gold: '#f5c84c',
+  goldSoft: '#fff4cc',
+  text: '#10233d',
+  muted: '#64748b',
+  border: '#e5edf5',
+  success: '#16a34a',
+  successSoft: '#dcfce7',
+  warning: '#d97706',
+  warningSoft: '#fef3c7',
+  danger: '#dc2626',
+  dangerSoft: '#fee2e2',
+  info: '#2563eb',
+  infoSoft: '#dbeafe',
+  slateSoft: '#eef2f7',
 };
-const dayMonth = (iso) => {
-  try { return new Date(iso).toLocaleDateString() + ' ' + new Date(iso).toLocaleTimeString(); } catch (e) { return '—'; }
+
+const REFRESH_OPTIONS = [5000, 10000, 15000, 30000, 60000];
+
+const cardShadow = '0 10px 28px rgba(15,45,82,0.08)';
+const baseRadius = 18;
+
+const naira = (value) => `₦${(Number(value) || 0).toLocaleString()}`;
+
+const safeDate = (value) => {
+  try {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  } catch {
+    return null;
+  }
+};
+
+const clock = (value) => {
+  const d = safeDate(value);
+  return d ? d.toLocaleTimeString() : '—';
+};
+
+const dateTime = (value) => {
+  const d = safeDate(value);
+  return d ? d.toLocaleString() : '—';
+};
+
+const relativeTime = (value) => {
+  const d = safeDate(value);
+  if (!d) return '—';
+  const diff = Date.now() - d.getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  return `${days}d ago`;
+};
+
+const pct = (value, total) => {
+  if (!total) return 0;
+  return Math.round((Number(value || 0) / Number(total || 1)) * 100);
+};
+
+const clamp = (num, min, max) => Math.max(min, Math.min(max, num));
+
+const detailsText = (details) => {
+  try {
+    if (!details) return '—';
+    if (typeof details === 'string') return details;
+    return JSON.stringify(details);
+  } catch {
+    return '—';
+  }
+};
+
+const csvEscape = (value) => {
+  const str = value == null ? '' : String(value);
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
+const downloadTextFile = (filename, content, contentType = 'text/plain;charset=utf-8;') => {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+const exportRowsToCsv = (filename, rows) => {
+  if (!rows || !rows.length) return;
+  const headers = Array.from(
+    rows.reduce((set, row) => {
+      Object.keys(row || {}).forEach((key) => set.add(key));
+      return set;
+    }, new Set())
+  );
+  const lines = [
+    headers.map(csvEscape).join(','),
+    ...rows.map((row) => headers.map((key) => csvEscape(row[key])).join(',')),
+  ];
+  downloadTextFile(filename, lines.join('\n'), 'text/csv;charset=utf-8;');
+};
+
+const getTone = (tone) => {
+  switch (tone) {
+    case 'success':
+      return { bg: COLORS.successSoft, fg: COLORS.success, bd: '#bbf7d0' };
+    case 'warning':
+      return { bg: COLORS.warningSoft, fg: COLORS.warning, bd: '#fde68a' };
+    case 'danger':
+      return { bg: COLORS.dangerSoft, fg: COLORS.danger, bd: '#fecaca' };
+    case 'info':
+      return { bg: COLORS.infoSoft, fg: COLORS.info, bd: '#bfdbfe' };
+    case 'gold':
+      return { bg: COLORS.goldSoft, fg: '#9a6700', bd: '#fde68a' };
+    default:
+      return { bg: COLORS.slateSoft, fg: COLORS.navy, bd: '#dbe4ef' };
+  }
+};
+
+function Badge({ children, tone = 'default' }) {
+  const c = getTone(tone);
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 10px',
+        borderRadius: 999,
+        background: c.bg,
+        color: c.fg,
+        border: `1px solid ${c.bd}`,
+        fontSize: 12,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Panel({ title, subtitle, right, children, style = {} }) {
+  return (
+    <div
+      style={{
+        background: COLORS.panel,
+        borderRadius: baseRadius,
+        padding: 20,
+        boxShadow: cardShadow,
+        border: `1px solid ${COLORS.border}`,
+        ...style,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 12,
+          flexWrap: 'wrap',
+          marginBottom: 16,
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0, color: COLORS.text, fontSize: 18 }}>{title}</h3>
+          {subtitle ? (
+            <div style={{ marginTop: 6, fontSize: 13, color: COLORS.muted }}>{subtitle}</div>
+          ) : null}
+        </div>
+        {right ? <div>{right}</div> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function MetricCard({ icon, label, value, helper, tone = 'default' }) {
+  const c = getTone(tone);
+  return (
+    <div
+      style={{
+        background: COLORS.panel,
+        borderRadius: baseRadius,
+        padding: 18,
+        boxShadow: cardShadow,
+        border: `1px solid ${COLORS.border}`,
+        minWidth: 180,
+        flex: '1 1 200px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ color: COLORS.muted, fontSize: 13, fontWeight: 700 }}>{label}</div>
+          <div style={{ marginTop: 10, color: COLORS.text, fontSize: 28, fontWeight: 800 }}>{value}</div>
+          {helper ? <div style={{ marginTop: 8, color: COLORS.muted, fontSize: 12 }}>{helper}</div> : null}
+        </div>
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 14,
+            display: 'grid',
+            placeItems: 'center',
+            background: c.bg,
+            color: c.fg,
+            fontSize: 24,
+            border: `1px solid ${c.bd}`,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniBar({ label, value, max, rightLabel, color = COLORS.navy }) {
+  const width = max > 0 ? `${Math.max(6, (value / max) * 100)}%` : '0%';
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 10,
+          marginBottom: 6,
+          fontSize: 13,
+          color: COLORS.text,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ fontWeight: 700, color: COLORS.muted }}>{rightLabel ?? value}</span>
+      </div>
+      <div style={{ height: 10, background: '#edf2f7', borderRadius: 999, overflow: 'hidden' }}>
+        <div
+          style={{
+            width,
+            height: '100%',
+            borderRadius: 999,
+            background: color,
+            transition: 'width 0.25s ease',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, subtitle }) {
+  return (
+    <div
+      style={{
+        padding: '28px 18px',
+        textAlign: 'center',
+        background: '#fbfdff',
+        borderRadius: 16,
+        border: `1px dashed ${COLORS.border}`,
+      }}
+    >
+      <div style={{ fontWeight: 800, color: COLORS.text, marginBottom: 6 }}>{title}</div>
+      <div style={{ color: COLORS.muted, fontSize: 13 }}>{subtitle}</div>
+    </div>
+  );
+}
+
+const buttonStyle = (variant = 'primary', disabled = false) => {
+  const map = {
+    primary: { bg: COLORS.navy, color: '#fff', border: COLORS.navy },
+    gold: { bg: COLORS.gold, color: COLORS.navy, border: COLORS.gold },
+    success: { bg: COLORS.success, color: '#fff', border: COLORS.success },
+    danger: { bg: COLORS.danger, color: '#fff', border: COLORS.danger },
+    ghost: { bg: '#fff', color: COLORS.text, border: COLORS.border },
+    soft: { bg: COLORS.slateSoft, color: COLORS.text, border: '#d7e1ea' },
+  };
+  const c = map[variant] || map.primary;
+  return {
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: `1px solid ${c.border}`,
+    background: disabled ? '#e5e7eb' : c.bg,
+    color: disabled ? '#94a3b8' : c.color,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontWeight: 700,
+    fontSize: 13,
+    transition: 'all 0.2s ease',
+  };
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '12px 14px',
+  borderRadius: 12,
+  border: `1px solid ${COLORS.border}`,
+  background: '#fff',
+  outline: 'none',
+  fontSize: 14,
+  color: COLORS.text,
+  boxSizing: 'border-box',
+};
+
+const labelStyle = {
+  display: 'block',
+  marginBottom: 8,
+  color: COLORS.text,
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const tableWrapStyle = {
+  overflowX: 'auto',
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 14,
+};
+
+const thStyle = {
+  textAlign: 'left',
+  padding: '12px 14px',
+  fontSize: 12,
+  color: COLORS.muted,
+  background: '#f8fbff',
+  borderBottom: `1px solid ${COLORS.border}`,
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle = {
+  padding: '12px 14px',
+  fontSize: 13,
+  color: COLORS.text,
+  borderBottom: `1px solid ${COLORS.border}`,
+  verticalAlign: 'top',
 };
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState('overview');
-  const [stats, setStats] = useState(null);
-  const [error, setError] = useState('');
-  const [latencyMs, setLatencyMs] = useState(null);
-  const [lastSync, setLastSync] = useState(null);
   const pollRef = useRef(null);
 
-  // ---- price book state (Money & Pricing) ----
-  const [price, setPrice] = useState({ maintenance: '', siteUpdate: '', databaseUpgrading: '', freeYears: '' });
-  const [priceLoaded, setPriceLoaded] = useState(false);
-  const [priceMsg, setPriceMsg] = useState({ type: '', text: '' });
-  const [priceBusy, setPriceBusy] = useState(false);
-  const [cleanupMsg, setCleanupMsg] = useState('');
-  const [txTab, setTxTab] = useState('all'); // all | activation | forms | withdrawals
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeView, setActiveView] = useState('overview');
 
-  const loadStats = useCallback(async () => {
-    const t0 = Date.now();
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState('');
+  const [lastSync, setLastSync] = useState('');
+  const [latencyMs, setLatencyMs] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshMs, setRefreshMs] = useState(10000);
+
+  const [presenceFilter, setPresenceFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [auditSearch, setAuditSearch] = useState('');
+  const [txFilter, setTxFilter] = useState('all');
+
+  const [price, setPrice] = useState({
+    maintenance: '',
+    siteUpdate: '',
+    databaseUpgrading: '',
+    freeYears: '',
+  });
+  const [priceMeta, setPriceMeta] = useState({
+    total: 0,
+    usingFallback: false,
+    freeYears: [],
+  });
+  const [priceLoaded, setPriceLoaded] = useState(false);
+  const [priceBusy, setPriceBusy] = useState(false);
+  const [priceMsg, setPriceMsg] = useState({ type: '', text: '' });
+
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupMsg, setCleanupMsg] = useState('');
+
+  const loadStats = useCallback(async (showSpinner = false) => {
+    const started = Date.now();
     try {
+      if (showSpinner) setLoading(true);
       const res = await superAdminApi('superStats');
-      setStats(res.stats);
+      setStats(res.stats || null);
       setError('');
-      setLatencyMs(Date.now() - t0);
+      setLatencyMs(Date.now() - started);
       setLastSync(new Date().toISOString());
     } catch (e) {
-      setError(e.message || 'Failed to load stats');
+      const msg = e?.message || 'Failed to load dashboard';
+      setError(msg);
+      if (
+        msg.toLowerCase().includes('super admin session required') ||
+        msg.toLowerCase().includes('unauthorized') ||
+        msg.includes('401') ||
+        msg.includes('403')
+      ) {
+        localStorage.removeItem('superToken');
+        navigate('/super-admin-login', { replace: true });
+      }
+    } finally {
+      if (showSpinner) setLoading(false);
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
-    loadStats();
-    pollRef.current = setInterval(loadStats, 10000);
-    return () => clearInterval(pollRef.current);
+    loadStats(true);
   }, [loadStats]);
 
-  // ---- load the price book once (admin-level read is enough) ----
   useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (autoRefresh) {
+      pollRef.current = setInterval(() => {
+        loadStats(false);
+      }, refreshMs);
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [autoRefresh, refreshMs, loadStats]);
+
+  useEffect(() => {
+    let alive = true;
     (async () => {
       try {
         const res = await adminApi('getActivationPricing');
+        if (!alive) return;
         const p = res.pricing || {};
         setPrice({
-          maintenance: p.usingFallback ? '' : String(p.maintenance),
-          siteUpdate: p.usingFallback ? '' : String(p.siteUpdate),
-          databaseUpgrading: p.usingFallback ? '' : String(p.databaseUpgrading),
+          maintenance: p.usingFallback ? '' : String(p.maintenance ?? ''),
+          siteUpdate: p.usingFallback ? '' : String(p.siteUpdate ?? ''),
+          databaseUpgrading: p.usingFallback ? '' : String(p.databaseUpgrading ?? ''),
           freeYears: Array.isArray(p.freeYears) ? p.freeYears.join(', ') : '',
         });
-        setPriceLoaded(true);
-      } catch (e) {
-        setPriceLoaded(true);
+        setPriceMeta({
+          total: Number(p.total) || 0,
+          usingFallback: !!p.usingFallback,
+          freeYears: Array.isArray(p.freeYears) ? p.freeYears : [],
+        });
+      } catch {
+        // keep silent; dashboard still works
+      } finally {
+        if (alive) setPriceLoaded(true);
       }
     })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const savePricing = async () => {
-    const maintenance = Number(price.maintenance);
-    const siteUpdate = Number(price.siteUpdate);
-    const databaseUpgrading = Number(price.databaseUpgrading);
-    if (![maintenance, siteUpdate, databaseUpgrading].every(n => Number.isFinite(n) && n >= 0)) {
-      setPriceMsg({ type: 'error', text: 'All three boxes must be numbers (0 or more).' });
+    const maintenance = Number(price.maintenance || 0);
+    const siteUpdate = Number(price.siteUpdate || 0);
+    const databaseUpgrading = Number(price.databaseUpgrading || 0);
+
+    if (![maintenance, siteUpdate, databaseUpgrading].every((n) => Number.isFinite(n) && n >= 0)) {
+      setPriceMsg({ type: 'error', text: 'Maintenance, site update and database upgrading must be valid numbers.' });
       return;
     }
+
     setPriceBusy(true);
     setPriceMsg({ type: '', text: '' });
+
     try {
-      const freeYears = price.freeYears.split(',').map(s => s.trim()).filter(Boolean);
-      const res = await superAdminApi('saveActivationPricing', { maintenance, siteUpdate, databaseUpgrading, freeYears });
-      setPriceMsg({ type: 'success', text: `Saved! Activation fee is now ${naira(res.pricing.total)} (${freeYears.length ? 'free years: ' + freeYears.join(', ') : 'no free years'}).` });
+      const freeYears = String(price.freeYears || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const res = await superAdminApi('saveActivationPricing', {
+        maintenance,
+        siteUpdate,
+        databaseUpgrading,
+        freeYears,
+      });
+
+      setPriceMeta({
+        total: Number(res?.pricing?.total) || maintenance + siteUpdate + databaseUpgrading,
+        usingFallback: false,
+        freeYears,
+      });
+
+      setPriceMsg({
+        type: 'success',
+        text: `Pricing saved successfully. New activation total: ${naira(
+          Number(res?.pricing?.total) || maintenance + siteUpdate + databaseUpgrading
+        )}`,
+      });
+
+      loadStats(false);
     } catch (e) {
-      setPriceMsg({ type: 'error', text: e.message || 'Failed to save.' });
+      setPriceMsg({ type: 'error', text: e?.message || 'Failed to save pricing.' });
     } finally {
       setPriceBusy(false);
     }
   };
 
   const cleanupPresence = async () => {
-    setCleanupMsg('⏳ Cleaning...');
+    const proceed = window.confirm('Clean up stale presence records now?');
+    if (!proceed) return;
+
+    setCleanupBusy(true);
+    setCleanupMsg('Cleaning up stale presence records...');
     try {
       const res = await superAdminApi('superCleanupPresence');
-      setCleanupMsg(`✅ Removed ${res.removed} stale presence record(s).`);
+      setCleanupMsg(`Cleanup complete. Removed ${res?.removed || 0} stale record(s).`);
+      loadStats(false);
     } catch (e) {
-      setCleanupMsg('❌ ' + (e.message || 'Failed.'));
+      setCleanupMsg(e?.message || 'Cleanup failed.');
+    } finally {
+      setCleanupBusy(false);
     }
   };
 
@@ -126,562 +549,1468 @@ export default function SuperAdminDashboard() {
     navigate('/admin-dashboard');
   };
 
-  // ===================== STYLES (twins of AdminDashboard) =====================
-  const cardStyle = {
-    background: 'white', borderRadius: '12px', padding: '24px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)', marginBottom: '20px'
+  const s = stats || {};
+  const online = s.online || { count: 0, byPage: {}, list: [] };
+  const people = s.people || {
+    totalStudents: 0,
+    voted: 0,
+    registrationsToday: 0,
+    loginsToday: 0,
+    failedLogins: 0,
   };
-  const statCardStyle = {
-    background: 'white', borderRadius: '12px', padding: '20px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)', textAlign: 'center',
-    flex: '1', minWidth: '200px'
+  const election = s.election || { byPosition: {}, votesToday: 0, activeMode: 'none' };
+  const money = s.money || {
+    balance: 0,
+    totalReceived: 0,
+    totalWithdrawn: 0,
+    paymentsToday: 0,
+    paymentsTodaySum: 0,
+    activations: {},
+    receipts: [],
+    withdrawals: [],
+    formPurchases: [],
   };
-  const btnPrimary = {
-    padding: '12px 24px', background: '#003366', color: 'white',
-    border: 'none', borderRadius: '8px', cursor: 'pointer',
-    fontWeight: 'bold', fontSize: '14px'
-  };
-  const btnSuccess = { ...btnPrimary, background: '#16a34a' };
-  const thStyle = { padding: '10px', textAlign: 'left', borderBottom: '2px solid #e8ecf0', fontSize: '13px', color: '#003366' };
-  const tdStyle = { padding: '10px', borderBottom: '1px solid #eee', fontSize: '13px', color: '#334155' };
+  const support = s.support || { unread: 0, recent: [] };
+  const audit = Array.isArray(s.audit) ? s.audit : [];
 
-  if (error && !stats) {
+  const turnout = pct(people.voted, people.totalStudents);
+  const pageRows = useMemo(
+    () => Object.entries(online.byPage || {}).sort((a, b) => Number(b[1]) - Number(a[1])),
+    [online.byPage]
+  );
+
+  const positionRows = useMemo(() => {
+    return Object.entries(election.byPosition || {}).map(([position, list]) => {
+      const topVotes = list?.[0]?.votes || 0;
+      const totalVotes = (list || []).reduce((sum, item) => sum + (Number(item.votes) || 0), 0);
+      return { position, list: list || [], topVotes, totalVotes };
+    });
+  }, [election.byPosition]);
+
+  const candidateCount = useMemo(
+    () => positionRows.reduce((sum, item) => sum + item.list.length, 0),
+    [positionRows]
+  );
+
+  const leaders = useMemo(() => {
+    return positionRows
+      .map((item) => ({
+        position: item.position,
+        name: item.list?.[0]?.name || '—',
+        votes: item.list?.[0]?.votes || 0,
+      }))
+      .filter((item) => item.name && item.name !== '—');
+  }, [positionRows]);
+
+  const transactionRows = useMemo(() => {
+    const receipts = (money.receipts || []).map((r) => ({
+      when: r.creditedAt || r.createdAt || '',
+      direction: 'Incoming',
+      type: r.kind === 'activation' ? 'Activation Payment' : 'Form Purchase',
+      reference: r.txRef || r.transactionId || r.reference || r.id || '—',
+      amount: Number(r.amount) || 0,
+      status: r.status || 'successful',
+      actor: r.name || r.studentName || r.email || '—',
+    }));
+
+    const withdrawals = (money.withdrawals || []).map((w) => ({
+      when: w.createdAt || w.verifiedAt || '',
+      direction: 'Outgoing',
+      type: 'Withdrawal',
+      reference: w.reference || w.id || '—',
+      amount: Number(w.amount) || 0,
+      status: w.status || 'pending',
+      actor: w.accountName || w.bankName || w.studentName || '—',
+    }));
+
+    return [...receipts, ...withdrawals].sort((a, b) =>
+      String(b.when || '').localeCompare(String(a.when || ''))
+    );
+  }, [money.receipts, money.withdrawals]);
+
+  const filteredTransactions = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return transactionRows.filter((row) => {
+      const passType =
+        txFilter === 'all'
+          ? true
+          : txFilter === 'incoming'
+          ? row.direction === 'Incoming'
+          : txFilter === 'outgoing'
+          ? row.direction === 'Outgoing'
+          : txFilter === 'activation'
+          ? row.type === 'Activation Payment'
+          : txFilter === 'form'
+          ? row.type === 'Form Purchase'
+          : txFilter === 'withdrawal'
+          ? row.type === 'Withdrawal'
+          : true;
+
+      const hay = `${row.type} ${row.reference} ${row.actor} ${row.status}`.toLowerCase();
+      return passType && (!q || hay.includes(q));
+    });
+  }, [transactionRows, txFilter, searchTerm]);
+
+  const filteredOnlineUsers = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return (online.list || []).filter((row) => {
+      const passRole = presenceFilter === 'all' ? true : row.role === presenceFilter;
+      const hay = `${row.id} ${row.role} ${row.page}`.toLowerCase();
+      return passRole && (!q || hay.includes(q));
+    });
+  }, [online.list, presenceFilter, searchTerm]);
+
+  const filteredAudit = useMemo(() => {
+    const q = auditSearch.trim().toLowerCase();
+    return audit.filter((row) => {
+      if (!q) return true;
+      const hay = `${row.action || ''} ${row.actor || ''} ${detailsText(row.details)}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [audit, auditSearch]);
+
+  const healthScore = useMemo(() => {
+    let score = 100;
+    score -= clamp(Math.round((Number(latencyMs || 0) - 500) / 50), 0, 20);
+    score -= clamp((people.failedLogins || 0) * 4, 0, 24);
+    score -= clamp((support.unread || 0) * 2, 0, 12);
+    if (!lastSync) score -= 10;
+    if ((online.count || 0) === 0) score -= 5;
+    return clamp(score, 0, 100);
+  }, [latencyMs, people.failedLogins, support.unread, lastSync, online.count]);
+
+  const healthTone =
+    healthScore >= 85 ? 'success' : healthScore >= 70 ? 'info' : healthScore >= 50 ? 'warning' : 'danger';
+
+  const healthLabel =
+    healthScore >= 85
+      ? 'Excellent'
+      : healthScore >= 70
+      ? 'Stable'
+      : healthScore >= 50
+      ? 'Watch'
+      : 'Critical';
+
+  const alerts = useMemo(() => {
+    const items = [];
+    if ((people.failedLogins || 0) > 0) {
+      items.push({
+        tone: 'danger',
+        text: `${people.failedLogins} failed login attempt(s) recorded today.`,
+      });
+    }
+    if ((support.unread || 0) > 0) {
+      items.push({
+        tone: 'warning',
+        text: `${support.unread} unread support message(s) need attention.`,
+      });
+    }
+    if ((money.withdrawals || []).some((w) => String(w.status || '').toLowerCase() === 'pending')) {
+      items.push({
+        tone: 'info',
+        text: 'There are pending withdrawal records awaiting review.',
+      });
+    }
+    if ((online.count || 0) === 0) {
+      items.push({
+        tone: 'warning',
+        text: 'No active presence records detected right now.',
+      });
+    }
+    if (!items.length) {
+      items.push({
+        tone: 'success',
+        text: 'No active operational warnings right now.',
+      });
+    }
+    return items;
+  }, [people.failedLogins, support.unread, money.withdrawals, online.count]);
+
+  const successfulWithdrawals = useMemo(() => {
+    return (money.withdrawals || [])
+      .filter((w) => String(w.status || '').toLowerCase() === 'successful')
+      .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+  }, [money.withdrawals]);
+
+  const currentInputTotal =
+    (Number(price.maintenance) || 0) +
+    (Number(price.siteUpdate) || 0) +
+    (Number(price.databaseUpgrading) || 0);
+
+  const exportAuditCsv = () => {
+    exportRowsToCsv(
+      'super-admin-audit-log.csv',
+      filteredAudit.map((row) => ({
+        when: dateTime(row.at),
+        action: row.action,
+        actor: row.actor,
+        details: detailsText(row.details),
+      }))
+    );
+  };
+
+  const exportTransactionsCsv = () => {
+    exportRowsToCsv(
+      'super-admin-transactions.csv',
+      filteredTransactions.map((row) => ({
+        when: dateTime(row.when),
+        direction: row.direction,
+        type: row.type,
+        reference: row.reference,
+        amount: row.amount,
+        status: row.status,
+        actor: row.actor,
+      }))
+    );
+  };
+
+  const exportOnlineCsv = () => {
+    exportRowsToCsv(
+      'super-admin-online-users.csv',
+      filteredOnlineUsers.map((row) => ({
+        visitor_id: row.id,
+        role: row.role,
+        page: row.page,
+        last_seen: dateTime(row.lastSeen),
+      }))
+    );
+  };
+
+  const exportDashboardSnapshot = () => {
+    downloadTextFile(
+      'super-admin-dashboard-snapshot.json',
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          latencyMs,
+          lastSync,
+          stats,
+        },
+        null,
+        2
+      ),
+      'application/json;charset=utf-8;'
+    );
+  };
+
+  const renderOverview = () => (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <MetricCard
+          icon="🟢"
+          label="Live Users"
+          value={online.count || 0}
+          helper={`${pageRows.length} active page zone(s)`}
+          tone="success"
+        />
+        <MetricCard
+          icon="👥"
+          label="Registered Students"
+          value={people.totalStudents || 0}
+          helper={`${people.registrationsToday || 0} joined today`}
+          tone="info"
+        />
+        <MetricCard
+          icon="🗳️"
+          label="Turnout"
+          value={`${turnout}%`}
+          helper={`${people.voted || 0} of ${people.totalStudents || 0} students voted`}
+          tone="gold"
+        />
+        <MetricCard
+          icon="⚡"
+          label="Votes Today"
+          value={election.votesToday || 0}
+          helper={`Mode: ${election.activeMode || 'none'}`}
+          tone="default"
+        />
+        <MetricCard
+          icon="💰"
+          label="Current Balance"
+          value={naira(money.balance)}
+          helper={`${naira(money.paymentsTodaySum)} received today`}
+          tone="success"
+        />
+        <MetricCard
+          icon="📩"
+          label="Unread Support"
+          value={support.unread || 0}
+          helper={`${support.recent?.length || 0} recent support entries`}
+          tone={support.unread ? 'warning' : 'success'}
+        />
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.3fr 1fr',
+          gap: 20,
+          marginBottom: 20,
+        }}
+      >
+        <Panel
+          title="Operational Radar"
+          subtitle="Fast read of what needs your attention right now."
+          right={<Badge tone={healthTone}>Health {healthScore}/100 · {healthLabel}</Badge>}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 18 }}>
+            <div>
+              {alerts.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 14,
+                    marginBottom: 10,
+                    border: `1px solid ${getTone(item.tone).bd}`,
+                    background: getTone(item.tone).bg,
+                    color: getTone(item.tone).fg,
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  {item.text}
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 16,
+                padding: 16,
+                background: '#fbfdff',
+              }}
+            >
+              <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                SYSTEM SNAPSHOT
+              </div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ color: COLORS.muted, fontSize: 13 }}>API latency</span>
+                  <strong style={{ color: COLORS.text }}>{latencyMs != null ? `${latencyMs} ms` : '—'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ color: COLORS.muted, fontSize: 13 }}>Last sync</span>
+                  <strong style={{ color: COLORS.text }}>{lastSync ? relativeTime(lastSync) : '—'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ color: COLORS.muted, fontSize: 13 }}>Audit events loaded</span>
+                  <strong style={{ color: COLORS.text }}>{audit.length}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ color: COLORS.muted, fontSize: 13 }}>Candidates tracked</span>
+                  <strong style={{ color: COLORS.text }}>{candidateCount}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Hot Pages" subtitle="Where users are concentrated right now.">
+          {pageRows.length ? (
+            pageRows.map(([page, count]) => (
+              <MiniBar
+                key={page}
+                label={page}
+                value={Number(count) || 0}
+                max={Number(pageRows[0]?.[1]) || 1}
+                rightLabel={`${count} user(s)`}
+                color={COLORS.navy}
+              />
+            ))
+          ) : (
+            <EmptyState title="No page activity" subtitle="Live page traffic will appear here as users browse the system." />
+          )}
+        </Panel>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 20,
+          marginBottom: 20,
+        }}
+      >
+        <Panel title="Election Leaders" subtitle="Top candidate per position.">
+          {leaders.length ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {leaders.map((item) => (
+                <div
+                  key={item.position}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 14,
+                    border: `1px solid ${COLORS.border}`,
+                    background: '#fbfdff',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, color: COLORS.text }}>{item.position}</div>
+                    <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 4 }}>{item.name}</div>
+                  </div>
+                  <Badge tone="gold">👑 {item.votes} vote(s)</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No leaders yet" subtitle="Candidate standings will appear once candidates and votes exist." />
+          )}
+        </Panel>
+
+        <Panel title="Finance Pulse" subtitle="Quick money and transaction intelligence.">
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  background: COLORS.successSoft,
+                  border: `1px solid #bbf7d0`,
+                }}
+              >
+                <div style={{ color: COLORS.success, fontSize: 12, fontWeight: 800 }}>TODAY'S INFLOW</div>
+                <div style={{ color: COLORS.text, fontSize: 22, fontWeight: 800, marginTop: 6 }}>
+                  {naira(money.paymentsTodaySum)}
+                </div>
+              </div>
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  background: COLORS.infoSoft,
+                  border: `1px solid #bfdbfe`,
+                }}
+              >
+                <div style={{ color: COLORS.info, fontSize: 12, fontWeight: 800 }}>SUCCESSFUL WITHDRAWALS</div>
+                <div style={{ color: COLORS.text, fontSize: 22, fontWeight: 800, marginTop: 6 }}>
+                  {naira(successfulWithdrawals)}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                border: `1px solid ${COLORS.border}`,
+                background: '#fbfdff',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <span style={{ color: COLORS.muted, fontSize: 13 }}>Transactions loaded</span>
+                <strong style={{ color: COLORS.text }}>{transactionRows.length}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <span style={{ color: COLORS.muted, fontSize: 13 }}>Pending withdrawals</span>
+                <strong style={{ color: COLORS.text }}>
+                  {(money.withdrawals || []).filter((w) => String(w.status || '').toLowerCase() === 'pending').length}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ color: COLORS.muted, fontSize: 13 }}>Price-book total</span>
+                <strong style={{ color: COLORS.text }}>
+                  {naira(priceMeta.total || currentInputTotal)}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="Support Inbox Snapshot" subtitle="Newest messages from users.">
+        {support.recent?.length ? (
+          <div style={tableWrapStyle}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>When</th>
+                  <th style={thStyle}>From</th>
+                  <th style={thStyle}>Message</th>
+                  <th style={thStyle}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {support.recent.map((msg) => (
+                  <tr key={msg.id}>
+                    <td style={tdStyle}>{dateTime(msg.timestamp)}</td>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{msg.name || '—'}</td>
+                    <td style={tdStyle}>
+                      <div style={{ maxWidth: 420, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {String(msg.message || '—')}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <Badge tone={msg.status === 'unread' ? 'warning' : 'success'}>
+                        {msg.status === 'unread' ? 'Unread' : 'Read'}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No support messages" subtitle="Support messages will show here when users contact the system." />
+        )}
+      </Panel>
+    </>
+  );
+
+  const renderActivity = () => (
+    <>
+      <Panel
+        title="Live Monitor"
+        subtitle="Watch online visitors, their pages, and real-time event flow."
+        right={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={exportOnlineCsv} style={buttonStyle('ghost')} type="button">
+              Export online CSV
+            </button>
+            <Badge tone="success">{online.count} online now</Badge>
+          </div>
+        }
+        style={{ marginBottom: 20 }}
+      >
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 180, flex: '1 1 220px' }}>
+            <label style={labelStyle}>Search users / pages</label>
+            <input
+              style={inputStyle}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search id, role, page, reference..."
+            />
+          </div>
+          <div style={{ minWidth: 180, flex: '0 0 220px' }}>
+            <label style={labelStyle}>Role filter</label>
+            <select
+              style={inputStyle}
+              value={presenceFilter}
+              onChange={(e) => setPresenceFilter(e.target.value)}
+            >
+              <option value="all">All roles</option>
+              <option value="admin">Admin</option>
+              <option value="staff">Staff</option>
+              <option value="student">Student</option>
+              <option value="visitor">Visitor</option>
+            </select>
+          </div>
+        </div>
+      </Panel>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 20, marginBottom: 20 }}>
+        <Panel title="Active Sessions" subtitle="Presence feed for everyone currently online.">
+          {filteredOnlineUsers.length ? (
+            <div style={tableWrapStyle}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Visitor</th>
+                    <th style={thStyle}>Role</th>
+                    <th style={thStyle}>Page</th>
+                    <th style={thStyle}>Last Seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOnlineUsers.map((row) => (
+                    <tr key={row.id}>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.id}</td>
+                      <td style={tdStyle}>
+                        <Badge
+                          tone={
+                            row.role === 'admin'
+                              ? 'gold'
+                              : row.role === 'staff'
+                              ? 'info'
+                              : row.role === 'student'
+                              ? 'success'
+                              : 'default'
+                          }
+                        >
+                          {row.role || 'visitor'}
+                        </Badge>
+                      </td>
+                      <td style={tdStyle}>{row.page || '—'}</td>
+                      <td style={tdStyle}>{dateTime(row.lastSeen)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No matching sessions" subtitle="Try another search or role filter." />
+          )}
+        </Panel>
+
+        <Panel title="Page Concentration" subtitle="Which screens users are spending time on.">
+          {pageRows.length ? (
+            pageRows.map(([page, count]) => (
+              <MiniBar
+                key={page}
+                label={page}
+                value={Number(count) || 0}
+                max={Number(pageRows[0]?.[1]) || 1}
+                rightLabel={`${count} active`}
+                color={COLORS.navySoft}
+              />
+            ))
+          ) : (
+            <EmptyState title="No live page traffic" subtitle="Activity bars appear when active presence records are available." />
+          )}
+        </Panel>
+      </div>
+
+      <Panel
+        title="Recent Event Feed"
+        subtitle="Newest system actions from the audit stream."
+        right={<Badge tone="info">{audit.length} loaded event(s)</Badge>}
+      >
+        {audit.length ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {audit.slice(0, 25).map((item) => {
+              const tone =
+                String(item.action || '').includes('FAILED')
+                  ? 'danger'
+                  : String(item.action || '').includes('VOTE')
+                  ? 'success'
+                  : 'default';
+
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '110px 180px 1fr',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 14,
+                    border: `1px solid ${COLORS.border}`,
+                    background: '#fbfdff',
+                    alignItems: 'start',
+                  }}
+                >
+                  <div style={{ color: COLORS.muted, fontSize: 12 }}>{clock(item.at)}</div>
+                  <div>
+                    <Badge tone={tone}>{item.action || 'UNKNOWN'}</Badge>
+                  </div>
+                  <div>
+                    <div style={{ color: COLORS.text, fontWeight: 700 }}>{item.actor || 'Unknown actor'}</div>
+                    <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>
+                      {detailsText(item.details)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState title="No recent events" subtitle="Audit activity will appear here automatically." />
+        )}
+      </Panel>
+    </>
+  );
+
+  const renderElection = () => (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <MetricCard icon="🏁" label="Election Mode" value={election.activeMode || 'none'} helper="Current operating mode" tone="gold" />
+        <MetricCard icon="🧑‍💼" label="Positions" value={positionRows.length} helper="Tracked offices" tone="info" />
+        <MetricCard icon="🙋" label="Candidates" value={candidateCount} helper="Across all positions" tone="default" />
+        <MetricCard icon="⚡" label="Votes Today" value={election.votesToday || 0} helper="Today's recorded vote actions" tone="success" />
+      </div>
+
+      {positionRows.length ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+          {positionRows.map((item) => (
+            <Panel
+              key={item.position}
+              title={item.position}
+              subtitle={`${item.list.length} candidate(s) · ${item.totalVotes} total vote(s)`}
+              right={
+                item.list?.[0] ? (
+                  <Badge tone="gold">
+                    👑 {item.list[0].name} · {item.list[0].votes}
+                  </Badge>
+                ) : null
+              }
+            >
+              {item.list.length ? (
+                item.list.map((candidate) => (
+                  <MiniBar
+                    key={candidate.id}
+                    label={candidate.name}
+                    value={Number(candidate.votes) || 0}
+                    max={item.topVotes || 1}
+                    rightLabel={`${candidate.votes} vote(s)`}
+                    color={candidate.votes === item.topVotes && item.topVotes > 0 ? COLORS.gold : COLORS.navy}
+                  />
+                ))
+              ) : (
+                <EmptyState title="No candidates" subtitle="Candidate data will appear here when available." />
+              )}
+            </Panel>
+          ))}
+        </div>
+      ) : (
+        <Panel title="Election Standings" subtitle="No candidate data is available yet.">
+          <EmptyState title="No election standings" subtitle="Add candidates or wait for data to load." />
+        </Panel>
+      )}
+    </>
+  );
+
+  const renderFinance = () => (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <MetricCard icon="💳" label="Payments Today" value={money.paymentsToday || 0} helper={naira(money.paymentsTodaySum)} tone="success" />
+        <MetricCard icon="🏦" label="Balance" value={naira(money.balance)} helper="Available withdrawal balance" tone="info" />
+        <MetricCard icon="📥" label="Total Received" value={naira(money.totalReceived)} helper="Lifetime received value" tone="default" />
+        <MetricCard icon="📤" label="Total Withdrawn" value={naira(money.totalWithdrawn)} helper="Lifetime outgoing value" tone="warning" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: 20, marginBottom: 20 }}>
+        <Panel
+          title="Activation Price Book"
+          subtitle="Update the components that determine the activation amount."
+          right={
+            priceMeta.usingFallback ? (
+              <Badge tone="warning">Using fallback defaults</Badge>
+            ) : (
+              <Badge tone="success">Live pricing active</Badge>
+            )
+          }
+        >
+          {!priceLoaded ? (
+            <div style={{ color: COLORS.muted, fontSize: 14 }}>Loading pricing...</div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={labelStyle}>Database maintenance</label>
+                  <input
+                    type="number"
+                    min="0"
+                    style={inputStyle}
+                    value={price.maintenance}
+                    onChange={(e) => setPrice((prev) => ({ ...prev, maintenance: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Site update</label>
+                  <input
+                    type="number"
+                    min="0"
+                    style={inputStyle}
+                    value={price.siteUpdate}
+                    onChange={(e) => setPrice((prev) => ({ ...prev, siteUpdate: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Database upgrading</label>
+                  <input
+                    type="number"
+                    min="0"
+                    style={inputStyle}
+                    value={price.databaseUpgrading}
+                    onChange={(e) => setPrice((prev) => ({ ...prev, databaseUpgrading: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Free years (comma separated)</label>
+                <input
+                  style={inputStyle}
+                  value={price.freeYears}
+                  onChange={(e) => setPrice((prev) => ({ ...prev, freeYears: e.target.value }))}
+                  placeholder="e.g. 2026/2027, 2027/2028"
+                />
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gap: 14,
+                  alignItems: 'center',
+                  padding: 16,
+                  borderRadius: 16,
+                  background: '#fbfdff',
+                  border: `1px solid ${COLORS.border}`,
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800 }}>CALCULATED TOTAL</div>
+                  <div style={{ color: COLORS.text, fontSize: 28, fontWeight: 900, marginTop: 4 }}>
+                    {naira(currentInputTotal)}
+                  </div>
+                </div>
+                <button type="button" onClick={savePricing} style={buttonStyle('primary', priceBusy)} disabled={priceBusy}>
+                  {priceBusy ? 'Saving...' : 'Save pricing'}
+                </button>
+              </div>
+
+              {priceMsg.text ? (
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: getTone(priceMsg.type === 'success' ? 'success' : 'danger').bg,
+                    color: getTone(priceMsg.type === 'success' ? 'success' : 'danger').fg,
+                    border: `1px solid ${getTone(priceMsg.type === 'success' ? 'success' : 'danger').bd}`,
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  {priceMsg.text}
+                </div>
+              ) : null}
+            </>
+          )}
+        </Panel>
+
+        <Panel title="Finance Utilities" subtitle="Quick finance context and exports.">
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                border: `1px solid ${COLORS.border}`,
+                background: '#fbfdff',
+              }}
+            >
+              <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800 }}>ACTIVE PRICE BOOK TOTAL</div>
+              <div style={{ color: COLORS.text, fontSize: 24, fontWeight: 800, marginTop: 6 }}>
+                {naira(priceMeta.total || currentInputTotal)}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                border: `1px solid ${COLORS.border}`,
+                background: '#fbfdff',
+              }}
+            >
+              <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800, marginBottom: 8 }}>FREE YEARS</div>
+              {priceMeta.freeYears?.length ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {priceMeta.freeYears.map((year) => (
+                    <Badge key={year} tone="gold">{year}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: COLORS.muted, fontSize: 13 }}>No free years configured.</div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={exportTransactionsCsv} style={buttonStyle('ghost')}>
+                Export transactions CSV
+              </button>
+              <button type="button" onClick={exportDashboardSnapshot} style={buttonStyle('soft')}>
+                Export JSON snapshot
+              </button>
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel
+        title="Transaction Center"
+        subtitle="Search and filter payments and withdrawals."
+        right={<Badge tone="info">{filteredTransactions.length} visible transaction(s)</Badge>}
+        style={{ marginBottom: 20 }}
+      >
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div style={{ minWidth: 220, flex: '1 1 320px' }}>
+            <label style={labelStyle}>Search reference / actor</label>
+            <input
+              style={inputStyle}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search transaction reference or actor..."
+            />
+          </div>
+          <div style={{ minWidth: 200, flex: '0 0 240px' }}>
+            <label style={labelStyle}>Transaction filter</label>
+            <select style={inputStyle} value={txFilter} onChange={(e) => setTxFilter(e.target.value)}>
+              <option value="all">All transactions</option>
+              <option value="incoming">Incoming only</option>
+              <option value="outgoing">Outgoing only</option>
+              <option value="activation">Activation payments</option>
+              <option value="form">Form purchases</option>
+              <option value="withdrawal">Withdrawals</option>
+            </select>
+          </div>
+        </div>
+
+        {filteredTransactions.length ? (
+          <div style={tableWrapStyle}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>When</th>
+                  <th style={thStyle}>Direction</th>
+                  <th style={thStyle}>Type</th>
+                  <th style={thStyle}>Reference</th>
+                  <th style={thStyle}>Actor</th>
+                  <th style={thStyle}>Amount</th>
+                  <th style={thStyle}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTransactions.map((row, idx) => (
+                  <tr key={`${row.reference}-${idx}`}>
+                    <td style={tdStyle}>{dateTime(row.when)}</td>
+                    <td style={tdStyle}>
+                      <Badge tone={row.direction === 'Incoming' ? 'success' : 'warning'}>{row.direction}</Badge>
+                    </td>
+                    <td style={tdStyle}>{row.type}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.reference}</td>
+                    <td style={tdStyle}>{row.actor}</td>
+                    <td style={{ ...tdStyle, fontWeight: 800 }}>{naira(row.amount)}</td>
+                    <td style={tdStyle}>
+                      <Badge
+                        tone={
+                          String(row.status).toLowerCase() === 'successful'
+                            ? 'success'
+                            : String(row.status).toLowerCase() === 'failed'
+                            ? 'danger'
+                            : 'warning'
+                        }
+                      >
+                        {row.status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No matching transactions" subtitle="Try another search or transaction filter." />
+        )}
+      </Panel>
+
+      <Panel title="Form Purchase Records" subtitle="Recent form purchase entries tracked by the system.">
+        {money.formPurchases?.length ? (
+          <div style={tableWrapStyle}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>When</th>
+                  <th style={thStyle}>Student</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {money.formPurchases.slice(0, 40).map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{dateTime(row.paidAt)}</td>
+                    <td style={tdStyle}>{row.name || row.studentName || '—'}</td>
+                    <td style={tdStyle}>{row.email || '—'}</td>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>
+                      {naira(row.amount || row.price || row.paidAmount || 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No form purchases" subtitle="Form purchase entries will appear here when available." />
+        )}
+      </Panel>
+    </>
+  );
+
+  const renderSystem = () => (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <MetricCard icon="🧠" label="Health Score" value={`${healthScore}/100`} helper={healthLabel} tone={healthTone} />
+        <MetricCard icon="📶" label="API Latency" value={latencyMs != null ? `${latencyMs} ms` : '—'} helper="Latest fetch roundtrip" tone="info" />
+        <MetricCard icon="⏱️" label="Auto Refresh" value={autoRefresh ? 'On' : 'Off'} helper={`Every ${refreshMs / 1000}s`} tone={autoRefresh ? 'success' : 'warning'} />
+        <MetricCard icon="🔐" label="Session State" value={localStorage.getItem('superToken') ? 'Active' : 'Missing'} helper="Super admin token check" tone={localStorage.getItem('superToken') ? 'success' : 'danger'} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+        <Panel title="Refresh Controls" subtitle="Tune how the dashboard keeps itself updated.">
+          <div style={{ display: 'grid', gap: 14 }}>
+            <div>
+              <label style={labelStyle}>Refresh interval</label>
+              <select
+                style={inputStyle}
+                value={refreshMs}
+                onChange={(e) => setRefreshMs(Number(e.target.value))}
+              >
+                {REFRESH_OPTIONS.map((ms) => (
+                  <option key={ms} value={ms}>
+                    Every {ms / 1000} second(s)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setAutoRefresh((v) => !v)} style={buttonStyle(autoRefresh ? 'warning' : 'success')}>
+                {autoRefresh ? 'Pause auto refresh' : 'Resume auto refresh'}
+              </button>
+              <button type="button" onClick={() => loadStats(false)} style={buttonStyle('primary')}>
+                Refresh now
+              </button>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Quick Actions" subtitle="Maintenance and export tools for super admin work.">
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button type="button" onClick={cleanupPresence} style={buttonStyle('danger', cleanupBusy)} disabled={cleanupBusy}>
+              {cleanupBusy ? 'Cleaning...' : 'Cleanup stale presence'}
+            </button>
+            <button type="button" onClick={exportDashboardSnapshot} style={buttonStyle('ghost')}>
+              Export JSON snapshot
+            </button>
+            <button type="button" onClick={exportAuditCsv} style={buttonStyle('soft')}>
+              Export audit CSV
+            </button>
+          </div>
+          {cleanupMsg ? (
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: 12,
+                background: '#fbfdff',
+                border: `1px solid ${COLORS.border}`,
+                color: COLORS.text,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              {cleanupMsg}
+            </div>
+          ) : null}
+        </Panel>
+      </div>
+
+      <Panel title="Diagnostics Board" subtitle="Server-time and operational state at a glance.">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+          <div style={{ padding: 16, borderRadius: 14, background: '#fbfdff', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800 }}>SERVER TIME</div>
+            <div style={{ marginTop: 8, color: COLORS.text, fontWeight: 800 }}>{dateTime(s.serverTime)}</div>
+          </div>
+          <div style={{ padding: 16, borderRadius: 14, background: '#fbfdff', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800 }}>LAST CLIENT SYNC</div>
+            <div style={{ marginTop: 8, color: COLORS.text, fontWeight: 800 }}>{dateTime(lastSync)}</div>
+          </div>
+          <div style={{ padding: 16, borderRadius: 14, background: '#fbfdff', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800 }}>LOGIN RISK</div>
+            <div style={{ marginTop: 8, color: COLORS.text, fontWeight: 800 }}>{people.failedLogins || 0} failed login(s)</div>
+          </div>
+          <div style={{ padding: 16, borderRadius: 14, background: '#fbfdff', border: `1px solid ${COLORS.border}` }}>
+            <div style={{ color: COLORS.muted, fontSize: 12, fontWeight: 800 }}>SUPPORT LOAD</div>
+            <div style={{ marginTop: 8, color: COLORS.text, fontWeight: 800 }}>{support.unread || 0} unread ticket(s)</div>
+          </div>
+        </div>
+      </Panel>
+    </>
+  );
+
+  const renderAudit = () => (
+    <>
+      <Panel
+        title="Audit Diary"
+        subtitle="Search through system actions, actors and details."
+        right={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={exportAuditCsv} style={buttonStyle('ghost')}>
+              Export CSV
+            </button>
+            <Badge tone="info">{filteredAudit.length} visible</Badge>
+          </div>
+        }
+        style={{ marginBottom: 20 }}
+      >
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 240, flex: '1 1 360px' }}>
+            <label style={labelStyle}>Search action / actor / details</label>
+            <input
+              style={inputStyle}
+              value={auditSearch}
+              onChange={(e) => setAuditSearch(e.target.value)}
+              placeholder="Search audit action, actor or details..."
+            />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="Audit Records" subtitle="Most recent audit events loaded from the server.">
+        {filteredAudit.length ? (
+          <div style={tableWrapStyle}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>When</th>
+                  <th style={thStyle}>Action</th>
+                  <th style={thStyle}>Actor</th>
+                  <th style={thStyle}>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAudit.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{dateTime(row.at)}</td>
+                    <td style={tdStyle}>
+                      <Badge tone={String(row.action || '').includes('FAILED') ? 'danger' : 'default'}>
+                        {row.action || 'UNKNOWN'}
+                      </Badge>
+                    </td>
+                    <td style={tdStyle}>{row.actor || '—'}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12 }}>
+                      <div style={{ maxWidth: 520, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {detailsText(row.details)}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState title="No audit records found" subtitle="Try a different search or wait for new activity." />
+        )}
+      </Panel>
+    </>
+  );
+
+  const renderActiveView = () => {
+    switch (activeView) {
+      case 'activity':
+        return renderActivity();
+      case 'election':
+        return renderElection();
+      case 'finance':
+        return renderFinance();
+      case 'system':
+        return renderSystem();
+      case 'audit':
+        return renderAudit();
+      case 'overview':
+      default:
+        return renderOverview();
+    }
+  };
+
+  if (loading && !stats && !error) {
     return (
-      <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', padding: '20px' }}>
-        <h2 style={{ color: '#ef4444' }}>ERROR</h2>
-        <p style={{ color: 'white', textAlign: 'center', maxWidth: '500px' }}>{error}</p>
-        <button onClick={loadStats} style={{ padding: '10px 24px', background: '#FFD700', color: '#003366', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginTop: '16px' }}>Retry</button>
+      <div
+        style={{
+          minHeight: '100vh',
+          background: `linear-gradient(135deg, ${COLORS.navy} 0%, #163b67 100%)`,
+          display: 'grid',
+          placeItems: 'center',
+          padding: 24,
+          fontFamily: 'Arial, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            color: '#fff',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 20,
+            padding: '26px 30px',
+            textAlign: 'center',
+            maxWidth: 420,
+          }}
+        >
+          <div style={{ fontSize: 40, marginBottom: 10 }}>🛡️</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.gold }}>Loading Super Admin Dashboard</div>
+          <div style={{ marginTop: 10, color: 'rgba(255,255,255,0.84)', fontSize: 14 }}>
+            Pulling live system stats, audit stream, finance data and presence records...
+          </div>
+        </div>
       </div>
     );
   }
 
-  const s = stats;
-  const audit = (s && s.audit) || [];
-  const loginEvents = audit.filter(a => String(a.action).includes('LOGIN') || a.action === 'LOGIN_FAILED');
-
-  // ---- Transactions Center data ----
-  const withdrawals = (s && s.money && s.money.withdrawals) || [];
-  const formPurchases = (s && s.money && s.money.formPurchases) || [];
-  const successfulWithdrawn = withdrawals
-    .filter(w => String(w.status || '').toLowerCase() === 'successful')
-    .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
-  const allTx = s ? [
-    ...(s.money.receipts || []).map(r => ({ when: r.creditedAt, label: r.kind === 'activation' ? '🔘 Activation Payment' : '📋 Form Purchase', ref: r.txRef || r.transactionId, amount: Number(r.amount) || 0, dir: 'in' })),
-    ...withdrawals.map(w => ({ when: w.createdAt || w.verifiedAt, label: '🏧 Withdrawal', ref: w.reference, amount: Number(w.amount) || 0, dir: 'out' })),
-  ].sort((a, b) => String(b.when || '').localeCompare(String(a.when || ''))).slice(0, 50) : [];
-  const txBadge = (status) => {
-    const st = String(status || 'unknown').toLowerCase();
-    if (st === 'successful') return { bg: '#d1fae5', color: '#166534', icon: '🟢', text: 'Successful' };
-    if (st === 'failed') return { bg: '#fee2e2', color: '#991b1b', icon: '🔴', text: 'Failed' };
-    return { bg: '#fef3c7', color: '#92400e', icon: '🟡', text: st.charAt(0).toUpperCase() + st.slice(1) };
-  };
+  if (error && !stats) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          background: `linear-gradient(135deg, ${COLORS.navy} 0%, #163b67 100%)`,
+          display: 'grid',
+          placeItems: 'center',
+          padding: 24,
+          fontFamily: 'Arial, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 20,
+            padding: 28,
+            maxWidth: 520,
+            boxShadow: cardShadow,
+            border: `1px solid ${COLORS.border}`,
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ fontSize: 40, marginBottom: 10 }}>⚠️</div>
+          <div style={{ color: COLORS.text, fontSize: 24, fontWeight: 800 }}>Unable to load dashboard</div>
+          <div style={{ color: COLORS.muted, marginTop: 12, fontSize: 14 }}>{error}</div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 20 }}>
+            <button type="button" onClick={() => loadStats(true)} style={buttonStyle('primary')}>
+              Retry
+            </button>
+            <button type="button" onClick={() => navigate('/admin-dashboard')} style={buttonStyle('ghost')}>
+              Back to Admin
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif' }}>
-      {/* Sidebar overlay */}
-      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 40 }} />}
+    <div style={{ minHeight: '100vh', background: COLORS.bg, fontFamily: 'Arial, sans-serif', color: COLORS.text }}>
+      <style>{`
+        * { box-sizing: border-box; }
+        .sa-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+        .sa-scroll::-webkit-scrollbar-thumb { background: #cdd8e3; border-radius: 999px; }
+        .sa-scroll::-webkit-scrollbar-track { background: transparent; }
+      `}</style>
 
-      {/* Sidebar */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, bottom: 0, width: '250px',
-        background: '#001a33', zIndex: 50, padding: '20px 16px',
-        transform: sidebarOpen ? 'translateX(0)' : 'translateX(-260px)',
-        transition: 'transform 0.3s ease', overflowY: 'auto'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h3 style={{ color: '#FFD700', margin: 0 }}>🛡️ Super Admin</h3>
-          <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', color: '#FFD700', fontSize: '24px', cursor: 'pointer', padding: 0 }}>×</button>
-        </div>
-        {SUPER_VIEWS.map(item => (
-          <div key={item.key} onClick={() => { setActiveView(item.key); setSidebarOpen(false); }}
-               style={{
-                 display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px',
-                 marginBottom: '4px', borderRadius: '8px', cursor: 'pointer',
-                 background: activeView === item.key ? 'rgba(255,215,0,0.15)' : 'transparent',
-                 color: activeView === item.key ? '#FFD700' : 'rgba(255,255,255,0.8)',
-                 fontWeight: activeView === item.key ? 'bold' : 'normal'
-               }}>
-            <span>{item.icon}</span>
-            <span>{item.label}</span>
-          </div>
-        ))}
-        <button onClick={() => navigate('/admin-dashboard')}
-                style={{ width: '100%', padding: '12px', marginTop: '20px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-          ← Admin Dashboard
-        </button>
-        <button onClick={endSuperSession}
-                style={{ width: '100%', padding: '12px', marginTop: '8px', background: 'rgba(220,38,38,0.2)', color: '#fecaca', border: '1px solid rgba(220,38,38,0.4)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-          🔒 End Super Session
-        </button>
-      </div>
+      {sidebarOpen ? (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(2, 12, 27, 0.35)',
+            zIndex: 40,
+          }}
+        />
+      ) : null}
 
-      {/* Main */}
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
-        {/* Topbar */}
-        <div style={{ background: '#003366', borderRadius: '12px', padding: '16px 24px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button onClick={() => setSidebarOpen(true)}
-                    style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
-              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
-              <span style={{ display: 'block', width: '18px', height: '2px', background: '#FFD700' }}></span>
-            </button>
-            <div>
-              <h2 style={{ margin: 0, color: '#FFD700' }}>Super Admin Dashboard</h2>
-              <span style={{ fontSize: '12px', opacity: 0.8 }}>NAMTLS Control Room</span>
-            </div>
+      <aside
+        className="sa-scroll"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 280,
+          background: `linear-gradient(180deg, ${COLORS.navy} 0%, #0b2443 100%)`,
+          padding: 20,
+          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-292px)',
+          transition: 'transform 0.25s ease',
+          zIndex: 50,
+          overflowY: 'auto',
+          boxShadow: '20px 0 40px rgba(0,0,0,0.15)',
+        }}
+      >
+        <div
+          style={{
+            padding: 18,
+            borderRadius: 18,
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>
+            CONTROL ROOM
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <span className="animate-pulse-slow" style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#16a34a', marginRight: '8px' }}></span>
-            <span style={{ fontSize: '13px', fontWeight: 'bold' }}>LIVE · {s ? s.online.count : '…'} online</span>
-            {lastSync && <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Synced {clock(lastSync)}</div>}
+          <div style={{ color: COLORS.gold, fontSize: 24, fontWeight: 900 }}>Super Admin</div>
+          <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: 13, marginTop: 8 }}>
+            Live oversight for operations, voting, finance and audit.
           </div>
         </div>
 
-        {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', fontWeight: 'bold' }}>{error} — retrying…</div>}
+        <div style={{ display: 'grid', gap: 8 }}>
+          {SUPER_VIEWS.map((item) => {
+            const active = activeView === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  setActiveView(item.key);
+                  setSidebarOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  width: '100%',
+                  padding: '14px 16px',
+                  borderRadius: 14,
+                  border: active ? '1px solid rgba(245,200,76,0.45)' : '1px solid transparent',
+                  background: active ? 'rgba(245,200,76,0.12)' : 'transparent',
+                  color: active ? COLORS.gold : 'rgba(255,255,255,0.82)',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: 14,
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-        {/* ====================== OVERVIEW ====================== */}
-        {activeView === 'overview' && (
-          <>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🟢</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? s.online.count : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Online Right Now</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>👥</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? s.people.totalStudents : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Registered Students</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🗳️</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? s.people.voted : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Votes Cast (Total)</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>💰</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? naira(s.money.paymentsTodaySum) : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Payments Today</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🏦</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? naira(s.money.balance) : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Withdrawal Balance</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🔑</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? s.people.loginsToday : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Logins Today</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🚨</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: s && s.people.failedLogins > 0 ? '#dc2626' : '#003366' }}>{s ? s.people.failedLogins : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Failed Logins Today</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🔘</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s ? s.election.activeMode : '…'}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Election Mode</div>
-              </div>
-            </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>⚡ Right Now</h3>
-              {s && Object.keys(s.online.byPage).length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr><th style={thStyle}>Page</th><th style={thStyle}>People</th></tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(s.online.byPage).sort((a, b) => b[1] - a[1]).map(([page, count]) => (
-                      <tr key={page}><td style={tdStyle}>{page}</td><td style={{ ...tdStyle, fontWeight: 'bold' }}>{count}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No one else is online right now.</p>}
-            </div>
-          </>
-        )}
+        <div style={{ marginTop: 24, display: 'grid', gap: 10 }}>
+          <button type="button" onClick={() => navigate('/admin-dashboard')} style={buttonStyle('ghost')}>
+            ← Back to Admin Dashboard
+          </button>
+          <button type="button" onClick={endSuperSession} style={buttonStyle('danger')}>
+            🔒 End super session
+          </button>
+        </div>
+      </aside>
 
-        {/* ====================== LIVE MONITOR ====================== */}
-        {activeView === 'live' && s && (
-          <>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>👀 People On Each Page (live)</h3>
-              {Object.keys(s.online.byPage).length > 0 ? Object.entries(s.online.byPage).sort((a, b) => b[1] - a[1]).map(([page, count]) => (
-                <div key={page} style={{ marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#334155', marginBottom: '4px' }}>
-                    <span>{page}</span><span style={{ fontWeight: 'bold' }}>{count}</span>
-                  </div>
-                  <div style={{ background: '#e8ecf0', borderRadius: '4px', height: '8px' }}>
-                    <div style={{ background: '#003366', borderRadius: '4px', height: '8px', width: Math.min(100, (count / Math.max(...Object.values(s.online.byPage))) * 100) + '%' }}></div>
-                  </div>
+      <main style={{ maxWidth: 1400, margin: '0 auto', padding: 20 }}>
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${COLORS.navy} 0%, #163b67 100%)`,
+            borderRadius: 26,
+            padding: 22,
+            color: '#fff',
+            boxShadow: cardShadow,
+            marginBottom: 22,
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 18,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  fontWeight: 800,
+                }}
+              >
+                ☰
+              </button>
+              <div>
+                <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, fontWeight: 800 }}>
+                  NAMATL CONTROL CENTER
                 </div>
-              )) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No one is online right now.</p>}
+                <h1 style={{ margin: '6px 0 8px', fontSize: 30, color: COLORS.gold }}>
+                  Super Admin Dashboard
+                </h1>
+                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, maxWidth: 760 }}>
+                  Cleaner structure, stronger visibility, and faster access to live election, financial and system intelligence.
+                </div>
+              </div>
             </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🟢 Everyone Online ({s.online.count})</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={thStyle}>Visitor</th><th style={thStyle}>Role</th><th style={thStyle}>Page</th><th style={thStyle}>Last Seen</th></tr></thead>
-                <tbody>
-                  {s.online.list.map(u => (
-                    <tr key={u.id}>
-                      <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{u.id}</td>
-                      <td style={tdStyle}>{u.role === 'admin' ? '👑 Admin' : u.role === 'staff' ? '💼 Staff' : u.role === 'student' ? '🎓 Student' : '👀 Visitor'}</td>
-                      <td style={tdStyle}>{u.page}</td>
-                      <td style={tdStyle}>{clock(u.lastSeen)}</td>
-                    </tr>
+
+            <div style={{ display: 'grid', gap: 10, minWidth: 260 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Badge tone="success">LIVE · {online.count} online</Badge>
+                <Badge tone={healthTone}>Health {healthScore}/100</Badge>
+                <Badge tone="gold">{election.activeMode || 'none'}</Badge>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                }}
+              >
+                <select
+                  value={refreshMs}
+                  onChange={(e) => setRefreshMs(Number(e.target.value))}
+                  style={{
+                    ...inputStyle,
+                    width: 140,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.1)',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                  }}
+                >
+                  {REFRESH_OPTIONS.map((ms) => (
+                    <option key={ms} value={ms} style={{ color: COLORS.text }}>
+                      {ms / 1000}s refresh
+                    </option>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>📡 Live Event Feed</h3>
-              {audit.slice(0, 20).map(a => (
-                <div key={a.id} style={{ display: 'flex', gap: '10px', padding: '8px 0', borderBottom: '1px solid #eee', fontSize: '13px' }}>
-                  <span style={{ color: '#94a3b8', minWidth: '70px' }}>{clock(a.at)}</span>
-                  <span style={{ color: a.action && a.action.includes('FAILED') ? '#dc2626' : a.action && a.action.includes('VOTE') ? '#16a34a' : '#003366', fontWeight: 'bold', minWidth: '170px' }}>{a.action}</span>
-                  <span style={{ color: '#666' }}>{a.actor}</span>
-                </div>
-              ))}
-              {audit.length === 0 && <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No events recorded yet.</p>}
-            </div>
-          </>
-        )}
+                </select>
 
-        {/* ====================== PEOPLE ====================== */}
-        {activeView === 'people' && s && (
-          <>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>👥</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s.people.totalStudents}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Students</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🗳️</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s.people.voted}{s.people.totalStudents > 0 ? ` (${Math.round((s.people.voted / s.people.totalStudents) * 100)}%)` : ''}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Voted / Turnout</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🆕</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s.people.registrationsToday}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Registrations Today</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🚨</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: s.people.failedLogins > 0 ? '#dc2626' : '#003366' }}>{s.people.failedLogins}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Failed Logins Today</div>
-              </div>
-            </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🔑 Login Activity</h3>
-              {loginEvents.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Action</th><th style={thStyle}>Who</th></tr></thead>
-                  <tbody>
-                    {loginEvents.map(a => (
-                      <tr key={a.id}>
-                        <td style={tdStyle}>{dayMonth(a.at)}</td>
-                        <td style={{ ...tdStyle, color: a.action.includes('FAILED') ? '#dc2626' : '#16a34a', fontWeight: 'bold' }}>{a.action}</td>
-                        <td style={tdStyle}>{a.actor}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No login activity recorded yet today.</p>}
-            </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>
-                ✉️ Support Messages {s.support && s.support.unread ? `(${s.support.unread} unread)` : ''}
-              </h3>
-              {(s.support && s.support.recent && s.support.recent.length > 0) ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr><th style={thStyle}>When</th><th style={thStyle}>From</th><th style={thStyle}>Message</th><th style={thStyle}>Status</th></tr></thead>
-                  <tbody>
-                    {s.support.recent.map(m => (
-                      <tr key={m.id}>
-                        <td style={tdStyle}>{dayMonth(m.timestamp)}</td>
-                        <td style={{ ...tdStyle, fontWeight: 'bold' }}>{m.name || '—'}</td>
-                        <td style={{ ...tdStyle, maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(m.message || '').slice(0, 60)}</td>
-                        <td style={tdStyle}>{m.status === 'unread' ? '🔵 Unread' : '✅ Read'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No support messages yet.</p>}
-            </div>
-          </>
-        )}
-
-        {/* ====================== ELECTION ====================== */}
-        {activeView === 'election' && s && (
-          <>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 8px 0' }}>🗳️ Election Watch</h3>
-              <p style={{ color: '#666', fontSize: '14px' }}>Mode: <strong>{s.election.activeMode}</strong> · Votes today: <strong>{s.election.votesToday}</strong></p>
-            </div>
-            {Object.keys(s.election.byPosition).length === 0 && (
-              <div style={cardStyle}><p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No candidates yet.</p></div>
-            )}
-            {Object.entries(s.election.byPosition).map(([position, list]) => {
-              const top = list[0] ? list[0].votes : 0;
-              return (
-                <div style={cardStyle} key={position}>
-                  <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>{position}</h3>
-                  {list.map(c => (
-                    <div key={c.id} style={{ marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#334155', marginBottom: '4px' }}>
-                        <span>{c.votes === top && top > 0 ? '👑 ' : ''}{c.name}</span>
-                        <span style={{ fontWeight: 'bold' }}>{c.votes}</span>
-                      </div>
-                      <div style={{ background: '#e8ecf0', borderRadius: '4px', height: '8px' }}>
-                        <div style={{ background: top > 0 ? '#FFD700' : '#94a3b8', borderRadius: '4px', height: '8px', width: (top > 0 ? (c.votes / top) * 100 : 0) + '%' }}></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </>
-        )}
-
-        {/* ====================== MONEY & PRICING ====================== */}
-        {activeView === 'money' && s && (
-          <>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 8px 0' }}>💰 Activation Price Book</h3>
-              <p style={{ color: '#666', fontSize: '13px', margin: '0 0 16px 0' }}>
-                The activation fee is the <strong>sum of these three boxes</strong>. Change them to anything you want —
-                the payment page, the verifier and the webhook all read THIS, immediately. Setting all boxes to 0 makes activation free.
-                Free Years (comma separated, e.g. 2026/2027) skip payment entirely.
-              </p>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                <div style={{ flex: '1', minWidth: '200px' }}>
-                  <label style={{ fontSize: '13px', color: '#334155', fontWeight: 'bold' }}>🧰 Database Maintenance (₦)</label>
-                  <input type="number" min="0" value={price.maintenance} onChange={(e) => setPrice({ ...price, maintenance: e.target.value })}
-                    style={{ width: '100%', padding: '12px 14px', border: '1px solid #ddd', borderRadius: '8px', boxSizing: 'border-box', fontSize: '14px', outline: 'none', marginTop: '6px' }} />
-                </div>
-                <div style={{ flex: '1', minWidth: '200px' }}>
-                  <label style={{ fontSize: '13px', color: '#334155', fontWeight: 'bold' }}>🔄 Site Update (₦)</label>
-                  <input type="number" min="0" value={price.siteUpdate} onChange={(e) => setPrice({ ...price, siteUpdate: e.target.value })}
-                    style={{ width: '100%', padding: '12px 14px', border: '1px solid #ddd', borderRadius: '8px', boxSizing: 'border-box', fontSize: '14px', outline: 'none', marginTop: '6px' }} />
-                </div>
-                <div style={{ flex: '1', minWidth: '200px' }}>
-                  <label style={{ fontSize: '13px', color: '#334155', fontWeight: 'bold' }}>⬆️ Database Upgrading (₦)</label>
-                  <input type="number" min="0" value={price.databaseUpgrading} onChange={(e) => setPrice({ ...price, databaseUpgrading: e.target.value })}
-                    style={{ width: '100%', padding: '12px 14px', border: '1px solid #ddd', borderRadius: '8px', boxSizing: 'border-box', fontSize: '14px', outline: 'none', marginTop: '6px' }} />
-                </div>
-              </div>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '13px', color: '#334155', fontWeight: 'bold' }}>🎁 Free Years</label>
-                <input value={price.freeYears} onChange={(e) => setPrice({ ...price, freeYears: e.target.value })} placeholder="e.g. 2026/2027"
-                  style={{ width: '100%', padding: '12px 14px', border: '1px solid #ddd', borderRadius: '8px', boxSizing: 'border-box', fontSize: '14px', outline: 'none', marginTop: '6px' }} />
-              </div>
-              <div style={{ background: '#003366', color: '#FFD700', borderRadius: '8px', padding: '14px', fontSize: '15px', fontWeight: 'bold', marginBottom: '12px' }}>
-                Total Activation Fee = {naira((Number(price.maintenance) || 0) + (Number(price.siteUpdate) || 0) + (Number(price.databaseUpgrading) || 0))}
-              </div>
-              {priceLoaded ? (
-                <button onClick={savePricing} disabled={priceBusy} style={{ ...btnSuccess, opacity: priceBusy ? 0.6 : 1, cursor: priceBusy ? 'not-allowed' : 'pointer' }}>
-                  {priceBusy ? '⏳ Saving...' : '💾 Save Price Book'}
+                <button type="button" onClick={() => setAutoRefresh((v) => !v)} style={buttonStyle(autoRefresh ? 'warning' : 'success')}>
+                  {autoRefresh ? 'Pause' : 'Resume'}
                 </button>
-              ) : <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>Loading current prices…</p>}
-              {priceMsg.text && (
-                <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', background: priceMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: priceMsg.type === 'error' ? '#991b1b' : '#166534' }}>
-                  {priceMsg.text}
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🏦</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{naira(s.money.balance)}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Withdrawal Balance</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📈</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{naira(s.money.totalReceived)}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Total Ever Received</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🏧</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{naira(successfulWithdrawn)}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Total Withdrawn</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{formPurchases.length}</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Form Purchases</div>
-              </div>
-              <div style={statCardStyle}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📅</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#003366' }}>{s.money.paymentsToday} ({naira(s.money.paymentsTodaySum)})</div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Payments Today</div>
-              </div>
-            </div>
-
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 16px 0' }}>🧾 Transactions Center — every naira in and out</h3>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                {[['all', '🧾 All'], ['activation', '🔘 Activation'], ['forms', '📋 Form Purchases'], ['withdrawals', '🏧 Withdrawals']].map(([k, l]) => (
-                  <button key={k} onClick={() => setTxTab(k)}
-                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', background: txTab === k ? '#003366' : '#e8ecf0', color: txTab === k ? '#FFD700' : '#334155' }}>
-                    {l}
-                  </button>
-                ))}
+                <button type="button" onClick={() => loadStats(false)} style={buttonStyle('gold')}>
+                  Refresh now
+                </button>
               </div>
 
-              {txTab === 'all' && (
-                allTx.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Activity</th><th style={thStyle}>Reference</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
-                    <tbody>
-                      {allTx.map((t, i) => (
-                        <tr key={i}>
-                          <td style={tdStyle}>{dayMonth(t.when)}</td>
-                          <td style={tdStyle}>{t.label}</td>
-                          <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{t.ref}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold', color: t.dir === 'in' ? '#16a34a' : '#dc2626' }}>{t.dir === 'in' ? '+' : '−'}{naira(t.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No transactions yet.</p>
-              )}
-
-              {txTab === 'activation' && (
-                (s.money.receipts || []).filter(r => r.kind === 'activation').length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Reference</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
-                    <tbody>
-                      {(s.money.receipts || []).filter(r => r.kind === 'activation').map(r => (
-                        <tr key={r.id}>
-                          <td style={tdStyle}>{dayMonth(r.creditedAt)}</td>
-                          <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{r.txRef}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(r.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No activation payments yet.</p>
-              )}
-
-              {txTab === 'forms' && (
-                formPurchases.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Name</th><th style={thStyle}>Position</th><th style={thStyle}>Email</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th></tr></thead>
-                    <tbody>
-                      {formPurchases.map(r => (
-                        <tr key={r.id}>
-                          <td style={tdStyle}>{dayMonth(r.paidAt)}</td>
-                          <td style={{ ...tdStyle, fontWeight: 'bold' }}>{r.name || (r.candidateData && r.candidateData.name) || '—'}</td>
-                          <td style={tdStyle}>{r.position || (r.candidateData && r.candidateData.position) || '—'}</td>
-                          <td style={{ ...tdStyle, fontSize: '11px' }}>{r.email || (r.candidateData && r.candidateData.email) || '—'}</td>
-                          <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(r.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No form purchases yet.</p>
-              )}
-
-              {txTab === 'withdrawals' && (
-                withdrawals.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Reference</th><th style={thStyle}>Account</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th><th style={thStyle}>Status</th></tr></thead>
-                    <tbody>
-                      {withdrawals.map(w => {
-                        const b = txBadge(w.status);
-                        return (
-                          <tr key={w.id}>
-                            <td style={tdStyle}>{dayMonth(w.createdAt || w.verifiedAt)}</td>
-                            <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{w.reference}</td>
-                            <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px' }}>{w.accountNumber || '—'}</td>
-                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 'bold' }}>{naira(w.amount)}</td>
-                            <td style={tdStyle}><span style={{ background: b.bg, color: b.color, padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold' }}>{b.icon} {b.text}</span></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No withdrawals yet.</p>
-              )}
-            </div>
-
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🔘 Activated Academic Years</h3>
-              {Object.keys(s.money.activations).length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr><th style={thStyle}>Year</th><th style={thStyle}>Paid</th><th style={{ ...thStyle, textAlign: 'right' }}>Amount</th><th style={thStyle}>Paid At</th></tr></thead>
-                  <tbody>
-                    {Object.entries(s.money.activations).map(([year, info]) => (
-                      <tr key={year}>
-                        <td style={{ ...tdStyle, fontWeight: 'bold' }}>{year}</td>
-                        <td style={{ ...tdStyle, color: info.paid ? '#16a34a' : '#dc2626' }}>{info.paid ? '✅ Paid' : '❌ Not paid'}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right' }}>{info.paid ? naira(info.amount) : '—'}</td>
-                        <td style={tdStyle}>{info.paidAt ? dayMonth(info.paidAt) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>No years activated yet.</p>}
-            </div>
-          </>
-        )}
-
-        {/* ====================== SYSTEM ====================== */}
-        {activeView === 'system' && s && (
-          <>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🛠️ Database Health</h3>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <div style={{ background: latencyMs !== null && latencyMs < 2000 ? '#d1fae5' : '#fee2e2', color: latencyMs !== null && latencyMs < 2000 ? '#166534' : '#991b1b', borderRadius: '8px', padding: '14px 20px', fontWeight: 'bold', fontSize: '14px' }}>
-                  {latencyMs !== null && latencyMs < 2000 ? '🟢 Healthy' : '🔴 Slow / Error'} — responded in {latencyMs !== null ? latencyMs + 'ms' : '…'}
-                </div>
-                <div style={{ background: '#e8ecf0', color: '#334155', borderRadius: '8px', padding: '14px 20px', fontWeight: 'bold', fontSize: '14px' }}>
-                  Server time: {clock(s.serverTime)}
-                </div>
+              <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.72)', fontSize: 12 }}>
+                Last sync: {lastSync ? `${dateTime(lastSync)} (${relativeTime(lastSync)})` : '—'}
               </div>
             </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🧹 Presence Housekeeping</h3>
-              <p style={{ color: '#666', fontSize: '13px', margin: '0 0 12px 0' }}>Removes presence records of people who left more than 10 minutes ago (this also happens automatically).</p>
-              <button onClick={cleanupPresence} style={btnPrimary}>🧹 Clean Up Now</button>
-              {cleanupMsg && <p style={{ color: '#334155', fontSize: '13px', margin: '12px 0 0 0', fontWeight: 'bold' }}>{cleanupMsg}</p>}
-            </div>
-            <div style={cardStyle}>
-              <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>🔒 Session</h3>
-              <p style={{ color: '#666', fontSize: '13px', margin: '0 0 12px 0' }}>Your super admin session expires automatically after 2 hours, or end it now.</p>
-              <button onClick={endSuperSession} style={{ ...btnPrimary, background: '#dc2626' }}>🔒 End Super Session</button>
-            </div>
-          </>
-        )}
-
-        {/* ====================== AUDIT DIARY ====================== */}
-        {activeView === 'diary' && s && (
-          <div style={cardStyle}>
-            <h3 style={{ color: '#003366', margin: '0 0 12px 0' }}>📖 Audit Diary — every recorded action</h3>
-            {audit.length > 0 ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={thStyle}>When</th><th style={thStyle}>Action</th><th style={thStyle}>Who</th><th style={thStyle}>Details</th></tr></thead>
-                <tbody>
-                  {audit.map(a => (
-                    <tr key={a.id}>
-                      <td style={tdStyle}>{dayMonth(a.at)}</td>
-                      <td style={{ ...tdStyle, fontWeight: 'bold', color: String(a.action).includes('FAILED') ? '#dc2626' : '#003366' }}>{a.action}</td>
-                      <td style={tdStyle}>{a.actor}</td>
-                      <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '11px', color: '#888' }}>{JSON.stringify(a.details).slice(0, 80)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>The diary is empty — actions will appear here as they happen.</p>}
           </div>
-        )}
-      </div>
+        </div>
+
+        {error ? (
+          <div
+            style={{
+              marginBottom: 20,
+              padding: '12px 14px',
+              borderRadius: 14,
+              background: COLORS.dangerSoft,
+              color: COLORS.danger,
+              border: '1px solid #fecaca',
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        {renderActiveView()}
+      </main>
     </div>
   );
 }

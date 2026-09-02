@@ -2,6 +2,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+// Reusable row for the retractable header / bottom 3-bars menus
+const MenuRow = ({ icon, label, onClick, danger = false }) => (
+  <button onClick={onClick} style={{
+    display: 'flex', alignItems: 'center', gap: '10px',
+    width: '100%', padding: '9px 14px',
+    background: 'transparent', border: 'none',
+    cursor: 'pointer', fontSize: '13px',
+    textAlign: 'left', color: danger ? '#dc2626' : '#1a1a2e',
+    fontWeight: 500,
+  }}>
+    <span style={{ fontSize: '15px', width: '18px', textAlign: 'center' }}>{icon}</span>
+    <span>{label}</span>
+  </button>
+);
+
 // Staff API helper — uses staffToken instead of adminToken
 async function staffApi(action, payload = {}) {
   const res = await fetch('/api/staff-data', {
@@ -29,6 +44,18 @@ export default function StaffDashboard() {
   const [view, setView] = useState('bar');             // 'bar' | 'table'
   const [isFullscreen, setIsFullscreen] = useState(false); // Projector mode for HOD
   const [settings, setSettings] = useState({});        // Election settings (status, dates)
+
+  // R1 / R2 — retractable 3-bars menus
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [bottomMenuOpen, setBottomMenuOpen] = useState(false);
+
+  // R4 — Bars & Table extra features (sort, filter chips, table columns, sound, refresh interval)
+  const [sortMode, setSortMode] = useState('votes-desc');      // 'votes-desc' | 'name-asc' | 'position'
+  const [chipFilter, setChipFilter] = useState('all');         // 'all' | 'leading' | 'trailing' | 'unopposed'
+  const [soundAlerts, setSoundAlerts] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(12);  // seconds; 0 = off
+  const [tableCols, setTableCols] = useState({ rank: true, candidate: true, votes: true, share: true, status: true });
+
   const navigate = useNavigate();
   const intervalRef = useRef(null);
 
@@ -86,14 +113,14 @@ export default function StaffDashboard() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  // Auto-refresh every 12 seconds
+  // Auto-refresh — interval (seconds) is user-configurable via the header 3-bars menu
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (autoRefresh) {
-      intervalRef.current = setInterval(() => loadData(false), 12000);
+    if (autoRefresh && refreshInterval > 0) {
+      intervalRef.current = setInterval(() => loadData(false), refreshInterval * 1000);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [autoRefresh]);
+  }, [autoRefresh, refreshInterval]);
 
   // Fullscreen toggle for projector / big-screen display (HOD presentations)
   const toggleFullscreen = () => {
@@ -115,6 +142,55 @@ export default function StaffDashboard() {
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
+
+  // Close retractable menus on outside click / Escape
+  useEffect(() => {
+    const onDown = (e) => {
+      if (!e.target.closest?.('[data-menu-region]')) {
+        setHeaderMenuOpen(false);
+        setBottomMenuOpen(false);
+      }
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { setHeaderMenuOpen(false); setBottomMenuOpen(false); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, []);
+
+  // CSV export (used by the bottom 3-bars menu)
+  const exportCSV = () => {
+    const rows = [['Position', 'Candidate', 'Votes', 'Share %']];
+    sortedPositions.forEach(pos => {
+      [...grouped[pos]].sort((a, b) => (b.votes || 0) - (a.votes || 0)).forEach(c => {
+        const posTotal = grouped[pos].reduce((s, x) => s + (x.votes || 0), 0) || 1;
+        rows.push([pos, c.name || '', c.votes || 0, (((c.votes || 0) / posTotal) * 100).toFixed(1)]);
+      });
+    });
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `namatl-results-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Share snapshot (used by the bottom 3-bars menu)
+  const shareSnapshot = () => {
+    const summary = sortedPositions.map(pos => {
+      const list = [...grouped[pos]].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+      const top = list[0];
+      return `${pos}: ${top && top.votes > 0 ? `${top.name} (${top.votes} votes)` : 'No votes yet'}`;
+    }).join('\n');
+    const text = `📊 NAMATL Election — Live Snapshot (${new Date().toLocaleString()})\n\n${summary}\n\nTotal votes: ${totalVotes.toLocaleString()} • Turnout: ${turnoutPct}%`;
+    if (navigator.share) {
+      navigator.share({ title: 'NAMATL Election Snapshot', text }).catch(() => {});
+    } else if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => alert('Snapshot copied to clipboard'), () => alert(text));
+    } else {
+      alert(text);
+    }
+  };
 
   // Logout — clears staff token and returns to staff login
   const handleLogout = () => {
@@ -366,6 +442,18 @@ export default function StaffDashboard() {
     fontWeight: 'bold',
     cursor: 'pointer',
     fontSize: '13px',
+    transition: 'all 0.2s',
+  });
+
+  const chipBtnStyle = (active) => ({
+    padding: '6px 12px',
+    borderRadius: '999px',
+    border: active ? '1.5px solid #003366' : '1px solid #e8ecf0',
+    background: active ? '#eef4fb' : 'white',
+    color: active ? '#003366' : '#666',
+    fontWeight: active ? 700 : 500,
+    cursor: 'pointer',
+    fontSize: '12px',
     transition: 'all 0.2s',
   });
 
@@ -707,13 +795,49 @@ export default function StaffDashboard() {
         </div>
         <div style={headerRightStyle}>
           <span style={timeStyle}>🕐 {currentTime}</span>
-          <button onClick={() => { setAutoRefresh(!autoRefresh); }} style={refreshBtnStyle} title={autoRefresh ? 'Auto-refresh ON (every 12s)' : 'Auto-refresh OFF'}>
+          <button onClick={() => { setAutoRefresh(!autoRefresh); }} style={refreshBtnStyle} title={autoRefresh ? `Auto-refresh ON (every ${refreshInterval}s)` : 'Auto-refresh OFF'}>
             {autoRefresh ? '🔵 Live' : '⏸ Paused'}
           </button>
-          <button onClick={() => loadData(false)} style={iconBtnStyle} title="Refresh now">🔄</button>
-          <button onClick={toggleFullscreen} style={iconBtnStyle} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen (projector)'}>
-            {isFullscreen ? '🗗 Exit' : '⛶ Screen'}
-          </button>
+
+          {/* R2 — Retractable 3-bars menu: Screen, Refresh + extras (Time & Live stay outside) */}
+          <div style={{ position: 'relative' }} data-menu-region>
+            <button onClick={() => { setHeaderMenuOpen(v => !v); setBottomMenuOpen(false); }} style={iconBtnStyle} title="More options" aria-label="More options">≡</button>
+            {headerMenuOpen && (
+              <div style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 6px)',
+                background: 'white', color: '#1a1a2e',
+                borderRadius: '10px', padding: '6px 0', minWidth: '230px',
+                boxShadow: '0 8px 24px rgba(2,12,28,0.28)',
+                border: '1px solid #e8ecf0', zIndex: 30,
+              }}>
+                <MenuRow icon="🔄" label="Refresh Now" onClick={() => { loadData(false); setHeaderMenuOpen(false); }} />
+                <MenuRow icon={isFullscreen ? '🗗' : '⛶'} label={isFullscreen ? 'Exit Screen' : 'Screen'} onClick={() => { toggleFullscreen(); setHeaderMenuOpen(false); }} />
+                <div style={{ padding: '8px 14px 4px', fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700 }}>Auto-Refresh</div>
+                {[5, 10, 30].map(s => (
+                  <button key={s} onClick={() => { setRefreshInterval(s); setAutoRefresh(true); if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = setInterval(() => loadData(false), s * 1000); setHeaderMenuOpen(false); }} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    width: '100%', padding: '8px 14px',
+                    background: refreshInterval === s ? '#eef4fb' : 'transparent',
+                    border: 'none', cursor: 'pointer', fontSize: '13px',
+                    color: refreshInterval === s ? '#003366' : '#1a1a2e',
+                    fontWeight: refreshInterval === s ? 700 : 500,
+                  }}><span>🟢 Every {s}s</span>{refreshInterval === s && <span>✓</span>}</button>
+                ))}
+                <button onClick={() => { if (intervalRef.current) clearInterval(intervalRef.current); setRefreshInterval(0); setAutoRefresh(false); setHeaderMenuOpen(false); }} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  width: '100%', padding: '8px 14px',
+                  background: refreshInterval === 0 ? '#eef4fb' : 'transparent',
+                  border: 'none', cursor: 'pointer', fontSize: '13px',
+                  color: refreshInterval === 0 ? '#003366' : '#1a1a2e',
+                  fontWeight: refreshInterval === 0 ? 700 : 500,
+                }}><span>⏸ Off</span>{refreshInterval === 0 && <span>✓</span>}</button>
+                <div style={{ height: '1px', background: '#e8ecf0', margin: '4px 0' }} />
+                <MenuRow icon="🔁" label="Reset Filters" onClick={() => { setSearch(''); setChipFilter('all'); setSortMode('votes-desc'); setHeaderMenuOpen(false); }} />
+                <MenuRow icon={soundAlerts ? '🔔' : '🔕'} label={soundAlerts ? 'Sound Alerts: ON' : 'Sound Alerts: OFF'} onClick={() => { setSoundAlerts(v => !v); setHeaderMenuOpen(false); }} />
+                <MenuRow icon="⛶" label="Fullscreen" onClick={() => { toggleFullscreen(); setHeaderMenuOpen(false); }} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -734,6 +858,42 @@ export default function StaffDashboard() {
             <button style={segBtnStyle(view === 'bar')} onClick={() => setView('bar')}>📊 Bars</button>
             <button style={segBtnStyle(view === 'table')} onClick={() => setView('table')}>📋 Table</button>
           </div>
+        </div>
+
+        {/* R4 — Bars & Table extra features: sort, filter chips, (table-only) column picker */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: '10px',
+          background: 'white', border: '1px solid #e8ecf0', borderRadius: '12px',
+          padding: '10px 14px', marginBottom: '14px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#003366', marginRight: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Sort</span>
+            <button onClick={() => setSortMode('votes-desc')} style={chipBtnStyle(sortMode === 'votes-desc')}>📊 Most Votes</button>
+            <button onClick={() => setSortMode('name-asc')} style={chipBtnStyle(sortMode === 'name-asc')}>🔤 Name (A–Z)</button>
+            <button onClick={() => setSortMode('position')} style={chipBtnStyle(sortMode === 'position')}>🏷️ By Position</button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#003366', marginRight: '4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Filter</span>
+            <button onClick={() => setChipFilter('all')} style={chipBtnStyle(chipFilter === 'all')}>All</button>
+            <button onClick={() => setChipFilter('leading')} style={chipBtnStyle(chipFilter === 'leading')}>🏆 Leading</button>
+            <button onClick={() => setChipFilter('trailing')} style={chipBtnStyle(chipFilter === 'trailing')}>📉 Trailing</button>
+            <button onClick={() => setChipFilter('unopposed')} style={chipBtnStyle(chipFilter === 'unopposed')}>⚡ Unopposed</button>
+          </div>
+          {view === 'table' && (
+            <details style={{ marginLeft: 'auto' }}>
+              <summary style={{ cursor: 'pointer', fontSize: '12px', color: '#003366', fontWeight: 700, listStyle: 'none', padding: '4px 0' }}>⚙️ Columns</summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', padding: '10px 14px', background: '#f7fafc', borderRadius: '8px', border: '1px solid #e8ecf0', position: 'absolute', zIndex: 5 }}>
+                {[['rank', '#'], ['candidate', 'Candidate'], ['votes', 'Votes'], ['share', 'Share'], ['status', 'Status']].map(([k, label]) => (
+                  <label key={k} style={{ fontSize: '12px', color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={tableCols[k]} onChange={() => setTableCols(c => ({ ...c, [k]: !c[k] }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
 
         {/* ELECTION STATUS BANNER */}
@@ -893,11 +1053,18 @@ export default function StaffDashboard() {
             </p>
           </div>
         ) : (
-          sortedPositions.map(pos => {
-            const posCandidates = [...grouped[pos]].sort((a, b) => (b.votes || 0) - (a.votes || 0));
-            const posMaxVotes = Math.max(...posCandidates.map(c => c.votes || 0), 1);
-            const posTotalVotes = posCandidates.reduce((s, c) => s + (c.votes || 0), 0);
-            const isUnopposed = posCandidates.length === 1;
+          sortedPositions.filter(pos => {
+            if (chipFilter === 'unopposed') return grouped[pos].length === 1;
+            return true;
+          }).map(pos => {
+            const allSorted = [...grouped[pos]].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+            const posMaxVotes = Math.max(...allSorted.map(c => c.votes || 0), 1);
+            const posTotalVotes = allSorted.reduce((s, c) => s + (c.votes || 0), 0);
+            const isUnopposed = allSorted.length === 1;
+            let posCandidates = allSorted;
+            if (chipFilter === 'leading') posCandidates = posCandidates.filter(c => (c.votes || 0) === posMaxVotes && (c.votes || 0) > 0);
+            else if (chipFilter === 'trailing') posCandidates = posCandidates.filter(c => (c.votes || 0) < posMaxVotes);
+            if (sortMode === 'name-asc') posCandidates = [...posCandidates].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
             return (
               <div key={pos} style={positionSectionStyle}>
@@ -960,11 +1127,11 @@ export default function StaffDashboard() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
                       <tr style={{ background: '#f7fafc', color: '#003366' }}>
-                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>#</th>
-                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Candidate</th>
-                        <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Votes</th>
-                        <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Share</th>
-                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Status</th>
+                        {tableCols.rank && <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>#</th>}
+                        {tableCols.candidate && <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Candidate</th>}
+                        {tableCols.votes && <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Votes</th>}
+                        {tableCols.share && <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Share</th>}
+                        {tableCols.status && <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e8ecf0' }}>Status</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -974,17 +1141,21 @@ export default function StaffDashboard() {
                         const isLeader = voteCount === posMaxVotes && voteCount > 0;
                         return (
                           <tr key={c.id} style={{ borderBottom: '1px solid #f0f2f5' }}>
-                            <td style={{ padding: '10px 12px', color: '#888', fontWeight: 'bold' }}>{idx + 1}</td>
-                            <td style={{ padding: '10px 12px', fontWeight: '600', color: '#1a1a2e' }}>
-                              {c.name}
-                              {isLeader && <span style={{ ...leaderBadgeStyle, marginLeft: '8px' }}>🏆 Leading</span>}
-                              {isUnopposed && <span style={{ ...autoWinBadgeStyle, marginLeft: '8px' }}>WINNER</span>}
-                            </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#003366' }}>{voteCount.toLocaleString()}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{pct.toFixed(1)}%</td>
-                            <td style={{ padding: '10px 12px', color: '#888', fontSize: '13px' }}>
-                              {isUnopposed ? 'Auto-Winner' : isLeader ? 'Currently leading' : '—'}
-                            </td>
+                            {tableCols.rank && <td style={{ padding: '10px 12px', color: '#888', fontWeight: 'bold' }}>{idx + 1}</td>}
+                            {tableCols.candidate && (
+                              <td style={{ padding: '10px 12px', fontWeight: '600', color: '#1a1a2e' }}>
+                                {c.name}
+                                {isLeader && <span style={{ ...leaderBadgeStyle, marginLeft: '8px' }}>🏆 Leading</span>}
+                                {isUnopposed && <span style={{ ...autoWinBadgeStyle, marginLeft: '8px' }}>WINNER</span>}
+                              </td>
+                            )}
+                            {tableCols.votes && <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#003366' }}>{voteCount.toLocaleString()}</td>}
+                            {tableCols.share && <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{pct.toFixed(1)}%</td>}
+                            {tableCols.status && (
+                              <td style={{ padding: '10px 12px', color: '#888', fontSize: '13px' }}>
+                                {isUnopposed ? 'Auto-Winner' : isLeader ? 'Currently leading' : '—'}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -1007,14 +1178,30 @@ export default function StaffDashboard() {
         >
           ← Back to Login
         </button>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => window.print()} style={ghostBtnStyle} title="Print or save results as PDF">
-            🖨️ Print / PDF
+        {/* R1 — Logout / Projector / Print collapsed into a retractable 3-bars menu; Back-to-Login stays outside */}
+        <div style={{ position: 'relative' }} data-menu-region>
+          <button onClick={() => { setBottomMenuOpen(v => !v); setHeaderMenuOpen(false); }} style={ghostBtnStyle} title="More actions" aria-label="More actions">
+            ☰ More
           </button>
-          <button onClick={toggleFullscreen} style={ghostBtnStyle} title="Projector / fullscreen mode">
-            {isFullscreen ? '🗗 Exit Screen' : '⛶ Projector Mode'}
-          </button>
-          <button onClick={handleLogout} style={dangerBtnStyle}>⏻ Logout</button>
+          {bottomMenuOpen && (
+            <div style={{
+              position: 'absolute', right: 0, bottom: 'calc(100% + 8px)',
+              background: 'white', color: '#1a1a2e',
+              borderRadius: '10px', padding: '6px 0', minWidth: '240px',
+              boxShadow: '0 -8px 24px rgba(2,12,28,0.28)',
+              border: '1px solid #e8ecf0', zIndex: 40,
+            }}>
+              <MenuRow icon="🖨️" label="Print / PDF" onClick={() => { setBottomMenuOpen(false); window.print(); }} />
+              <MenuRow icon={isFullscreen ? '🗗' : '⛶'} label={isFullscreen ? 'Exit Projector' : 'Projector Mode'} onClick={() => { setBottomMenuOpen(false); toggleFullscreen(); }} />
+              <MenuRow icon="📤" label="Export Results (CSV)" onClick={() => { setBottomMenuOpen(false); exportCSV(); }} />
+              <MenuRow icon="📸" label="Share Snapshot" onClick={() => { setBottomMenuOpen(false); shareSnapshot(); }} />
+              <div style={{ height: '1px', background: '#e8ecf0', margin: '4px 0' }} />
+              <MenuRow icon="⚙️" label="Settings" onClick={() => { setBottomMenuOpen(false); alert('Settings panel is available in the Admin Dashboard.'); }} />
+              <MenuRow icon="❓" label="Help / About" onClick={() => { setBottomMenuOpen(false); alert('NAMATL Staff Dashboard v2.0\nReal-time election monitoring for Lecturers & HOD.'); }} />
+              <div style={{ height: '1px', background: '#e8ecf0', margin: '4px 0' }} />
+              <MenuRow icon="⏻" label="Logout" danger onClick={() => { setBottomMenuOpen(false); handleLogout(); }} />
+            </div>
+          )}
         </div>
       </div>
 

@@ -1171,7 +1171,11 @@ export default function StaffDashboard() {
       {/* BOTTOM ACTION BAR — Back button at the bottom */}
       <div style={bottomBarStyle} className="no-print">
         <button
-          onClick={() => navigate('/staff-login', { replace: true })}
+          onClick={() => {
+  localStorage.removeItem('staffToken');
+  localStorage.removeItem('staffSession');
+  navigate('/staff-login', { replace: true });
+}}
           style={primaryBtnStyle}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg,#004a80,#00609f)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg,#003366,#004a80)'; }}

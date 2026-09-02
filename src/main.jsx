@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { StrictMode } from 'react';
-import { HashRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 
@@ -121,9 +121,9 @@ if (rootElement) {
   const root = createRoot(rootElement);
   root.render(
     <StrictMode>
-      <HashRouter>
+      <BrowserRouter>
         <App />
-      </HashRouter>
+      </BrowserRouter>
     </StrictMode>
   );
   console.log('NAMTLS E-Voting System mounted');

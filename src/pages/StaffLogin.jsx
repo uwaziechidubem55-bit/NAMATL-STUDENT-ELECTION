@@ -1,5 +1,5 @@
 // NAMATLS Staff Login v1.0 — Password-only access for Lecturers & HOD
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
 export default function StaffLogin() {
@@ -10,10 +10,10 @@ export default function StaffLogin() {
   const navigate = useNavigate();
 
   // Check if already logged in
-  useState(() => {
+  useEffect(() => {
     const token = localStorage.getItem('staffToken');
     if (token) navigate('/staff-dashboard', { replace: true });
-  }, []);
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

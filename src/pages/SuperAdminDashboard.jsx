@@ -1,17 +1,3 @@
-// NAMTLS Super Admin Dashboard — the control room.
-// Structure is a twin of AdminDashboard.jsx (same sidebar, topbar, cards,
-// buttons, colors) so it feels native to the app.
-// Powers:
-//   📊 Overview   — the whole system at a glance, live
-//   👀 Live       — who is online, on which page, right now + event feed
-//   👥 People     — students, logins, failed attempts
-//   🗳️ Election   — live votes per position
-//   💰 Money      — THE PRICE BOOK (Database Maintenance, Site Update,
-//                   Database Upgrading) + payments + balance
-//   🛠️ System     — database health, presence cleanup, session
-//   📖 Diary      — the audit trail (every recorded action)
-// Data refreshes by itself every 10 seconds.
-import { useState, useEffect, useRef, useCallback } from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { superAdminApi } from '../utils/superAdminApi';

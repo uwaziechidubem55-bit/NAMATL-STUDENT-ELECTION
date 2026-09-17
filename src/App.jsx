@@ -12,6 +12,9 @@ import InstallPrompt from './components/InstallPrompt';
 // ===== ADD THIS IMPORT =====
 import ErrorBoundary from './components/ErrorBoundary';
 
+// Loading skeleton shown while a lazy route chunk downloads
+import { PageSkeleton } from './components/Skeleton';
+
 // ⚡ Dynamic/Lazy Imports for Page Components
 const Landing = lazy(() => import('./pages/Landing'));
 const StudentLogin = lazy(() => import('./pages/StudentLogin'));
@@ -100,7 +103,7 @@ function App() {
       */}
       <ErrorBoundary>
         {/* 📦 Suspense intercepts the loading gap when a user switches between pages */}
-        <Suspense fallback={<LoadingScreen />}>
+        <Suspense fallback={<PageSkeleton />}>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/student-login" element={<StudentLogin />} />

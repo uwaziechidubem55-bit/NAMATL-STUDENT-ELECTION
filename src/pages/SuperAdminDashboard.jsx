@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { superAdminApi } from '../utils/superAdminApi';
 import { adminApi } from '../utils/adminApi';
+import { SkeletonBox, StatsGridSkeleton } from '../components/Skeleton';
 
 const SUPER_VIEWS = [
   { key: 'overview', label: 'Overview', icon: '📊' },
@@ -1710,27 +1711,44 @@ export default function SuperAdminDashboard() {
         style={{
           minHeight: '100vh',
           background: `linear-gradient(135deg, ${COLORS.navy} 0%, #163b67 100%)`,
-          display: 'grid',
-          placeItems: 'center',
           padding: 24,
           fontFamily: 'Arial, sans-serif',
+          paddingBottom: 48,
         }}
       >
-        <div
-          style={{
+        <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+          {/* Header bar skeleton */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <SkeletonBox style={{ height: '26px', width: '240px' }} />
+            <SkeletonBox style={{ height: '36px', width: '130px', borderRadius: '18px' }} />
+          </div>
+
+          {/* Live stats cards */}
+          <StatsGridSkeleton count={4} />
+
+          {/* View tabs skeleton (Overview / Live Monitor / Election / ...) */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '22px 0 18px' }}>
+            {SUPER_VIEWS.map((v, i) => (
+              <SkeletonBox key={v.key} style={{ height: '32px', width: `${90 + (i % 3) * 26}px`, borderRadius: '16px' }} />
+            ))}
+          </div>
+
+          {/* Main content panel skeleton */}
+          <div style={{
             background: 'rgba(255,255,255,0.08)',
-            color: '#fff',
             border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: 20,
-            padding: '26px 30px',
-            textAlign: 'center',
-            maxWidth: 420,
-          }}
-        >
-          <div style={{ fontSize: 40, marginBottom: 10 }}>🛡️</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.gold }}>Loading Super Admin Dashboard</div>
-          <div style={{ marginTop: 10, color: 'rgba(255,255,255,0.84)', fontSize: 14 }}>
-            Pulling live system stats, audit stream, finance data and presence records...
+            padding: 20,
+          }}>
+            <SkeletonBox style={{ height: '18px', width: '260px', marginBottom: 18 }} />
+            {[0, 1, 2, 3, 4].map((row) => (
+              <div key={row} style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <SkeletonBox style={{ height: '14px', width: '18%' }} />
+                <SkeletonBox style={{ height: '14px', flex: 1 }} />
+                <SkeletonBox style={{ height: '14px', width: '90px' }} />
+                <SkeletonBox style={{ height: '22px', width: '70px', borderRadius: '11px' }} />
+              </div>
+            ))}
           </div>
         </div>
       </div>

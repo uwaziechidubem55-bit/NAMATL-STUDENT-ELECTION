@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { BallotSkeleton } from '../components/Skeletons';
 
 export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
@@ -431,8 +432,34 @@ export default function StudentDashboard() {
   // ── Loading State ──
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
-        <h2 style={{ color: '#94a3b8' }}>Loading...</h2>
+      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif", paddingBottom: '80px' }}>
+
+        {/* Greeting pill skeleton */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', padding: '12px 24px 0' }}>
+          <SkeletonBox style={{ height: '36px', width: '140px', borderRadius: '999px' }} />
+        </div>
+
+        {/* Header bar skeleton */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
+          <SkeletonBox style={{ height: '22px', width: '200px' }} />
+          <SkeletonBox style={{ height: '34px', width: '90px' }} />
+        </div>
+
+        {/* Welcome + info bar skeletons */}
+        <div style={{ textAlign: 'center', padding: '20px 16px 8px' }}>
+          <SkeletonBox style={{ height: '16px', width: '260px', margin: '0 auto' }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '8px 16px 24px', flexWrap: 'wrap' }}>
+          <SkeletonBox style={{ height: '14px', width: '120px' }} />
+          <SkeletonBox style={{ height: '14px', width: '90px', borderRadius: '20px' }} />
+          <SkeletonBox style={{ height: '14px', width: '150px' }} />
+        </div>
+
+        {/* Ballot content skeleton */}
+        <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '0 20px' }}>
+          <BallotSkeleton />
+        </div>
+
       </div>
     );
   }

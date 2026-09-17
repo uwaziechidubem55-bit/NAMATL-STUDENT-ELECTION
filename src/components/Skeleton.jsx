@@ -68,6 +68,48 @@ export function ResultsTableSkeleton() {
   );
 }
 
+// Generic page-shell skeleton — used as the Suspense fallback in App.jsx
+// while lazy route chunks download (navy brand screen)
+export function PageSkeleton() {
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#003366',
+      fontFamily: 'Arial, sans-serif', paddingBottom: '40px',
+    }}>
+      <style>{shimmerKeyframes}</style>
+      {/* fake nav bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '16px 24px', background: '#001a33',
+      }}>
+        <SkeletonBox style={{ height: '34px', width: '130px', borderRadius: '8px' }} />
+        <SkeletonBox style={{ height: '28px', width: '96px' }} />
+      </div>
+      {/* fake centered hero text */}
+      <div style={{ textAlign: 'center', padding: '42px 16px 8px' }}>
+        <SkeletonBox style={{ height: '26px', width: 'min(420px, 80%)', margin: '0 auto 14px' }} />
+        <SkeletonBox style={{ height: '14px', width: 'min(260px, 60%)', margin: '0 auto' }} />
+      </div>
+      {/* fake content cards */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: '16px', maxWidth: '900px', margin: '28px auto 0', padding: '0 24px',
+      }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '14px', padding: '18px',
+          }}>
+            <SkeletonBox style={{ height: '14px', width: '55%', marginBottom: '12px' }} />
+            <SkeletonBox style={{ height: '26px', width: '38%', marginBottom: '12px' }} />
+            <SkeletonBox style={{ height: '12px', width: '80%' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Admin dashboard stat-cards skeleton
 export function StatsGridSkeleton({ count = 4 }) {
   return (

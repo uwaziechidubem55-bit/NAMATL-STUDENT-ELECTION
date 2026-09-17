@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
 import UniqueKeyFinder from '../components/UniqueKeyFinder';
+import { SkeletonBox, StatsGridSkeleton } from '../components/Skeleton';
 
 const MAX_PER_POSITION = 5;
 const MAX_PHOTO_KB = 500; // Max candidate photo size in KB (passport-photo size)
@@ -1084,8 +1085,36 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' }}>
-        <div style={{ color: '#FFD700', fontSize: '20px', fontWeight: 'bold' }}>Loading Admin Panel...</div>
+      <div style={{ minHeight: '100vh', background: '#f0f2f5', fontFamily: 'Arial, sans-serif', paddingBottom: '40px' }}>
+        {/* Top bar skeleton (navy strip, like the real admin header) */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '16px 24px', background: '#001a33',
+        }}>
+          <SkeletonBox style={{ height: '24px', width: '210px' }} />
+          <SkeletonBox style={{ height: '34px', width: '100px', borderRadius: '17px' }} />
+        </div>
+
+        <div style={{ padding: '24px 20px 0', maxWidth: '1150px', margin: '0 auto' }}>
+          {/* The four dashboard stat cards */}
+          <StatsGridSkeleton count={4} />
+
+          {/* Candidates overview list skeleton */}
+          <div style={{
+            marginTop: '22px', background: 'white', border: '1px solid #e8ecf0',
+            borderRadius: '12px', padding: '18px',
+          }}>
+            <SkeletonBox style={{ height: '16px', width: '230px', marginBottom: '16px' }} />
+            {[0, 1, 2, 3].map((row) => (
+              <div key={row} style={{ display: 'flex', gap: '14px', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f0f2f5' }}>
+                <SkeletonBox style={{ height: '38px', width: '38px', borderRadius: '50%' }} />
+                <SkeletonBox style={{ height: '14px', flex: 2 }} />
+                <SkeletonBox style={{ height: '14px', width: '70px' }} />
+                <SkeletonBox style={{ height: '26px', width: '84px', borderRadius: '13px' }} />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

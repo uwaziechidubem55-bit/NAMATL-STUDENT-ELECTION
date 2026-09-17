@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { BallotSkeleton } from '../components/Skeletons';
+import { SkeletonBox, BallotSkeleton } from '../components/Skeletons';
 
 export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,6 @@
 // NAMTLS v2.0.1 - FORCE UPDATE - DO NOT REMOVE THIS LINE
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { DataChargeProvider } from './context/DataChargeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import SuperAdminRoute from './components/SuperAdminRoute';
@@ -12,7 +12,7 @@ import InstallPrompt from './components/InstallPrompt';
 // ===== ADD THIS IMPORT =====
 import ErrorBoundary from './components/ErrorBoundary';
 
-// Loading skeleton shown while a lazy route chunk downloads
+// Loading skeleton shown while a dashboard route chunk downloads
 import { PageSkeleton } from './components/Skeleton';
 
 // ⚡ Dynamic/Lazy Imports for Page Components
@@ -78,6 +78,16 @@ function NotFound() {
   );
 }
 
+// Routes whose chunks are heavy (they fetch live election data) get the
+// page skeleton while downloading; everything else keeps the brand splash.
+const SKELETON_ROUTES = ['/student', '/admin-dashboard', '/staff-dashboard', '/super-admin-dashboard'];
+
+function RouteFallback() {
+  const location = useLocation();
+  if (SKELETON_ROUTES.includes(location.pathname)) return <PageSkeleton />;
+  return <LoadingScreen />;
+}
+
 function App() {
   const [loading, setLoading] = useState(true);
 
@@ -103,7 +113,7 @@ function App() {
       */}
       <ErrorBoundary>
         {/* 📦 Suspense intercepts the loading gap when a user switches between pages */}
-        <Suspense fallback={<PageSkeleton />}>
+        <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/student-login" element={<StudentLogin />} />

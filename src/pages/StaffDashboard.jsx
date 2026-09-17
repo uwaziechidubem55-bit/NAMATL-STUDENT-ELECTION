@@ -1,6 +1,7 @@
 // NAMATLS Staff Dashboard v2.0 — Real-time election monitoring for Lecturers & HOD
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { SkeletonBox, ResultsTableSkeleton } from '../components/Skeleton';
 
 // Reusable row for the retractable header / bottom 3-bars menus
 const MenuRow = ({ icon, label, onClick, danger = false }) => (
@@ -724,9 +725,29 @@ export default function StaffDashboard() {
 
   if (loading) {
     return (
-      <div style={loadingStyle}>
-        <div style={spinnerStyle}></div>
-        <div style={{ fontSize: '18px' }}>Loading Staff Dashboard...</div>
+      <div style={{
+        minHeight: '100vh', background: '#002b54',
+        fontFamily: "'Segoe UI', Arial, sans-serif", paddingBottom: '48px',
+      }}>
+        {/* Header bar skeleton (matches the real no-print header) */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '16px 24px', background: '#001a33', borderBottom: '1px solid #123a68',
+        }}>
+          <SkeletonBox style={{ height: '26px', width: '230px' }} />
+          <SkeletonBox style={{ height: '34px', width: '110px', borderRadius: '17px' }} />
+        </div>
+
+        {/* Election title + meta skeleton */}
+        <div style={{ textAlign: 'center', padding: '24px 16px 4px' }}>
+          <SkeletonBox style={{ height: '20px', width: 'min(340px, 80%)', margin: '0 auto 10px' }} />
+          <SkeletonBox style={{ height: '13px', width: 'min(210px, 50%)', margin: '0 auto' }} />
+        </div>
+
+        {/* Results tables skeleton — what the projector / print view will show */}
+        <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '28px 20px 0' }}>
+          <ResultsTableSkeleton />
+        </div>
       </div>
     );
   }

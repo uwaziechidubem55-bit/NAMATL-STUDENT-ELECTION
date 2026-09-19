@@ -40,15 +40,50 @@ function LoadingScreen() {
       color: 'white',
       fontFamily: 'Arial, sans-serif'
     }}>
-      <div style={{
-        width: '50px',
-        height: '50px',
-        border: '5px solid rgba(255,215,0,0.3)',
-        borderTop: '5px solid #FFD700',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        marginBottom: '20px'
-      }}></div>
+      <svg
+        width="65"
+        height="65"
+        viewBox="0 0 100 100"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{
+          animation: 'spin 1s linear infinite',
+          marginBottom: '20px',
+          transformOrigin: 'center'
+        }}
+      >
+        {/* Outer rim */}
+        <circle cx="50" cy="50" r="44" fill="none" stroke="#3E2723" strokeWidth="5" />
+        {/* Inner ring */}
+        <circle cx="50" cy="50" r="32" fill="none" stroke="#3E2723" strokeWidth="2" />
+        {/* 8 spokes from hub to rim */}
+        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+          <line
+            key={deg}
+            x1="50" y1="50"
+            x2={50 + 44 * Math.cos((deg * Math.PI) / 180)}
+            y2={50 + 44 * Math.sin((deg * Math.PI) / 180)}
+            stroke="#3E2723"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        ))}
+        {/* 8 outer handles (knobs) */}
+        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+          <rect
+            key={`h${deg}`}
+            x={50 + 48 * Math.cos((deg * Math.PI) / 180) - 3}
+            y={50 + 48 * Math.sin((deg * Math.PI) / 180) - 3}
+            width="6"
+            height="6"
+            rx="1.5"
+            fill="#3E2723"
+            transform={`rotate(${deg} ${50 + 48 * Math.cos((deg * Math.PI) / 180)} ${50 + 48 * Math.sin((deg * Math.PI) / 180)})`}
+          />
+        ))}
+        {/* Central hub */}
+        <circle cx="50" cy="50" r="7" fill="#3E2723" />
+        <circle cx="50" cy="50" r="2.5" fill="#5D4037" />
+      </svg>
       <div>Loading NAMTLS E-Voting Portal v2.0...</div>
     </div>
   );
@@ -137,4 +172,4 @@ function App() {
   );
 }
 
-export default App;
+export default App

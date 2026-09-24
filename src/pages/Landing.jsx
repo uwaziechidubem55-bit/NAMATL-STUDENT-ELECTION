@@ -266,7 +266,7 @@ export default function Landing() {
       {/* ===== MODIFIED: Walking marquee footer ===== */}
       <div style={footerWrapperStyle}>
         <span className="footer-walker">
-          &copy; {new Date().getFullYear()} NAMATLS FUPRE. ALL RIGHTS RESERVED.
+          &copy; {new Date().getFullYear()} NAMATLS FUPRE. ALL RIGHTS RESERVED BY ZHONNEX CORP.ORG.
         </span>
       </div>
 

@@ -86,7 +86,7 @@ function LoadingScreen() {
       </svg>
       <div>Loading NAMTLS E-Voting Portal v2.0...</div>
     </div>
-    </div>BY ZHONNEX CORP.....</div>
+    </div> BY ZHONNEX CORP..... </div>
     </div>
   );
 }

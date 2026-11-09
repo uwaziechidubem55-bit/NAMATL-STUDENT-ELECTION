@@ -1,6 +1,10 @@
 // NAMATLS Student API — login / register / verify-key in ONE function.
+// Also hosts the PUBLIC manual bank-transfer endpoints (settings / submit /
+// status). They live here instead of a new file because a new file would be a
+// 13th serverless function and Vercel Hobby caps us at 12.
 import { getAdminDb } from './_admin.js';
 import { writeAudit } from './_audit.js';
+import { getManualSettings, createManualSubmission, lookupManualStatus } from './_manualpayment.js';
 
 const normalizeMatric = (matric) => matric.trim().toUpperCase().replace(/\s+/g, '');
 const toDocId = (matric) => normalizeMatric(matric).replace(/\//g, '_');
@@ -94,6 +98,60 @@ async function verifyKey(req, res) {
   return res.status(200).json({ success: true });
 }
 
+// ---- Public manual bank transfer: what the student page needs ----
+// Deliberately narrow: the bank account, whether it is open, the official
+// price list and the Super-Admin activation fee. No secrets, no other settings.
+async function manualSettings(req, res) {
+  const db = getAdminDb();
+  const s = await getManualSettings(db);
+  if (!s.enabled) {
+    return res.status(200).json({
+      success: true,
+      enabled: false,
+      bank: s.bank,
+      positions: s.positions,
+      manualFormAmount: s.manualFormAmount,
+      activationTotal: s.activationTotal,
+      instructions: s.instructions,
+    });
+  }
+  return res.status(200).json({
+    success: true,
+    enabled: true,
+    bank: s.bank,
+    positions: s.positions,
+    manualFormAmount: s.manualFormAmount,
+    activationTotal: s.activationTotal,
+    instructions: s.instructions,
+    // A short, stable note so the UI can warn if the account is half-filled.
+    configured: !!(s.bank.bankName && s.bank.accountName && s.bank.accountNumber),
+  });
+}
+
+// ---- Public manual bank transfer: submit proof of payment ----
+// Creates a PENDING record only. No money is added here — that is the admin's
+// approval (see approveManualPayment in _manualpayment.js).
+async function manualSubmit(req, res) {
+  const db = getAdminDb();
+  const result = await createManualSubmission({ db, payload: req.body || {} });
+  if (result.error) {
+    return res.status(result.duplicateOf ? 409 : 400).json({ success: false, message: result.error, duplicateOf: result.duplicateOf || null });
+  }
+  return res.status(200).json({
+    success: true,
+    message: 'Submitted for review. Keep your reference safe — you can check the status any time.',
+    submission: result.record,
+  });
+}
+
+// ---- Public manual bank transfer: check status ----
+async function manualStatus(req, res) {
+  const { reference, amount } = req.body || {};
+  const result = await lookupManualStatus({ reference, amount });
+  if (result.error) return res.status(404).json({ success: false, message: result.error });
+  return res.status(200).json({ success: true, submission: result.submission });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -105,6 +163,9 @@ export default async function handler(req, res) {
     case 'register': return register(req, res);
     case 'verifyKey': return verifyKey(req, res);
     case 'presence': return presence(req, res);
+    case 'manualSettings': return manualSettings(req, res);
+    case 'manualSubmit': return manualSubmit(req, res);
+    case 'manualStatus': return manualStatus(req, res);
     default:
       return res.status(400).json({ success: false, message: 'Unknown action: ' + action });
   }

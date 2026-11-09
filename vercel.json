@@ -17,6 +17,16 @@
 
     { "source": "/api/verify-form-payment", "destination": "/api/verify-payment?action=form" },
 
+    { "source": "/api/manual-payment/settings", "destination": "/api/student?action=manualSettings" },
+
+    { "source": "/api/manual-payment/submit", "destination": "/api/student?action=manualSubmit" },
+
+    { "source": "/api/manual-payment/status", "destination": "/api/student?action=manualStatus" },
+
+    { "source": "/api/upload", "destination": "/api/upload?purpose=candidate" },
+
+    { "source": "/api/manual-payment/proof-upload", "destination": "/api/upload?purpose=proof" },
+
     { "source": "/(.*)", "destination": "/index.html" }
 
   ],

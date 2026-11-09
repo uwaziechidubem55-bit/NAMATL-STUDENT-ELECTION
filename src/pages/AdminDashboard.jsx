@@ -218,6 +218,22 @@ export default function AdminDashboard() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
+
+  // ===== MANUAL BANK TRANSFER REVIEW =====
+  const [manualSettings, setManualSettings] = useState(null);
+  const [manualQueue, setManualQueue] = useState([]);
+  const [manualCounts, setManualCounts] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [manualFilter, setManualFilter] = useState('pending');
+  const [manualOpenId, setManualOpenId] = useState('');
+  const [manualDetail, setManualDetail] = useState(null);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualMsg, setManualMsg] = useState({ type: '', text: '' });
+  const [manualRejectNote, setManualRejectNote] = useState('');
+  const [manualSavingSettings, setManualSavingSettings] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    isEnabled: false, bankName: '', accountName: '', accountNumber: '',
+    extraNote: '', instructions: '', manualFormAmount: '',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -626,7 +642,8 @@ export default function AdminDashboard() {
       await Promise.allSettled([
         loadBalance(),
         loadFormPurchases(),
-        loadActivation()
+        loadActivation(),
+        loadManualPayments()
       ]);
 
       if (showLoadingScreen) setError('');
@@ -700,6 +717,116 @@ export default function AdminDashboard() {
     return orderedKeys.map(pos => ({ position: pos, purchases: groups[pos] }));
   })();
 
+  // ==========================================================================
+  // MANUAL BANK TRANSFER — load settings + the review queue.
+  // Declared as a function declaration (not a const arrow) because loadAllData
+  // above calls it; a const here would be in the temporal dead zone at runtime.
+  // ==========================================================================
+  async function loadManualPayments(filterOverride) {
+    const status = filterOverride ?? manualFilter;
+    try {
+      const [settingsRes, queueRes] = await Promise.all([
+        adminApi('getManualPaymentSettings'),
+        adminApi('listManualPayments', status === 'all' ? {} : { status }),
+      ]);
+      setManualSettings(settingsRes.settings || null);
+      if (!manualSettings) {
+        // Seed the settings form once (later edits stay local until Save).
+        const s = settingsRes.settings || {};
+        setManualForm({
+          isEnabled: !!s.enabled,
+          bankName: s.bank?.bankName || '',
+          accountName: s.bank?.accountName || '',
+          accountNumber: s.bank?.accountNumber || '',
+          extraNote: s.bank?.extraNote || '',
+          instructions: s.instructions || '',
+          manualFormAmount: s.manualFormAmount || '',
+        });
+      }
+      setManualQueue(queueRes.items || []);
+      setManualCounts(queueRes.counts || { total: 0, pending: 0, approved: 0, rejected: 0 });
+    } catch (e) {
+      setManualMsg({ type: 'error', text: 'Could not load bank transfers: ' + e.message });
+    }
+  }
+
+  const manualPendingCount = manualCounts.pending || 0;
+
+  const handleManualSaveSettings = async () => {
+    setManualSavingSettings(true);
+    setManualMsg({ type: '', text: '' });
+    try {
+      const res = await adminApi('saveManualPaymentSettings', {
+        data: {
+          isEnabled: manualForm.isEnabled,
+          bankName: manualForm.bankName,
+          accountName: manualForm.accountName,
+          accountNumber: manualForm.accountNumber,
+          extraNote: manualForm.extraNote,
+          instructions: manualForm.instructions,
+          manualFormAmount: manualForm.manualFormAmount,
+        },
+      });
+      setManualMsg({ type: 'success', text: res.message || 'Saved.' });
+      await loadManualPayments();
+    } catch (e) {
+      setManualMsg({ type: 'error', text: e.message });
+    }
+    setManualSavingSettings(false);
+  };
+
+  const handleManualOpen = async (id) => {
+    setManualOpenId(id);
+    setManualDetail(null);
+    setManualRejectNote('');
+    setManualMsg({ type: '', text: '' });
+    try {
+      const res = await adminApi('getManualPayment', { id });
+      setManualDetail(res);
+    } catch (e) {
+      setManualMsg({ type: 'error', text: 'Could not open submission: ' + e.message });
+    }
+  };
+
+  const handleManualApprove = async () => {
+    if (!manualOpenId) return;
+    if (!window.confirm('Approve this payment and ADD the money to the balance?\n\nThis cannot be undone.')) return;
+    setManualBusy(true);
+    setManualMsg({ type: '', text: '' });
+    try {
+      const res = await adminApi('approveManualPayment', { id: manualOpenId });
+      setManualMsg({ type: 'success', text: res.message || 'Approved.' });
+      setManualDetail(null);
+      setManualOpenId('');
+      await loadManualPayments();
+      await loadAllData(false);
+    } catch (e) {
+      setManualMsg({ type: 'error', text: e.message });
+    }
+    setManualBusy(false);
+  };
+
+  const handleManualReject = async () => {
+    if (!manualOpenId) return;
+    if (!manualRejectNote.trim()) {
+      setManualMsg({ type: 'error', text: 'Write the reason first — the student will see it.' });
+      return;
+    }
+    setManualBusy(true);
+    setManualMsg({ type: '', text: '' });
+    try {
+      const res = await adminApi('rejectManualPayment', { id: manualOpenId, note: manualRejectNote.trim() });
+      setManualMsg({ type: 'success', text: res.message || 'Rejected.' });
+      setManualDetail(null);
+      setManualOpenId('');
+      setManualRejectNote('');
+      await loadManualPayments();
+    } catch (e) {
+      setManualMsg({ type: 'error', text: e.message });
+    }
+    setManualBusy(false);
+  };
+
   const sidebarItems = [
     { key: 'dashboard', label: 'Dashboard', icon: '📊' },
     { key: 'settings', label: 'Election Settings', icon: '⚙️' },
@@ -709,6 +836,7 @@ export default function AdminDashboard() {
     { key: 'print-results', label: 'Print Results', icon: '🖨️' },
     { key: 'form-purchase', label: 'Form Purchase', icon: '📋' },
     { key: 'purchase-list', label: 'Purchase List', icon: '🛒' },
+    { key: 'manual-payments', label: `Bank Transfers${manualPendingCount ? ` (${manualPendingCount})` : ''}`, icon: '🏦' },
     { key: 'withdrawal', label: 'Withdraw Funds', icon: '💰' },
     { key: 'messages', label: `Messages (${unreadMessages})`, icon: '✉️' },
     { key: 'key-finder', label: 'Key Finder', icon: '🔑' },
@@ -1234,6 +1362,9 @@ export default function AdminDashboard() {
                 <button onClick={() => setActiveView('results')} style={{ ...btnPrimary, background: '#16a34a' }}>📈 Results</button>
                 <button onClick={() => setActiveView('form-purchase')} style={{ ...btnPrimary, background: '#8b5cf6' }}>📋 Form Purchase</button>
                 <button onClick={() => setActiveView('withdrawal')} style={{ ...btnPrimary, background: '#f59e0b' }}>💰 Withdraw</button>
+                <button onClick={() => setActiveView('manual-payments')} style={{ ...btnPrimary, background: '#0f766e' }}>
+                  🏦 Bank Transfers{manualPendingCount ? ` (${manualPendingCount})` : ''}
+                </button>
               </div>
             </div>
           </>
@@ -1913,6 +2044,269 @@ export default function AdminDashboard() {
               ))
             )}
           </div>
+        )}
+
+        {/* ==================== BANK TRANSFERS (manual payments) ==================== */}
+        {activeView === 'manual-payments' && (
+          <>
+            {/* ---- publish the account ---- */}
+            <div style={cardStyle}>
+              <h2 style={{ color: '#003366', marginBottom: '4px' }}>🏦 Bank Transfer Account</h2>
+              <p style={{ color: '#666', fontSize: '13px', marginBottom: '18px' }}>
+                Students who cannot use the card/USSD checkout pay into this account, then upload proof.
+                Nothing reaches your balance until you approve it below.
+              </p>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px', fontSize: '14px', fontWeight: 'bold', color: '#003366', cursor: 'pointer' }}>
+                <input type="checkbox" checked={manualForm.isEnabled} onChange={e => setManualForm({ ...manualForm, isEnabled: e.target.checked })} style={{ width: '18px', height: '18px' }} />
+                Show bank transfer on the student purchase page
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={labelStyle}>Bank name</label>
+                  <input value={manualForm.bankName} onChange={e => setManualForm({ ...manualForm, bankName: e.target.value })} placeholder="Opay / Moniepoint / GTBank" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Account number (10 digits)</label>
+                  <input inputMode="numeric" value={manualForm.accountNumber} onChange={e => setManualForm({ ...manualForm, accountNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="0123456789" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Account name</label>
+                  <input value={manualForm.accountName} onChange={e => setManualForm({ ...manualForm, accountName: e.target.value })} placeholder="NAMATL FUPRE ELECTORAL COMMISSION" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Manual transfer price ₦ (optional)</label>
+                  <input type="number" value={manualForm.manualFormAmount} onChange={e => setManualForm({ ...manualForm, manualFormAmount: e.target.value })} placeholder="Leave blank to use each position's price" style={inputStyle} />
+                </div>
+              </div>
+
+              <label style={labelStyle}>Note shown under the account (optional)</label>
+              <input value={manualForm.extraNote} onChange={e => setManualForm({ ...manualForm, extraNote: e.target.value })} placeholder="e.g. Use your full name as the transfer narration" style={inputStyle} />
+
+              <label style={labelStyle}>Extra instructions (optional)</label>
+              <textarea value={manualForm.instructions} onChange={e => setManualForm({ ...manualForm, instructions: e.target.value })} placeholder="Anything else students should know before paying." style={{ ...inputStyle, minHeight: '70px' }} />
+
+              <button onClick={handleManualSaveSettings} disabled={manualSavingSettings} style={{ ...btnPrimary, background: '#0f766e', opacity: manualSavingSettings ? 0.6 : 1, cursor: manualSavingSettings ? 'not-allowed' : 'pointer' }}>
+                {manualSavingSettings ? '⏳ Saving...' : '💾 Save bank details'}
+              </button>
+
+              {manualMsg.text && (
+                <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', background: manualMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: manualMsg.type === 'error' ? '#991b1b' : '#166534' }}>
+                  {manualMsg.text}
+                </div>
+              )}
+            </div>
+
+            {/* ---- review queue ---- */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+                <h2 style={{ color: '#003366', margin: 0 }}>🔎 Payment Review Queue</h2>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'pending', label: `Pending (${manualCounts.pending || 0})` },
+                    { key: 'approved', label: `Approved (${manualCounts.approved || 0})` },
+                    { key: 'rejected', label: `Rejected (${manualCounts.rejected || 0})` },
+                    { key: 'all', label: 'All' },
+                  ].map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => { setManualFilter(f.key); loadManualPayments(f.key); }}
+                      style={{
+                        padding: '7px 14px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold',
+                        border: manualFilter === f.key ? '1px solid #003366' : '1px solid #cbd5e1',
+                        background: manualFilter === f.key ? '#003366' : 'white',
+                        color: manualFilter === f.key ? '#FFD700' : '#475569',
+                      }}
+                    >{f.label}</button>
+                  ))}
+                  <button onClick={() => loadManualPayments()} style={{ padding: '7px 14px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', border: '1px solid #cbd5e1', background: 'white', color: '#475569' }}>🔄</button>
+                </div>
+              </div>
+
+              {manualQueue.length === 0 ? (
+                <p style={{ color: '#999', textAlign: 'center', padding: '24px' }}>
+                  {manualFilter === 'pending' ? '✅ No payments waiting for review.' : 'Nothing here yet.'}
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {manualQueue.map(item => {
+                    const st = item.status;
+                    const stColor = st === 'approved' ? ['#dcfce7', '#15803d'] : st === 'rejected' ? ['#fee2e2', '#b91c1c'] : ['#fef3c7', '#92400e'];
+                    const fails = (item.checks || []).filter(c => c.status === 'fail').length;
+                    const warns = (item.checks || []).filter(c => c.status === 'warn').length;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleManualOpen(item.id)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+                          padding: '14px 16px', borderRadius: '10px', cursor: 'pointer',
+                          border: manualOpenId === item.id ? '2px solid #0f766e' : '1px solid #e2e8f0',
+                          background: manualOpenId === item.id ? '#f0fdfa' : '#fff'
+                        }}
+                      >
+                        <div style={{ minWidth: '180px' }}>
+                          <div style={{ fontWeight: 'bold', color: '#0f172a' }}>{item.fullName || '—'}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            {item.position || '—'} · {item.reference}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 'bold', color: '#16a34a' }}>₦{Number(item.amount).toLocaleString()}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.paymentDate} · {item.senderBank || 'bank ?'}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {fails > 0 && <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>{fails} ✕</span>}
+                          {warns > 0 && <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>{warns} ⚠</span>}
+                          <span style={{ background: stColor[0], color: stColor[1], padding: '3px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize' }}>{st}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ---- detail drawer ---- */}
+            {manualOpenId && (
+              <div style={cardStyle}>
+                {!manualDetail ? (
+                  <p style={{ color: '#888', textAlign: 'center' }}>⏳ Loading submission…</p>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+                      <div>
+                        <h2 style={{ color: '#003366', margin: '0 0 4px 0' }}>🧾 {manualDetail.item.reference}</h2>
+                        <p style={{ color: '#666', fontSize: '13px', margin: 0 }}>
+                          Submitted {manualDetail.item.createdAt ? new Date(manualDetail.item.createdAt).toLocaleString() : '—'}
+                          {manualDetail.item.reviewedBy ? ` · reviewed by ${manualDetail.item.reviewedBy}` : ''}
+                        </p>
+                      </div>
+                      <button onClick={() => { setManualOpenId(''); setManualDetail(null); }} style={{ ...btnPrimary, background: '#64748b', padding: '8px 16px', fontSize: '13px' }}>✕ Close</button>
+                    </div>
+
+                    {/* claim vs reality */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                        <div style={{ ...labelStyle, color: '#0f766e' }}>What the student claims</div>
+                        {[
+                          ['Name', manualDetail.item.fullName],
+                          ['Department', manualDetail.item.department],
+                          ['Level', manualDetail.item.level],
+                          ['Email', manualDetail.item.email || 'Not provided'],
+                          ['Position', manualDetail.item.position],
+                          ['Amount paid', `₦${Number(manualDetail.item.amount).toLocaleString()}`],
+                          ['Date paid', manualDetail.item.paymentDate],
+                          ['Their bank', manualDetail.item.senderBank || '—'],
+                          ['Paid from', manualDetail.item.senderAccount ? '••••' + String(manualDetail.item.senderAccount).slice(-4) : 'Hidden'],
+                          ['Receiver name', manualDetail.item.receiverName || '—'],
+                          ['Paid into', manualDetail.item.paidToAccount ? '••••' + String(manualDetail.item.paidToAccount).slice(-4) : '—'],
+                          ['Bank ref', manualDetail.item.transferReference || '—'],
+                        ].map(([k, v]) => (
+                          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '13px', padding: '4px 0', borderBottom: '1px dashed #f1f5f9' }}>
+                            <span style={{ color: '#64748b' }}>{k}</span>
+                            <strong style={{ textAlign: 'right', color: '#1e293b' }}>{v || '—'}</strong>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                        <div style={{ ...labelStyle, color: '#0f766e' }}>Proof of payment</div>
+                        {manualDetail.item.receiptUrl ? (
+                          <a href={manualDetail.item.receiptUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+                            <img src={manualDetail.item.receiptUrl} alt="Proof of payment" style={{ width: '100%', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                            <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '6px' }}>🔍 Open full size</div>
+                          </a>
+                        ) : (
+                          <p style={{ color: '#b91c1c', fontSize: '13px' }}>No screenshot attached.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* the checker output */}
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                        <div style={{ ...labelStyle, marginBottom: 0, color: '#0f766e' }}>Automated verification</div>
+                        <span style={{
+                          padding: '3px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase',
+                          background: manualDetail.audit.verdict === 'clean' ? '#dcfce7' : manualDetail.audit.verdict === 'review' ? '#fef3c7' : '#fee2e2',
+                          color: manualDetail.audit.verdict === 'clean' ? '#15803d' : manualDetail.audit.verdict === 'review' ? '#92400e' : '#b91c1c'
+                        }}>
+                          {manualDetail.audit.verdict === 'clean' ? '✅ Everything lines up' : manualDetail.audit.verdict === 'review' ? '⚠️ Needs your eye' : '⛔ Do not approve'}
+                        </span>
+                      </div>
+
+                      {manualDetail.audit.checks.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '13px', padding: '5px 0', borderBottom: '1px solid #f8fafc', color: c.status === 'fail' ? '#b91c1c' : c.status === 'warn' ? '#92400e' : '#334155' }}>
+                          <span>{c.status === 'pass' ? '✅' : c.status === 'warn' ? '⚠️' : '❌'}</span>
+                          <span><strong>{c.label}</strong>{c.detail ? ' — ' + c.detail : ''}</span>
+                        </div>
+                      ))}
+
+                      {manualDetail.liveExpectedAmount != null && Number(manualDetail.item.amount) < Number(manualDetail.liveExpectedAmount) && (
+                        <div style={{ marginTop: '10px', background: '#fee2e2', color: '#b91c1c', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold' }}>
+                          ⛔ The live price is now ₦{Number(manualDetail.liveExpectedAmount).toLocaleString()} but they paid ₦{Number(manualDetail.item.amount).toLocaleString()}. Approval will be refused.
+                        </div>
+                      )}
+                      {manualDetail.liveExpectedError && (
+                        <div style={{ marginTop: '10px', background: '#fef3c7', color: '#92400e', padding: '10px 12px', borderRadius: '8px', fontSize: '13px' }}>
+                          ⚠️ {manualDetail.liveExpectedError}
+                        </div>
+                      )}
+
+                      <p style={{ fontSize: '11px', color: '#94a3b8', margin: '10px 0 0 0', lineHeight: 1.5 }}>
+                        These checks compare the alert against your published account. Always eyeball the screenshot too —
+                        a forged image can pass an automated name/amount test.
+                      </p>
+                    </div>
+
+                    {/* actions */}
+                    {manualDetail.item.status === 'pending' ? (
+                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+                        <div style={{ ...labelStyle, color: '#0f766e' }}>Decision</div>
+                        <textarea
+                          value={manualRejectNote}
+                          onChange={e => setManualRejectNote(e.target.value)}
+                          placeholder="Reason (required only if you reject — the student will see this)"
+                          style={{ ...inputStyle, minHeight: '64px' }}
+                        />
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <button onClick={handleManualApprove} disabled={manualBusy} style={{ ...btnSuccess, background: '#0f766e', opacity: manualBusy ? 0.6 : 1, cursor: manualBusy ? 'not-allowed' : 'pointer' }}>
+                            {manualBusy ? '⏳ Working...' : '✅ Approve & credit balance'}
+                          </button>
+                          <button onClick={handleManualReject} disabled={manualBusy} style={{ ...btnDanger, opacity: manualBusy ? 0.6 : 1, cursor: manualBusy ? 'not-allowed' : 'pointer' }}>
+                            ⛔ Reject
+                          </button>
+                        </div>
+                        {manualDetail.audit.verdict === 'blocked' && (
+                          <p style={{ fontSize: '12px', color: '#b91c1c', margin: '10px 0 0 0', fontWeight: 'bold' }}>
+                            ⛔ This submission failed {manualDetail.audit.failures.length} check(s): {manualDetail.audit.failures.join(', ')}. Only approve if you have independent proof from your bank.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '14px', borderRadius: '10px', fontSize: '14px',
+                        background: manualDetail.item.status === 'approved' ? '#dcfce7' : '#fee2e2',
+                        color: manualDetail.item.status === 'approved' ? '#15803d' : '#b91c1c'
+                      }}>
+                        <strong style={{ textTransform: 'capitalize' }}>{manualDetail.item.status}</strong>
+                        {manualDetail.item.approvedAt ? ` on ${new Date(manualDetail.item.approvedAt).toLocaleString()}` : manualDetail.item.rejectedAt ? ` on ${new Date(manualDetail.item.rejectedAt).toLocaleString()}` : ''}
+                        {manualDetail.item.reviewNote ? ` — ${manualDetail.item.reviewNote}` : ''}
+                      </div>
+                    )}
+
+                    {manualMsg.text && (
+                      <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', background: manualMsg.type === 'error' ? '#fee2e2' : '#d1fae5', color: manualMsg.type === 'error' ? '#991b1b' : '#166534' }}>
+                        {manualMsg.text}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {/* Form Purchase */}

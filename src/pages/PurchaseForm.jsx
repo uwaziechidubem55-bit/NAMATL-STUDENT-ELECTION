@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { calculateFormCharges } from '../utils/flutterwaveCostCalculator';
+import ManualBankPayment from '../components/ManualBankPayment';
 
 export default function PurchaseForm({
   position: propPosition,
@@ -18,6 +19,7 @@ export default function PurchaseForm({
   const [successMsg, setSuccessMsg] = useState('');
   const [positionCounts, setPositionCounts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [payMethod, setPayMethod] = useState(''); // '' | 'card' | 'transfer'
 
   useEffect(() => { loadData(); }, []);
 
@@ -74,6 +76,7 @@ export default function PurchaseForm({
   const handleSelect = (pos) => {
     if (getCount(pos.position) >= 5) { alert('Maximum 5 candidates for ' + pos.position); return; }
     setSelectedPosition(pos);
+    setPayMethod('');
     setError('');
     setSuccessMsg('');
   };
@@ -110,7 +113,7 @@ export default function PurchaseForm({
         tx_ref: txRef,
         amount: priceToCharge.displayPrice,
         currency: 'NGN',
-        payment_options: 'card,ussd,transfer,banktransfer',
+        payment_options: 'card,ussd,banktransfer,account,opay,nqr',
         customer: { 
           email: formData.email || 'candidate@namtls.edu.ng', 
           name: formData.fullName 
@@ -282,7 +285,7 @@ export default function PurchaseForm({
       {!error && settings && selectedPosition && charges && (
         <div>
           <button
-            onClick={() => setSelectedPosition(null)}
+            onClick={() => { setSelectedPosition(null); setPayMethod(''); }}
             style={{ background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', marginBottom: '16px' }}
           >← Back</button>
 
@@ -308,18 +311,72 @@ export default function PurchaseForm({
             </div>
           </div>
 
-          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
-          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
+          {/* ============ PAYMENT METHOD CHOOSER ============ */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>How do you want to pay?</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setPayMethod('card')}
+                style={{
+                  padding: '14px 12px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                  background: payMethod === 'card' ? '#eff6ff' : '#ffffff',
+                  border: payMethod === 'card' ? '2px solid #2563eb' : '1px solid #cbd5e1'
+                }}
+              >
+                <div style={{ fontSize: '18px', marginBottom: '4px' }}>💳</div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>Card / USSD</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Instant approval via Flutterwave</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayMethod('transfer')}
+                style={{
+                  padding: '14px 12px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                  background: payMethod === 'transfer' ? '#ecfdf5' : '#ffffff',
+                  border: payMethod === 'transfer' ? '2px solid #0f766e' : '1px solid #cbd5e1'
+                }}
+              >
+                <div style={{ fontSize: '18px', marginBottom: '4px' }}>🏦</div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>Bank transfer</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Pay to our account, upload proof</div>
+              </button>
+            </div>
+          </div>
 
-          <button
-            onClick={handlePay}
-            disabled={submitting}
-            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
-          >
-            {submitting ? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
-          </button>
+          {/* ============ BANK TRANSFER PATH ============ */}
+          {payMethod === 'transfer' && (
+            <ManualBankPayment
+              position={selectedPosition.position}
+              expectedAmount={adminSetPrice}
+              candidateData={{
+                fullName: formData.fullName,
+                department: formData.department,
+                level: formData.level,
+                email: formData.email
+              }}
+              onDone={() => setPayMethod('')}
+              onApproved={() => { loadData(); }}
+            />
+          )}
+
+          {/* ============ CARD / FLUTTERWAVE PATH ============ */}
+          {payMethod === 'card' && (
+            <div>
+              <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
+              <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
+              <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
+              <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
+
+              <button
+                onClick={handlePay}
+                disabled={submitting}
+                style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+              >
+                {submitting ? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

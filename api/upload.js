@@ -1,5 +1,7 @@
 // api/upload.js
-// Returns signed Cloudinary upload params for the ADMIN ONLY.
+// Returns signed Cloudinary upload params.
+//   ?purpose=candidate  -> ADMIN ONLY  (passport photographs)
+//   ?purpose=proof      -> PUBLIC      (manual bank-transfer screenshots)
 // CLOUDINARY_API_SECRET never leaves this serverless function.
 import { createHash } from 'crypto';
 
@@ -25,11 +27,41 @@ function isAdmin(req) {
   }
 }
 
+// Public proof uploads are deliberately locked down so the endpoint can never
+// be used as free image hosting: fixed folder, no transformations, images only.
+const PROOF_FOLDER = 'namatl/payment-proofs';
+const PROOF_MAX_BYTES = 6 * 1024 * 1024; // 6 MB
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
+
+  const purpose = String(req.query?.purpose || 'candidate');
+
+  if (purpose === 'proof') {
+    if (Number(req.body?.size) > PROOF_MAX_BYTES) {
+      return res.status(400).json({ success: false, message: 'That image is too large. Keep the screenshot under 6 MB.' });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloudName || !apiKey || !apiSecret) {
+      return res.status(500).json({ success: false, message: 'Proof uploads are not configured yet. Contact the Electoral Commission.' });
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = PROOF_FOLDER;
+    const allowedFormats = 'jpg,jpeg,png,webp';
+    // Cloudinary signs params alphabetically: key=value&key=value + api_secret
+    const toSign = `allowed_formats=${allowedFormats}&folder=${folder}&timestamp=${timestamp}`;
+    const signature = createHash('sha1').update(toSign + apiSecret).digest('hex');
+
+    return res.json({ success: true, cloudName, apiKey, timestamp, folder, allowedFormats, signature });
+  }
+
   if (!isAdmin(req)) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }

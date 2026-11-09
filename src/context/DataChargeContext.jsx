@@ -197,7 +197,7 @@ export function DataChargeProvider({ children }) {
           tx_ref: txRef,
           amount: costInfo.cost, // from the Super Admin price book
           currency: 'NGN',
-          payment_options: 'card,ussd,transfer,banktransfer',
+          payment_options: 'card,ussd,banktransfer,account,opay,nqr',
           customer: { email: 'officialelectoralcommission@gmail.com', name: 'NAMTLS Admin' },
           customizations: {
             title: 'NAMTLS Activation Payment',
@@ -249,7 +249,7 @@ export function DataChargeProvider({ children }) {
           tx_ref: txRef,
           amount: amount,
           currency: 'NGN',
-          payment_options: 'card,ussd,transfer,banktransfer',
+          payment_options: 'card,ussd,banktransfer,account,opay,nqr',
           customer: { email: candidateData.email || 'candidate@namtls.edu.ng', name: candidateData.fullName },
           customizations: {
             title: 'NAMTLS Form Purchase',

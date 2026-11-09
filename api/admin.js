@@ -2,6 +2,13 @@
 // Guarded with a high-level diagnostic log layer to force Vercel to report silent errors.
 import { createHash } from 'crypto';
 import { writeAudit } from './_audit.js';
+import {
+  getManualSettings,
+  auditManualProof,
+  approveManualPayment,
+  rejectManualPayment,
+  resolveExpectedAmount,
+} from './_manualpayment.js';
 
 let getAdminDb, verifyToken, signToken;
 
@@ -403,6 +410,119 @@ export default async function handler(req, res) {
         const limit = Math.min(Number(payload.limit) || 200, 500);
         const snap = await db.collection('auditLogs').orderBy('at', 'desc').limit(limit).get();
         return res.json({ success: true, items: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      }
+
+      // ================================================================
+      // MANUAL BANK TRANSFER (money in without Flutterwave)
+      // Settings + review queue + approve/reject. Approval is the ONLY
+      // thing that creates money, and it uses the shared ledger.
+      // ================================================================
+      case 'getManualPaymentSettings': {
+        const s = await getManualSettings(db);
+        return res.json({ success: true, settings: s });
+      }
+
+      case 'saveManualPaymentSettings': {
+        const d = payload.data || {};
+        const num = (v) => {
+          const n = Number(v);
+          return Number.isFinite(n) && n > 0 ? n : 0;
+        };
+        const accountNumber = String(d.accountNumber || '').replace(/\D/g, '');
+        if (d.isEnabled && (!accountNumber || !String(d.accountName || '').trim())) {
+          return res.status(400).json({ success: false, message: 'Publish an account name and account number before switching bank transfer ON.' });
+        }
+        if (accountNumber && accountNumber.length !== 10) {
+          return res.status(400).json({ success: false, message: 'A Nigerian account number must be exactly 10 digits.' });
+        }
+        const data = {
+          isEnabled: !!d.isEnabled,
+          bankName: String(d.bankName || '').trim().slice(0, 60),
+          accountName: String(d.accountName || '').trim().slice(0, 120),
+          accountNumber,
+          extraNote: String(d.extraNote || '').trim().slice(0, 400),
+          manualFormAmount: num(d.manualFormAmount),
+          updatedAt: new Date().toISOString(),
+          updatedBy: 'admin',
+        };
+        await db.doc('settings/manualPayment').set(data, { merge: true });
+        await writeAudit({ db, actor: 'admin', action: 'MANUAL_PAYMENT_SETTINGS_SAVED', details: { isEnabled: data.isEnabled, bankName: data.bankName, accountEnd: accountNumber.slice(-4), manualFormAmount: data.manualFormAmount } });
+        return res.json({ success: true, message: data.isEnabled ? 'Bank transfer published and switched ON.' : 'Bank transfer settings saved (currently OFF).' });
+      }
+
+      case 'listManualPayments': {
+        const status = String(payload.status || '').toLowerCase();
+        let query = db.collection('manualPayments');
+        if (['pending', 'approved', 'rejected', 'approving'].includes(status)) {
+          query = query.where('status', '==', status);
+        }
+        let snap;
+        try {
+          snap = await query.orderBy('createdAt', 'desc').limit(300).get();
+        } catch (e) {
+          // Missing composite index must never break the review queue.
+          snap = await query.limit(300).get();
+        }
+        const items = snap.docs.map(d => {
+          const data = d.data();
+          return { id: d.id, ...data, createdAt: serializeTs(data.createdAt), approvedAt: serializeTs(data.approvedAt), rejectedAt: serializeTs(data.rejectedAt) };
+        }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        const counts = items.reduce((acc, i) => {
+          acc.total += 1;
+          acc[i.status] = (acc[i.status] || 0) + 1;
+          return acc;
+        }, { total: 0, pending: 0, approved: 0, rejected: 0 });
+        return res.json({ success: true, items, counts });
+      }
+
+      // Re-runs the whole "is this fake?" checker against LIVE settings.
+      // Used when the admin opens a submission, so the report is never stale.
+      case 'getManualPayment': {
+        if (!payload.id) return res.status(400).json({ success: false, message: 'id required' });
+        const snap = await db.doc(`manualPayments/${payload.id}`).get();
+        if (!snap.exists) return res.status(404).json({ success: false, message: 'Submission not found' });
+        const sub = snap.data();
+        const settings = await getManualSettings(db);
+        const expected = await resolveExpectedAmount(db, sub.purpose, sub.position);
+        const audit = auditManualProof({
+          amount: sub.amount,
+          paymentDate: sub.paymentDate,
+          senderAccount: sub.senderAccount,
+          senderBank: sub.senderBank,
+          receiverName: sub.receiverName,
+          paidToAccount: sub.paidToAccount,
+          transferReference: sub.transferReference,
+          receiptUrl: sub.receiptUrl,
+          senderHidden: sub.senderHidden,
+        }, {
+          expectedAmount: expected.error ? Number(sub.expectedAmount) || 0 : expected.amount,
+          expectedAccount: String(settings.bank.accountNumber || '').replace(/\D/g, ''),
+          expectedAccountName: settings.bank.accountName,
+        });
+        return res.json({
+          success: true,
+          item: { id: snap.id, ...sub },
+          audit,
+          liveExpectedAmount: expected.error ? null : expected.amount,
+          liveExpectedError: expected.error || '',
+          bank: settings.bank,
+        });
+      }
+
+      case 'approveManualPayment': {
+        if (!payload.id) return res.status(400).json({ success: false, message: 'id required' });
+        const result = await approveManualPayment({ id: payload.id, reviewer: 'admin', note: String(payload.note || '') });
+        return res.status(result.success ? 200 : 400).json(result);
+      }
+
+      case 'rejectManualPayment': {
+        if (!payload.id) return res.status(400).json({ success: false, message: 'id required' });
+        const reason = String(payload.note || '').trim();
+        if (!reason) {
+          return res.status(400).json({ success: false, message: 'Write the reason — the student will see it.' });
+        }
+        const result = await rejectManualPayment({ id: payload.id, reviewer: 'admin', note: reason });
+        return res.status(result.success ? 200 : 400).json(result);
       }
       case 'superCleanupPresence': {
         if (!isSuper(req)) return res.status(403).json({ success: false, message: 'Super admin session required' });

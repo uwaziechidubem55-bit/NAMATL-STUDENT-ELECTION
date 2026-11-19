@@ -379,19 +379,23 @@ export default function AdminDashboard() {
         const now = new Date();
 
         // ===== AUTO-STOP ELECTION IF END DATE/TIME HAS PASSED =====
+        // The PORTAL's clock decides whether the end time has passed — not the
+        // clock of the device this dashboard is open on. If the portal cannot
+        // be asked, nothing is stopped here (the portal itself already refuses
+        // votes after the end time).
         if (currentMode === 'election' || currentMode === 'both') {
-          const electionRes = await adminApi('getElectionSettings');
-          if (electionRes.data) {
-            const electionData = electionRes.data;
-            if (electionData.endDate && electionData.endTime) {
-              const endDateTime = new Date(electionData.endDate + 'T' + electionData.endTime);
-              if (now >= endDateTime) {
-                console.log('[Auto-Stop] Election end time passed. Auto-stopping election.');
-                const newMode = currentMode === 'both' ? 'formPurchase' : 'none';
-                await adminApi('saveMainSettings', { data: { activeMode: newMode, isActive: false } });
-                currentMode = newMode;
-              }
-            }
+          let portalStatus = null;
+          try {
+            portalStatus = (await adminApi('getElectionStatus')).status || null;
+          } catch (statusError) {
+            portalStatus = null;
+          }
+          if (portalStatus && portalStatus.endDate && portalStatus.endTime
+            && portalStatus.endAt && portalStatus.serverNow >= portalStatus.endAt) {
+            console.log('[Auto-Stop] Election end time passed. Auto-stopping election.');
+            const newMode = currentMode === 'both' ? 'formPurchase' : 'none';
+            await adminApi('saveMainSettings', { data: { activeMode: newMode, isActive: false } });
+            currentMode = newMode;
           }
         }
 
@@ -1938,7 +1942,7 @@ export default function AdminDashboard() {
                       <img
                         src="/logo.png"
                         alt="NAMATL Logo"
-                        style={{ width: '80px', height: '80px', objectFit: 'contain' }}
+                        style={{ width: '90px', height: '90px', borderRadius: '50%', objectFit: 'cover', border: '4px solid #FFD700', display: 'block', margin: '0 auto' }}
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     </div>
@@ -2003,6 +2007,53 @@ export default function AdminDashboard() {
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Winners — one line per position, worked out from the table above */}
+                    {(() => {
+                      const groups = [];
+                      const seen = {};
+                      electionResults.forEach((r) => {
+                        const key = r.position || 'Unassigned';
+                        if (seen[key] === undefined) { seen[key] = groups.length; groups.push({ position: key, rows: [] }); }
+                        groups[seen[key]].rows.push(r);
+                      });
+                      const winners = groups.map((g) => {
+                        const top = Math.max(...g.rows.map((r) => Number(r.votes) || 0));
+                        const leaders = g.rows.filter((r) => (Number(r.votes) || 0) === top);
+                        if (top <= 0) return { position: g.position, winner: 'No votes', votes: 0 };
+                        if (leaders.length > 1) return { position: g.position, winner: 'TIE — ' + leaders.map((r) => r.name).join(' / '), votes: top };
+                        return { position: g.position, winner: leaders[0].name, votes: top };
+                      });
+                      const th = { padding: '10px 8px', border: '1px solid #003366', fontWeight: 'bold' };
+                      const td = { padding: '8px', border: '1px solid #dee2e6' };
+                      return (
+                        <div data-testid="results-winners" style={{ marginBottom: '20px', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                          <h3 style={{ textAlign: 'center', fontSize: '14px', fontWeight: 'bold', color: '#003366', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                            Winners
+                          </h3>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                            <thead>
+                              <tr style={{ background: '#003366', color: 'white' }}>
+                                <th style={{ ...th, textAlign: 'center' }}>S/N</th>
+                                <th style={{ ...th, textAlign: 'left' }}>Position</th>
+                                <th style={{ ...th, textAlign: 'left' }}>Winner</th>
+                                <th style={{ ...th, textAlign: 'center' }}>Votes</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {winners.map((w, idx) => (
+                                <tr key={w.position} style={{ background: idx % 2 === 0 ? '#f8f9fa' : 'white', borderBottom: '1px solid #dee2e6' }}>
+                                  <td style={{ ...td, textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
+                                  <td style={{ ...td, color: '#555' }}>{w.position}</td>
+                                  <td style={{ ...td, fontWeight: 'bold', color: '#003366' }}>{w.winner}</td>
+                                  <td style={{ ...td, textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{w.votes}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
 
                     {/* Footer */}
                     <hr style={{ border: '1px solid #003366', marginBottom: '12px' }} />

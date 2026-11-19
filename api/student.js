@@ -6,6 +6,7 @@ import { getAdminDb } from './_admin.js';
 import { writeAudit } from './_audit.js';
 import { getManualSettings, createManualSubmission, lookupManualStatus, publicSubmissionView } from './_manualpayment.js';
 import { clientIp, consumeRateLimit, peekRateLimit, waitText } from './_ratelimit.js';
+import { getElectionStatus } from './_election.js';
 
 const normalizeMatric = (matric) => matric.trim().toUpperCase().replace(/\s+/g, '');
 const toDocId = (matric) => normalizeMatric(matric).replace(/\//g, '_');
@@ -25,7 +26,7 @@ async function login(req, res) {
     return res.status(404).json({ success: false, message: 'Matric Number not registered. Please sign up first.' });
   }
   const s = snap.data();
-  await writeAudit({ db: getAdminDb(), actor: s.matric || matric, action: 'STUDENT_LOGIN', details: { level: s.level } });
+  await writeAudit({ db: getAdminDb(), actor: s.matric || matric, action: 'STUDENT_LOGIN', details: { name: s.name || '', level: s.level } });
   return res.status(200).json({
     success: true,
     student: { name: s.name, matric: s.matric, level: s.level, hasVoted: !!s.hasVoted },
@@ -57,7 +58,7 @@ async function register(req, res) {
     createdAt: new Date().toISOString(),
   });
 
-  await writeAudit({ db: getAdminDb(), actor: normalized, action: 'STUDENT_REGISTER', details: { level: level.trim() } });
+  await writeAudit({ db: getAdminDb(), actor: normalized, action: 'STUDENT_REGISTER', details: { name: name.trim(), level: level.trim() } });
 
   return res.status(200).json({ success: true, uniqueKey });
 }
@@ -66,7 +67,7 @@ async function register(req, res) {
 // Called by PresenceContext on every page change + every 45s per visitor.
 // Online = seen in the last 2 minutes (counted in admin.js superStats).
 async function presence(req, res) {
-  const { anonId, page, role } = req.body || {};
+  const { anonId, page, role, matric } = req.body || {};
   const safeId = String(anonId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
   if (!safeId || !page) {
     return res.status(400).json({ success: false, message: 'anonId and page are required' });
@@ -74,13 +75,34 @@ async function presence(req, res) {
   const now = new Date().toISOString();
   const ref = getAdminDb().doc(`presence/${safeId}`);
   const existing = await ref.get();
+  const safeRole = String(role || 'visitor').slice(0, 20);
+  // A logged-in student also says who they are, so the Super Admin's online
+  // list can show the person instead of a random code. Cleared on logout.
+  const safeMatric = safeRole === 'student'
+    ? String(matric || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9/_-]/g, '').slice(0, 40)
+    : '';
   await ref.set({
     page: String(page).slice(0, 60),
-    role: String(role || 'visitor').slice(0, 20),
+    role: safeRole,
+    matric: safeMatric,
     lastSeen: now,
     firstSeen: existing.exists && existing.data().firstSeen ? existing.data().firstSeen : now,
   }, { merge: true });
   return res.status(200).json({ success: true });
+}
+
+// ---- Election clock (public): is the election coming, live or ended? ----
+// Decided with THIS server's clock, never the phone's. The student page only
+// displays the answer (countdown / ballot / "has ended"). See api/_election.js.
+async function electionStatus(req, res) {
+  try {
+    const status = await getElectionStatus(getAdminDb(), { maxAgeMs: 8000 });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, ...status });
+  } catch (e) {
+    console.error('electionStatus failed:', e.message);
+    return res.status(503).json({ success: false, message: 'Could not read the election status right now.' });
+  }
 }
 
 async function verifyKey(req, res) {
@@ -200,6 +222,7 @@ export default async function handler(req, res) {
     case 'register': return register(req, res);
     case 'verifyKey': return verifyKey(req, res);
     case 'presence': return presence(req, res);
+    case 'electionStatus': return electionStatus(req, res);
     case 'manualSettings': return manualSettings(req, res);
     case 'manualSubmit': return manualSubmit(req, res);
     case 'manualStatus': return manualStatus(req, res);

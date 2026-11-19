@@ -7,6 +7,7 @@ import { SkeletonBox, StatsGridSkeleton } from '../components/Skeleton';
 const SUPER_VIEWS = [
   { key: 'overview', label: 'Overview', icon: '📊' },
   { key: 'activity', label: 'Live Monitor', icon: '👀' },
+  { key: 'logins', label: 'Logins', icon: '🎓' },
   { key: 'election', label: 'Election', icon: '🗳️' },
   { key: 'finance', label: 'Finance', icon: '💰' },
   { key: 'system', label: 'System', icon: '🛠️' },
@@ -396,6 +397,40 @@ export default function SuperAdminDashboard() {
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState('');
 
+  // ── Logins: people who entered the portal, with everything they registered with ──
+  const [loginRows, setLoginRows] = useState([]);
+  const [loginsNextBefore, setLoginsNextBefore] = useState(null);
+  const [loginsBusy, setLoginsBusy] = useState(false);
+  const [loginsError, setLoginsError] = useState('');
+  const [loginSearch, setLoginSearch] = useState('');
+  const [loginView, setLoginView] = useState('people'); // 'people' = each person once | 'entries' = every entry
+  const loginsCursorRef = useRef(null);
+
+  const loadLogins = useCallback(async (older = false) => {
+    setLoginsBusy(true);
+    setLoginsError('');
+    try {
+      const res = await superAdminApi('superLogins', older && loginsCursorRef.current ? { before: loginsCursorRef.current } : {});
+      const items = Array.isArray(res.items) ? res.items : [];
+      setLoginRows((prev) => {
+        if (!older) return items;
+        const seen = new Set(prev.map((row) => row.id));
+        return [...prev, ...items.filter((row) => !seen.has(row.id))];
+      });
+      loginsCursorRef.current = res.nextBefore || null;
+      setLoginsNextBefore(res.nextBefore || null);
+    } catch (e) {
+      setLoginsError(e?.message || 'Could not load the logins.');
+    } finally {
+      setLoginsBusy(false);
+    }
+  }, []);
+
+  // Fresh list every time the Logins screen is opened.
+  useEffect(() => {
+    if (activeView === 'logins') loadLogins(false);
+  }, [activeView, loadLogins]);
+
   const loadStats = useCallback(async (showSpinner = false) => {
     const started = Date.now();
     try {
@@ -642,7 +677,7 @@ export default function SuperAdminDashboard() {
     const q = searchTerm.trim().toLowerCase();
     return (online.list || []).filter((row) => {
       const passRole = presenceFilter === 'all' ? true : row.role === presenceFilter;
-      const hay = `${row.id} ${row.role} ${row.page}`.toLowerCase();
+      const hay = `${row.id} ${row.role} ${row.page} ${row.name || ''} ${row.matric || ''} ${row.level || ''}`.toLowerCase();
       return passRole && (!q || hay.includes(q));
     });
   }, [online.list, presenceFilter, searchTerm]);
@@ -651,10 +686,33 @@ export default function SuperAdminDashboard() {
     const q = auditSearch.trim().toLowerCase();
     return audit.filter((row) => {
       if (!q) return true;
-      const hay = `${row.action || ''} ${row.actor || ''} ${detailsText(row.details)}`.toLowerCase();
+      const hay = `${row.action || ''} ${row.actor || ''} ${row.person?.name || ''} ${row.person?.level || ''} ${detailsText(row.details)}`.toLowerCase();
       return hay.includes(q);
     });
   }, [audit, auditSearch]);
+
+  // Logins — one row per person (their latest entry + how many times they entered).
+  const loginPeople = useMemo(() => {
+    const byMatric = new Map();
+    loginRows.forEach((row) => {
+      const key = String(row.matric || '').toUpperCase();
+      const current = byMatric.get(key);
+      if (!current) {
+        byMatric.set(key, { ...row, entries: 1, lastAt: row.at });
+      } else {
+        current.entries += 1;
+        if (String(row.at) > String(current.lastAt)) current.lastAt = row.at;
+      }
+    });
+    return Array.from(byMatric.values()).sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)));
+  }, [loginRows]);
+
+  const filteredLogins = useMemo(() => {
+    const q = loginSearch.trim().toLowerCase();
+    const source = loginView === 'people' ? loginPeople : loginRows;
+    if (!q) return source;
+    return source.filter((row) => `${row.name || ''} ${row.matric || ''} ${row.level || ''}`.toLowerCase().includes(q));
+  }, [loginPeople, loginRows, loginSearch, loginView]);
 
   const healthScore = useMemo(() => {
     let score = 100;
@@ -731,6 +789,8 @@ export default function SuperAdminDashboard() {
         when: dateTime(row.at),
         action: row.action,
         actor: row.actor,
+        name: row.person?.name || '',
+        level: row.person?.level || '',
         details: detailsText(row.details),
       }))
     );
@@ -756,10 +816,38 @@ export default function SuperAdminDashboard() {
       'super-admin-online-users.csv',
       filteredOnlineUsers.map((row) => ({
         visitor_id: row.id,
+        name: row.name || '',
+        matric_no: row.matric || '',
+        level: row.level || '',
         role: row.role,
         page: row.page,
         last_seen: dateTime(row.lastSeen),
       }))
+    );
+  };
+
+  const exportLoginsCsv = () => {
+    exportRowsToCsv(
+      loginView === 'people' ? 'super-admin-people-who-entered.csv' : 'super-admin-login-entries.csv',
+      filteredLogins.map((row) => (loginView === 'people'
+        ? {
+            name: row.name,
+            matric_no: row.matric,
+            level: row.level,
+            registered: dateTime(row.registeredAt),
+            last_entered: dateTime(row.lastAt),
+            times_entered: row.entries,
+            voted: row.hasVoted ? 'Yes' : 'No',
+          }
+        : {
+            name: row.name,
+            matric_no: row.matric,
+            level: row.level,
+            registered: dateTime(row.registeredAt),
+            entered: dateTime(row.at),
+            how: row.type === 'register' ? 'Registered' : 'Login',
+            voted: row.hasVoted ? 'Yes' : 'No',
+          }))
     );
   };
 
@@ -1076,7 +1164,7 @@ export default function SuperAdminDashboard() {
               style={inputStyle}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search id, role, page, reference..."
+              placeholder="Search name, matric number, role, page..."
             />
           </div>
           <div style={{ minWidth: 180, flex: '0 0 220px' }}>
@@ -1112,7 +1200,16 @@ export default function SuperAdminDashboard() {
                 <tbody>
                   {filteredOnlineUsers.map((row) => (
                     <tr key={row.id}>
-                      <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.id}</td>
+                      {row.name || row.matric ? (
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 700 }}>{row.name || 'Not a registered student'}</div>
+                          <div style={{ fontSize: 12, color: COLORS.muted, fontFamily: 'monospace' }}>
+                            {row.matric}{row.level ? ` · Level ${row.level}` : ''}
+                          </div>
+                        </td>
+                      ) : (
+                        <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.id}</td>
+                      )}
                       <td style={tdStyle}>
                         <Badge
                           tone={
@@ -1192,7 +1289,11 @@ export default function SuperAdminDashboard() {
                     <Badge tone={tone}>{item.action || 'UNKNOWN'}</Badge>
                   </div>
                   <div>
-                    <div style={{ color: COLORS.text, fontWeight: 700 }}>{item.actor || 'Unknown actor'}</div>
+                    <div style={{ color: COLORS.text, fontWeight: 700 }}>
+                      {item.person
+                        ? `${item.person.name || 'Name not on record'} · ${item.person.matric || item.actor}${item.person.level ? ` · Level ${item.person.level}` : ''}`
+                        : (item.actor || 'Unknown actor')}
+                    </div>
                     <div style={{ color: COLORS.muted, fontSize: 12, marginTop: 4 }}>
                       {detailsText(item.details)}
                     </div>
@@ -1669,7 +1770,16 @@ export default function SuperAdminDashboard() {
                         {row.action || 'UNKNOWN'}
                       </Badge>
                     </td>
-                    <td style={tdStyle}>{row.actor || '—'}</td>
+                    <td style={tdStyle}>
+                      {row.person ? (
+                        <>
+                          <div style={{ fontWeight: 700 }}>{row.person.name || '—'}</div>
+                          <div style={{ fontSize: 12, color: COLORS.muted, fontFamily: 'monospace' }}>
+                            {row.person.matric || row.actor}{row.person.level ? ` · Level ${row.person.level}` : ''}
+                          </div>
+                        </>
+                      ) : (row.actor || '—')}
+                    </td>
                     <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12 }}>
                       <div style={{ maxWidth: 520, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                         {detailsText(row.details)}
@@ -1687,10 +1797,118 @@ export default function SuperAdminDashboard() {
     </>
   );
 
+  const renderLogins = () => {
+    const people = loginView === 'people';
+    return (
+      <>
+        <Panel
+          title="Logins"
+          subtitle="Everyone who entered the portal, with the details they registered with."
+          right={
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" onClick={exportLoginsCsv} style={buttonStyle('ghost')}>
+                Export CSV
+              </button>
+              <button type="button" onClick={() => loadLogins(false)} style={buttonStyle('primary', loginsBusy)} disabled={loginsBusy}>
+                {loginsBusy ? 'Loading...' : 'Refresh'}
+              </button>
+              <Badge tone="success">{loginPeople.length} people</Badge>
+              <Badge tone="info">{loginRows.length} entries</Badge>
+            </div>
+          }
+          style={{ marginBottom: 20 }}
+        >
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 220, flex: '1 1 320px' }}>
+              <label style={labelStyle}>Search name / matric number / level</label>
+              <input
+                style={inputStyle}
+                value={loginSearch}
+                onChange={(e) => setLoginSearch(e.target.value)}
+                placeholder="Type a name, matric number or level..."
+              />
+            </div>
+            <div style={{ minWidth: 180, flex: '0 0 250px' }}>
+              <label style={labelStyle}>Show</label>
+              <select style={inputStyle} value={loginView} onChange={(e) => setLoginView(e.target.value)}>
+                <option value="people">Each person once (latest entry)</option>
+                <option value="entries">Every entry</option>
+              </select>
+            </div>
+          </div>
+          {loginsError && (
+            <div style={{ marginTop: 12, color: COLORS.danger, fontWeight: 700, fontSize: 13 }}>{loginsError}</div>
+          )}
+        </Panel>
+
+        <Panel
+          title={people ? 'People who entered' : 'Every entry'}
+          subtitle="Newest first. The name, matric number and level are the ones the person registered with."
+        >
+          {filteredLogins.length ? (
+            <div style={tableWrapStyle}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Name</th>
+                    <th style={thStyle}>Matric No</th>
+                    <th style={thStyle}>Level</th>
+                    <th style={thStyle}>Registered</th>
+                    <th style={thStyle}>{people ? 'Last entered' : 'Entered'}</th>
+                    <th style={thStyle}>{people ? 'Times' : 'How'}</th>
+                    <th style={thStyle}>Voted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLogins.map((row) => (
+                    <tr key={people ? `p-${row.matric}` : row.id}>
+                      <td style={{ ...tdStyle, fontWeight: 700 }}>
+                        {row.name || '—'}
+                        {!row.known && (
+                          <div style={{ fontSize: 11, fontWeight: 400, color: COLORS.muted }}>record no longer in the register</div>
+                        )}
+                      </td>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.matric || '—'}</td>
+                      <td style={tdStyle}>{row.level || '—'}</td>
+                      <td style={tdStyle}>{dateTime(row.registeredAt)}</td>
+                      <td style={tdStyle}>{dateTime(people ? row.lastAt : row.at)}</td>
+                      <td style={tdStyle}>
+                        {people ? row.entries : (
+                          <Badge tone={row.type === 'register' ? 'gold' : 'info'}>{row.type === 'register' ? 'Registered' : 'Login'}</Badge>
+                        )}
+                      </td>
+                      <td style={tdStyle}>
+                        <Badge tone={row.hasVoted ? 'success' : 'default'}>{row.hasVoted ? 'Yes' : 'No'}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              title={loginsBusy ? 'Loading...' : 'No entries found'}
+              subtitle={loginsBusy ? 'Reading the login records.' : 'Nobody matches this search, or nobody has entered yet.'}
+            />
+          )}
+          {loginsNextBefore && (
+            <div style={{ marginTop: 14, textAlign: 'center' }}>
+              <button type="button" onClick={() => loadLogins(true)} style={buttonStyle('ghost', loginsBusy)} disabled={loginsBusy}>
+                {loginsBusy ? 'Loading...' : 'Load older entries'}
+              </button>
+            </div>
+          )}
+        </Panel>
+      </>
+    );
+  };
+
   const renderActiveView = () => {
     switch (activeView) {
       case 'activity':
         return renderActivity();
+      case 'logins':
+        return renderLogins();
       case 'election':
         return renderElection();
       case 'finance':

@@ -61,6 +61,13 @@ export const todayIso = () => {
 
 export const digitsOnly = (v) => String(v || '').replace(/\D/g, '');
 
+/** A bank reference / session ID needs at least 6 letters or digits to identify a transfer. */
+export const hasBankReference = (v) => String(v || '').replace(/[^a-z0-9]/gi, '').length >= 6;
+
+/** True when the transfer can be identified: a bank reference, or the 10-digit paying account. */
+export const isTransferIdentifiable = ({ transferReference, senderAccount, senderHidden }) =>
+  hasBankReference(transferReference) || (!senderHidden && digitsOnly(senderAccount).length === 10);
+
 /**
  * Client-side pre-flight report. Same shape as the server's checks so the
  * student sees ✓ / ⚠ / ✕ rows immediately as they fill the form.
@@ -82,8 +89,9 @@ export function preflightChecks(proof, context = {}) {
   const paid = Number(proof.amount) || 0;
   if (expectedAmount > 0) {
     if (!paid) add('Amount is correct', 'warn', `₦${expectedAmount.toLocaleString()} required`);
-    else if (paid + 1 >= expectedAmount) add('Amount is correct', 'pass', `₦${paid.toLocaleString()}`);
-    else add('Amount is correct', 'fail', `Short by ₦${(expectedAmount - paid).toLocaleString()}`);
+    else if (paid + 1 < expectedAmount) add('Amount is correct', 'fail', `Short by ₦${(expectedAmount - paid).toLocaleString()}`);
+    else if (paid >= expectedAmount * 2) add('Amount is correct', 'warn', `₦${paid.toLocaleString()} is far more than the ₦${expectedAmount.toLocaleString()} form price — check it`);
+    else add('Amount is correct', 'pass', `₦${paid.toLocaleString()}`);
   }
 
   const date = parsePaymentDate(proof.paymentDate);
@@ -97,10 +105,19 @@ export function preflightChecks(proof, context = {}) {
   else if (context.expectedAccountName) add('Receiver name', 'warn', `Should read "${context.expectedAccountName}"`);
   else add('Receiver name', 'warn', 'Enter the name on the alert');
 
-  const sender = digitsOnly(proof.senderAccount);
-  if (!sender) add('Your account number', 'warn', 'Hidden on some alerts — tick the box below if so');
+  const sender = proof.senderHidden ? '' : digitsOnly(proof.senderAccount);
+  if (proof.senderHidden) add('Your account number', 'pass', 'Hidden by your bank');
+  else if (!sender) add('Your account number', 'warn', 'Hidden on some alerts — tick "My bank hid the sender account" if so');
   else if (sender.length === 10) add('Your account number', 'pass', `••••${last4(sender)}`);
   else add('Your account number', 'warn', `${sender.length} digits — should be 10`);
+
+  // The server needs ONE of these to tell your transfer apart from anyone else's
+  // (it is how the same payment is stopped from being used twice).
+  if (hasBankReference(proof.transferReference)) add('Transfer can be identified', 'pass', 'Bank reference entered');
+  else if (sender.length === 10) add('Transfer can be identified', 'pass', 'Paying account entered');
+  else add('Transfer can be identified', 'warn', proof.senderHidden
+    ? 'Enter the bank reference / session ID on your receipt'
+    : 'Enter your 10-digit account or the bank reference');
 
   if (proof.receiptUrl) add('Proof of payment', 'pass', 'Screenshot attached');
   else add('Proof of payment', 'warn', 'Attach the bank alert screenshot');
@@ -128,7 +145,11 @@ async function postJson(url, body) {
   return data;
 }
 
-/** Bank details + official prices. No secrets. */
+/**
+ * Is bank transfer available right now, and if so which account to pay into.
+ * It is available when the Commission has saved the bank details AND Form
+ * Purchase is live — there is no separate switch and no separate price.
+ */
 export async function fetchManualSettings() {
   return postJson('/api/manual-payment/settings', {});
 }

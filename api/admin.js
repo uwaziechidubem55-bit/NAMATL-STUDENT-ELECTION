@@ -1,13 +1,14 @@
 // NAMATLS Admin API — server-side data operations for AdminDashboard.
 // Guarded with a high-level diagnostic log layer to force Vercel to report silent errors.
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { writeAudit } from './_audit.js';
 import {
   getManualSettings,
-  auditManualProof,
+  reviewManualSubmission,
   approveManualPayment,
   rejectManualPayment,
-  resolveExpectedAmount,
+  cleanText,
+  isPortalProofUrl,
 } from './_manualpayment.js';
 
 let getAdminDb, verifyToken, signToken;
@@ -69,6 +70,58 @@ function isSuper(req) {
 // (code + server secret, SHA-256), the same way passwords should live.
 function hashCode(code) {
   return createHash('sha256').update(String(code) + ':' + (process.env.SERVER_SESSION_SECRET || '')).digest('hex');
+}
+
+// ===================== BANK ACCOUNT CHANGE GUARD (manual bank transfer) =====================
+// The published bank account decides WHERE students send their money, so adding
+// or changing it asks for the admin password again — an open, unattended
+// dashboard (or a stolen session) is not enough to redirect payments.
+// Five wrong passwords lock the change for 15 minutes.
+const BANK_CHANGE_MAX_ATTEMPTS = 5;
+const BANK_CHANGE_LOCK_MS = 15 * 60 * 1000;
+
+function samePassword(given, expected) {
+  const a = createHash('sha256').update(String(given)).digest();
+  const b = createHash('sha256').update(String(expected)).digest();
+  return timingSafeEqual(a, b); // constant-time, like the login check
+}
+
+async function confirmAdminPassword(db, password) {
+  const expected = process.env.ADMIN_PASSWORD;
+  if (!expected) {
+    return { ok: false, status: 500, message: 'Admin password is not configured on the server.' };
+  }
+  const ref = db.doc('manualPaymentSecurity/bankChange');
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const state = snap.exists ? snap.data() : {};
+
+    if (state.lockUntil && Date.now() < Number(state.lockUntil)) {
+      const mins = Math.ceil((Number(state.lockUntil) - Date.now()) / 60000);
+      return { ok: false, status: 423, message: `Too many wrong passwords. Changing the bank account is locked for ${mins} more minute(s).` };
+    }
+    if (typeof password !== 'string' || !password) {
+      return { ok: false, status: 400, needsPassword: true, message: 'Enter your admin password to publish or change the bank account.' };
+    }
+    if (!samePassword(password, expected)) {
+      const attempts = (Number(state.failedAttempts) || 0) + 1;
+      const locked = attempts >= BANK_CHANGE_MAX_ATTEMPTS;
+      tx.set(ref, { failedAttempts: locked ? 0 : attempts, lockUntil: locked ? Date.now() + BANK_CHANGE_LOCK_MS : null }, { merge: true });
+      const left = BANK_CHANGE_MAX_ATTEMPTS - attempts;
+      return {
+        ok: false,
+        status: 401,
+        wrongPassword: true,
+        message: locked
+          ? 'Wrong admin password. Changing the bank account is now locked for 15 minutes.'
+          : `Wrong admin password. ${left} attempt(s) left before a 15-minute lock.`,
+      };
+    }
+    if (state.failedAttempts || state.lockUntil) {
+      tx.set(ref, { failedAttempts: 0, lockUntil: null }, { merge: true });
+    }
+    return { ok: true };
+  });
 }
 
 export default async function handler(req, res) {
@@ -416,6 +469,10 @@ export default async function handler(req, res) {
       // MANUAL BANK TRANSFER (money in without Flutterwave)
       // Settings + review queue + approve/reject. Approval is the ONLY
       // thing that creates money, and it uses the shared ledger.
+      //
+      // There is no price and no on/off switch here: the price is the
+      // Form Purchase price, and bank transfer shows by itself whenever
+      // Form Purchase is live once the bank details are saved.
       // ================================================================
       case 'getManualPaymentSettings': {
         const s = await getManualSettings(db);
@@ -423,39 +480,86 @@ export default async function handler(req, res) {
       }
 
       case 'saveManualPaymentSettings': {
-        const d = payload.data || {};
-        const num = (v) => {
-          const n = Number(v);
-          return Number.isFinite(n) && n > 0 ? n : 0;
+        const d = payload.data && typeof payload.data === 'object' ? payload.data : {};
+        const next = {
+          bankName: cleanText(d.bankName, 60),
+          accountName: cleanText(d.accountName, 120),
+          accountNumber: String(d.accountNumber ?? '').replace(/\D/g, '').slice(0, 20),
+          extraNote: cleanText(d.extraNote, 400),
+          instructions: cleanText(d.instructions, 1000),
+          isPaused: !!d.isPaused,
         };
-        const accountNumber = String(d.accountNumber || '').replace(/\D/g, '');
-        if (d.isEnabled && (!accountNumber || !String(d.accountName || '').trim())) {
-          return res.status(400).json({ success: false, message: 'Publish an account name and account number before switching bank transfer ON.' });
+
+        const hasAny = !!(next.bankName || next.accountName || next.accountNumber);
+        if (hasAny && !(next.bankName && next.accountName && next.accountNumber)) {
+          return res.status(400).json({ success: false, message: 'Fill in the bank name, the account number and the account name — students need all three.' });
         }
-        if (accountNumber && accountNumber.length !== 10) {
+        if (next.accountNumber && next.accountNumber.length !== 10) {
           return res.status(400).json({ success: false, message: 'A Nigerian account number must be exactly 10 digits.' });
         }
-        const data = {
-          isEnabled: !!d.isEnabled,
-          bankName: String(d.bankName || '').trim().slice(0, 60),
-          accountName: String(d.accountName || '').trim().slice(0, 120),
-          accountNumber,
-          extraNote: String(d.extraNote || '').trim().slice(0, 400),
-          manualFormAmount: num(d.manualFormAmount),
-          updatedAt: new Date().toISOString(),
-          updatedBy: 'admin',
+
+        const settingsRef = db.doc('settings/manualPayment');
+        const currentSnap = await settingsRef.get();
+        const current = currentSnap.exists ? currentSnap.data() : {};
+        const before = {
+          bankName: String(current.bankName || '').trim(),
+          accountName: String(current.accountName || '').trim(),
+          accountNumber: String(current.accountNumber || '').replace(/\D/g, ''),
         };
-        await db.doc('settings/manualPayment').set(data, { merge: true });
-        await writeAudit({ db, actor: 'admin', action: 'MANUAL_PAYMENT_SETTINGS_SAVED', details: { isEnabled: data.isEnabled, bankName: data.bankName, accountEnd: accountNumber.slice(-4), manualFormAmount: data.manualFormAmount } });
-        return res.json({ success: true, message: data.isEnabled ? 'Bank transfer published and switched ON.' : 'Bank transfer settings saved (currently OFF).' });
+        const bankChanged = before.bankName !== next.bankName
+          || before.accountName !== next.accountName
+          || before.accountNumber !== next.accountNumber;
+
+        // Where the money goes is changing -> ask for the admin password again.
+        if (bankChanged) {
+          const check = await confirmAdminPassword(db, payload.adminPassword);
+          if (!check.ok) {
+            if (check.wrongPassword) {
+              await writeAudit({ db, actor: 'admin', action: 'MANUAL_PAYMENT_BANK_CHANGE_DENIED', details: { accountEnd: next.accountNumber.slice(-4) } });
+            }
+            return res.status(check.status).json({ success: false, needsPassword: !!check.needsPassword, message: check.message });
+          }
+        }
+
+        // Written whole (no merge) so the retired fields of the first version
+        // (the separate price and the separate on/off switch) disappear.
+        await settingsRef.set({ ...next, updatedAt: new Date().toISOString(), updatedBy: 'admin' });
+        await writeAudit({
+          db,
+          actor: 'admin',
+          action: 'MANUAL_PAYMENT_SETTINGS_SAVED',
+          details: {
+            bankChanged,
+            bankName: next.bankName,
+            accountEnd: next.accountNumber.slice(-4),
+            previousAccountEnd: before.accountNumber.slice(-4),
+            paused: next.isPaused,
+          },
+        });
+
+        const s = await getManualSettings(db);
+        let message;
+        if (!s.configured) {
+          message = 'Saved. Bank transfer stays hidden until the bank name, account number and account name are all filled in.';
+        } else if (s.paused) {
+          message = 'Saved. Bank transfer is PAUSED — students will not see it until you untick "Pause bank transfer" and save.';
+        } else if (s.formPurchase.live) {
+          message = 'Saved. Bank transfer is LIVE now — students see it next to Card / USSD on the Form Purchase page.';
+        } else {
+          message = 'Saved. Nothing else to do — bank transfer will show next to Card / USSD by itself as soon as Form Purchase is live.';
+        }
+        return res.json({ success: true, message, settings: s });
       }
 
       case 'listManualPayments': {
         const status = String(payload.status || '').toLowerCase();
-        let query = db.collection('manualPayments');
-        if (['pending', 'approved', 'rejected', 'approving'].includes(status)) {
-          query = query.where('status', '==', status);
-        }
+        const col = db.collection('manualPayments');
+        // "Pending" also carries approvals that started but never finished, so
+        // a payment can never sit somewhere no tab shows it.
+        let query = col;
+        if (status === 'pending') query = col.where('status', 'in', ['pending', 'approving']);
+        else if (status === 'approved' || status === 'rejected') query = col.where('status', '==', status);
+
         let snap;
         try {
           snap = await query.orderBy('createdAt', 'desc').limit(300).get();
@@ -467,51 +571,58 @@ export default async function handler(req, res) {
           const data = d.data();
           return { id: d.id, ...data, createdAt: serializeTs(data.createdAt), approvedAt: serializeTs(data.approvedAt), rejectedAt: serializeTs(data.rejectedAt) };
         }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-        const counts = items.reduce((acc, i) => {
-          acc.total += 1;
-          acc[i.status] = (acc[i.status] || 0) + 1;
-          return acc;
-        }, { total: 0, pending: 0, approved: 0, rejected: 0 });
+
+        // Real totals for EVERY tab, whichever tab is open (4 cheap count queries).
+        let counts;
+        try {
+          const [pending, approving, approved, rejected] = await Promise.all(
+            ['pending', 'approving', 'approved', 'rejected'].map(async (st) => {
+              const agg = await col.where('status', '==', st).count().get();
+              return Number(agg.data().count) || 0;
+            })
+          );
+          counts = { total: pending + approving + approved + rejected, pending: pending + approving, approved, rejected };
+        } catch (e) {
+          counts = items.reduce((acc, i) => {
+            acc.total += 1;
+            const key = i.status === 'approving' ? 'pending' : i.status;
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+          }, { total: 0, pending: 0, approved: 0, rejected: 0 });
+        }
         return res.json({ success: true, items, counts });
       }
 
-      // Re-runs the whole "is this fake?" checker against LIVE settings.
-      // Used when the admin opens a submission, so the report is never stale.
+      // Re-runs the whole "is this fake?" checker against LIVE settings and
+      // every other submission. Used when the admin opens a submission, so the
+      // report is never stale.
       case 'getManualPayment': {
         if (!payload.id) return res.status(400).json({ success: false, message: 'id required' });
-        const snap = await db.doc(`manualPayments/${payload.id}`).get();
-        if (!snap.exists) return res.status(404).json({ success: false, message: 'Submission not found' });
-        const sub = snap.data();
-        const settings = await getManualSettings(db);
-        const expected = await resolveExpectedAmount(db, sub.purpose, sub.position);
-        const audit = auditManualProof({
-          amount: sub.amount,
-          paymentDate: sub.paymentDate,
-          senderAccount: sub.senderAccount,
-          senderBank: sub.senderBank,
-          receiverName: sub.receiverName,
-          paidToAccount: sub.paidToAccount,
-          transferReference: sub.transferReference,
-          receiptUrl: sub.receiptUrl,
-          senderHidden: sub.senderHidden,
-        }, {
-          expectedAmount: expected.error ? Number(sub.expectedAmount) || 0 : expected.amount,
-          expectedAccount: String(settings.bank.accountNumber || '').replace(/\D/g, ''),
-          expectedAccountName: settings.bank.accountName,
-        });
+        const review = await reviewManualSubmission(db, String(payload.id));
+        if (review.notFound) return res.status(404).json({ success: false, message: 'Submission not found' });
         return res.json({
           success: true,
-          item: { id: snap.id, ...sub },
-          audit,
-          liveExpectedAmount: expected.error ? null : expected.amount,
-          liveExpectedError: expected.error || '',
-          bank: settings.bank,
+          item: { id: review.id, ...review.sub },
+          audit: review.audit,
+          liveExpectedAmount: review.expected.error ? null : review.expected.amount,
+          liveExpectedError: review.expected.error || '',
+          bank: review.settings.bank,
+          duplicateOf: review.related.duplicate,
+          // false = the image is NOT one of our own uploads, so the dashboard will not load it.
+          proofTrusted: !process.env.CLOUDINARY_CLOUD_NAME || isPortalProofUrl(review.sub.receiptUrl),
         });
       }
 
       case 'approveManualPayment': {
         if (!payload.id) return res.status(400).json({ success: false, message: 'id required' });
-        const result = await approveManualPayment({ id: payload.id, reviewer: 'admin', note: String(payload.note || '') });
+        const result = await approveManualPayment({
+          id: String(payload.id),
+          reviewer: 'admin',
+          note: String(payload.note || ''),
+          confirmedAmount: payload.confirmedAmount,       // the amount the admin saw in the bank app
+          bankConfirmed: payload.bankConfirmed === true,  // "I saw this money in my bank app"
+          overrideFailedChecks: payload.overrideFailedChecks === true,
+        });
         return res.status(result.success ? 200 : 400).json(result);
       }
 
@@ -521,7 +632,7 @@ export default async function handler(req, res) {
         if (!reason) {
           return res.status(400).json({ success: false, message: 'Write the reason — the student will see it.' });
         }
-        const result = await rejectManualPayment({ id: payload.id, reviewer: 'admin', note: reason });
+        const result = await rejectManualPayment({ id: String(payload.id), reviewer: 'admin', note: reason });
         return res.status(result.success ? 200 : 400).json(result);
       }
       case 'superCleanupPresence': {

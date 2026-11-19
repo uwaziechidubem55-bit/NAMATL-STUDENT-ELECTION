@@ -4,7 +4,8 @@
 // 13th serverless function and Vercel Hobby caps us at 12.
 import { getAdminDb } from './_admin.js';
 import { writeAudit } from './_audit.js';
-import { getManualSettings, createManualSubmission, lookupManualStatus } from './_manualpayment.js';
+import { getManualSettings, createManualSubmission, lookupManualStatus, publicSubmissionView } from './_manualpayment.js';
+import { clientIp, consumeRateLimit, peekRateLimit, waitText } from './_ratelimit.js';
 
 const normalizeMatric = (matric) => matric.trim().toUpperCase().replace(/\s+/g, '');
 const toDocId = (matric) => normalizeMatric(matric).replace(/\//g, '_');
@@ -99,57 +100,93 @@ async function verifyKey(req, res) {
 }
 
 // ---- Public manual bank transfer: what the student page needs ----
-// Deliberately narrow: the bank account, whether it is open, the official
-// price list and the Super-Admin activation fee. No secrets, no other settings.
+// Deliberately narrow. Bank transfer has no switch and no price of its own:
+// it is "on" when the bank details are saved AND Form Purchase is live, and the
+// amount is the Form Purchase price of the position. The account is only sent
+// while it is on. No secrets, no other settings.
 async function manualSettings(req, res) {
-  const db = getAdminDb();
-  const s = await getManualSettings(db);
-  if (!s.enabled) {
+  try {
+    const s = await getManualSettings(getAdminDb());
+    if (!s.enabled) {
+      // `configured` lets the page keep the "check my payment status" link
+      // visible after Form Purchase closes.
+      return res.status(200).json({ success: true, enabled: false, configured: s.configured });
+    }
     return res.status(200).json({
       success: true,
-      enabled: false,
+      enabled: true,
+      configured: true,
       bank: s.bank,
-      positions: s.positions,
-      manualFormAmount: s.manualFormAmount,
-      activationTotal: s.activationTotal,
       instructions: s.instructions,
     });
+  } catch (e) {
+    console.error('manualSettings failed:', e.message);
+    // The purchase page treats this as "no bank transfer" and simply shows the
+    // card/USSD checkout, exactly as before.
+    return res.status(200).json({ success: true, enabled: false, configured: false });
   }
-  return res.status(200).json({
-    success: true,
-    enabled: true,
-    bank: s.bank,
-    positions: s.positions,
-    manualFormAmount: s.manualFormAmount,
-    activationTotal: s.activationTotal,
-    instructions: s.instructions,
-    // A short, stable note so the UI can warn if the account is half-filled.
-    configured: !!(s.bank.bankName && s.bank.accountName && s.bank.accountNumber),
-  });
 }
+
+// Limits per visitor network (IP). Generous enough for a whole campus sharing
+// one Wi-Fi address, tight enough to stop a script flooding the review queue.
+const SUBMIT_LIMITS = [{ limit: 10, windowSec: 600 }, { limit: 60, windowSec: 86400 }];
+const STATUS_MISS_LIMITS = [{ limit: 12, windowSec: 900 }];
 
 // ---- Public manual bank transfer: submit proof of payment ----
 // Creates a PENDING record only. No money is added here — that is the admin's
 // approval (see approveManualPayment in _manualpayment.js).
 async function manualSubmit(req, res) {
-  const db = getAdminDb();
-  const result = await createManualSubmission({ db, payload: req.body || {} });
-  if (result.error) {
-    return res.status(result.duplicateOf ? 409 : 400).json({ success: false, message: result.error, duplicateOf: result.duplicateOf || null });
+  try {
+    const db = getAdminDb();
+    const gate = await consumeRateLimit(db, { scope: 'mp-submit', who: clientIp(req), rules: SUBMIT_LIMITS });
+    if (!gate.ok) {
+      return res.status(429).json({
+        success: false,
+        message: `Too many bank-transfer submissions from your network. Please wait ${waitText(gate.retryAfterSec)} and try again.`,
+      });
+    }
+
+    const result = await createManualSubmission({ db, payload: req.body || {} });
+    if (result.error) {
+      return res.status(result.duplicate ? 409 : 400).json({ success: false, message: result.error });
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'Submitted for review. Keep your reference safe — you can check the status any time.',
+      submission: publicSubmissionView(result.record),
+    });
+  } catch (e) {
+    console.error('manualSubmit failed:', e.message);
+    return res.status(500).json({ success: false, message: 'We could not save your submission. Nothing was lost — please try again in a moment.' });
   }
-  return res.status(200).json({
-    success: true,
-    message: 'Submitted for review. Keep your reference safe — you can check the status any time.',
-    submission: result.record,
-  });
 }
 
 // ---- Public manual bank transfer: check status ----
+// Wrong guesses are counted per network; after too many the lookup is paused,
+// so nobody can sit and guess other students' references.
 async function manualStatus(req, res) {
-  const { reference, amount } = req.body || {};
-  const result = await lookupManualStatus({ reference, amount });
-  if (result.error) return res.status(404).json({ success: false, message: result.error });
-  return res.status(200).json({ success: true, submission: result.submission });
+  try {
+    const db = getAdminDb();
+    const who = clientIp(req);
+    const gate = await peekRateLimit(db, { scope: 'mp-status-miss', who, rules: STATUS_MISS_LIMITS });
+    if (!gate.ok) {
+      return res.status(429).json({
+        success: false,
+        message: `Too many wrong attempts. Please wait ${waitText(gate.retryAfterSec)} and try again.`,
+      });
+    }
+
+    const { reference, amount } = req.body || {};
+    const result = await lookupManualStatus({ reference, amount });
+    if (result.error) {
+      if (result.notFound) await consumeRateLimit(db, { scope: 'mp-status-miss', who, rules: STATUS_MISS_LIMITS });
+      return res.status(result.notFound ? 404 : 400).json({ success: false, message: result.error });
+    }
+    return res.status(200).json({ success: true, submission: result.submission });
+  } catch (e) {
+    console.error('manualStatus failed:', e.message);
+    return res.status(500).json({ success: false, message: 'Could not check the status right now. Please try again in a moment.' });
+  }
 }
 
 export default async function handler(req, res) {

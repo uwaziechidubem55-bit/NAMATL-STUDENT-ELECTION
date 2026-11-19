@@ -4,6 +4,7 @@
 //   ?purpose=proof      -> PUBLIC      (manual bank-transfer screenshots)
 // CLOUDINARY_API_SECRET never leaves this serverless function.
 import { createHash } from 'crypto';
+import { clientIp, consumeRateLimit, waitText } from './_ratelimit.js';
 
 let verifyToken;
 try {
@@ -31,6 +32,8 @@ function isAdmin(req) {
 // be used as free image hosting: fixed folder, no transformations, images only.
 const PROOF_FOLDER = 'namatl/payment-proofs';
 const PROOF_MAX_BYTES = 6 * 1024 * 1024; // 6 MB
+// How many upload permissions one visitor network (IP) may ask for.
+const PROOF_UPLOAD_LIMITS = [{ limit: 20, windowSec: 3600 }, { limit: 80, windowSec: 86400 }];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -50,6 +53,22 @@ export default async function handler(req, res) {
     const apiSecret = process.env.CLOUDINARY_API_SECRET;
     if (!cloudName || !apiKey || !apiSecret) {
       return res.status(500).json({ success: false, message: 'Proof uploads are not configured yet. Contact the Electoral Commission.' });
+    }
+
+    // This endpoint is public, so cap how often one network can use it.
+    // If the counter cannot be reached the upload is allowed (never blocks a real student).
+    try {
+      // Loaded only here, so candidate photo uploads never depend on it.
+      const { getAdminDb } = await import('./_admin.js');
+      const gate = await consumeRateLimit(getAdminDb(), { scope: 'mp-upload', who: clientIp(req), rules: PROOF_UPLOAD_LIMITS });
+      if (!gate.ok) {
+        return res.status(429).json({
+          success: false,
+          message: `Too many screenshot uploads from your network. Please wait ${waitText(gate.retryAfterSec)} and try again.`,
+        });
+      }
+    } catch (e) {
+      console.error('proof upload limiter skipped:', e.message);
     }
 
     const timestamp = Math.floor(Date.now() / 1000);

@@ -4,6 +4,7 @@ import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { calculateFormCharges } from '../utils/flutterwaveCostCalculator';
 import ManualBankPayment from '../components/ManualBankPayment';
+import { fetchManualSettings, loadRememberedManualPayments } from '../utils/manualPayment';
 
 export default function PurchaseForm({
   position: propPosition,
@@ -19,9 +20,27 @@ export default function PurchaseForm({
   const [successMsg, setSuccessMsg] = useState('');
   const [positionCounts, setPositionCounts] = useState({});
   const [loading, setLoading] = useState(true);
-  const [payMethod, setPayMethod] = useState(''); // '' | 'card' | 'transfer'
+  const [payMethod, setPayMethod] = useState(''); // '' = choosing | 'transfer' = bank-transfer panel open
+
+  // ===== SECOND PAYMENT METHOD: BANK TRANSFER =====
+  // Nothing is configured on this page. The server answers "enabled" only when
+  // the Commission has saved its bank details AND Form Purchase is live, and the
+  // amount is the same position price used for the card checkout. If this lookup
+  // fails for any reason, the page simply shows the card/USSD checkout as before.
+  const [bankInfo, setBankInfo] = useState(null);
+  const [showBankStatus, setShowBankStatus] = useState(false);
+  const [hasSavedBankRefs] = useState(() => loadRememberedManualPayments().length > 0);
+  const bankTransferOn = !!bankInfo?.enabled;
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetchManualSettings()
+      .then((info) => { if (alive) setBankInfo(info); })
+      .catch(() => { /* card/USSD only */ });
+    return () => { alive = false; };
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -83,6 +102,15 @@ export default function PurchaseForm({
 
   const adminSetPrice = Number(propAdminPrice ?? selectedPosition?.amount ?? 0);
   const charges = selectedPosition ? calculateFormCharges(adminSetPrice) : null;
+
+  // Bank transfer uses the SAME details form as the card checkout.
+  const handleChooseBankTransfer = () => {
+    if (!formData.fullName.trim() || !formData.department.trim() || !formData.level.trim()) {
+      alert('Fill all required fields');
+      return;
+    }
+    setPayMethod('transfer');
+  };
 
   const handlePay = async () => {
     if (!formData.fullName.trim() || !formData.department.trim() || !formData.level.trim()) {
@@ -311,69 +339,79 @@ export default function PurchaseForm({
             </div>
           </div>
 
-          {/* ============ PAYMENT METHOD CHOOSER ============ */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>How do you want to pay?</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setPayMethod('card')}
-                style={{
-                  padding: '14px 12px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
-                  background: payMethod === 'card' ? '#eff6ff' : '#ffffff',
-                  border: payMethod === 'card' ? '2px solid #2563eb' : '1px solid #cbd5e1'
-                }}
-              >
-                <div style={{ fontSize: '18px', marginBottom: '4px' }}>💳</div>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>Card / USSD</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Instant approval via Flutterwave</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPayMethod('transfer')}
-                style={{
-                  padding: '14px 12px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
-                  background: payMethod === 'transfer' ? '#ecfdf5' : '#ffffff',
-                  border: payMethod === 'transfer' ? '2px solid #0f766e' : '1px solid #cbd5e1'
-                }}
-              >
-                <div style={{ fontSize: '18px', marginBottom: '4px' }}>🏦</div>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>Bank transfer</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Pay to our account, upload proof</div>
-              </button>
-            </div>
-          </div>
+          {/* Candidate details — ONE form for BOTH payment methods (same fields as always) */}
+          <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
+          <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
 
-          {/* ============ BANK TRANSFER PATH ============ */}
-          {payMethod === 'transfer' && (
-            <ManualBankPayment
-              position={selectedPosition.position}
-              expectedAmount={adminSetPrice}
-              candidateData={{
-                fullName: formData.fullName,
-                department: formData.department,
-                level: formData.level,
-                email: formData.email
-              }}
-              onDone={() => setPayMethod('')}
-              onApproved={() => { loadData(); }}
-            />
-          )}
+          {payMethod !== 'transfer' && (
+            <>
+              {bankTransferOn && (
+                <>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', margin: '6px 0 10px 0' }}>Choose how to pay</div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>💳 Card / USSD — instant, through Flutterwave</div>
+                </>
+              )}
 
-          {/* ============ CARD / FLUTTERWAVE PATH ============ */}
-          {payMethod === 'card' && (
-            <div>
-              <input placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} style={input} disabled={submitting} />
-              <input placeholder="Department" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} style={input} disabled={submitting} />
-              <input placeholder="Level" value={formData.level} onChange={(e) => setFormData({ ...formData, level: e.target.value })} style={input} disabled={submitting} />
-              <input placeholder="Email (optional)" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} style={input} disabled={submitting} />
-
+              {/* ============ METHOD 1 — CARD / USSD (FLUTTERWAVE), unchanged ============ */}
               <button
                 onClick={handlePay}
                 disabled={submitting}
                 style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
               >
                 {submitting ? '⏳ Processing...' : `💳 Pay ₦${charges.totalCustomerPays.toLocaleString()}`}
+              </button>
+
+              {/* ============ METHOD 2 — BANK TRANSFER (shows by itself while it is available) ============ */}
+              {bankTransferOn && (
+                <>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#475569', margin: '18px 0 6px 0' }}>🏦 Bank transfer — pay into our account, the Commission confirms it</div>
+                  <button
+                    type="button"
+                    onClick={handleChooseBankTransfer}
+                    disabled={submitting}
+                    style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #0f766e, #047857)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '16px', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                  >
+                    🏦 Pay ₦{adminSetPrice.toLocaleString()} by bank transfer
+                  </button>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: '8px 0 0 0', lineHeight: 1.5 }}>
+                    Bank transfer is the form price only — the VAT and service charge above apply to card / USSD.
+                    Your form is registered after the Electoral Commission confirms the payment.
+                  </p>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ============ BANK TRANSFER PANEL ============ */}
+          {payMethod === 'transfer' && (
+            <ManualBankPayment
+              position={selectedPosition.position}
+              expectedAmount={adminSetPrice}
+              candidateData={formData}
+              settings={bankInfo}
+              onDone={() => setPayMethod('')}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Bank-transfer status checker. Hidden unless the Commission offers bank transfer
+          (or this browser already holds a bank-transfer reference), so the page looks
+          exactly as before otherwise. It stays available after Form Purchase closes. */}
+      {payMethod !== 'transfer' && (bankInfo?.configured || hasSavedBankRefs) && (
+        <div style={{ marginTop: '20px' }}>
+          {showBankStatus ? (
+            <ManualBankPayment statusOnly onDone={() => setShowBankStatus(false)} />
+          ) : (
+            <div style={{ textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowBankStatus(true)}
+                style={{ background: 'transparent', border: 'none', color: '#0f766e', fontSize: '14px', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+              >
+                🏦 Paid by bank transfer? Check your payment status
               </button>
             </div>
           )}

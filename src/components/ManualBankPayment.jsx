@@ -7,20 +7,26 @@ import {
   checkManualPaymentStatus,
   parsePaymentDate,
   preflightChecks,
+  isTransferIdentifiable,
   todayIso,
   rememberManualPayment,
   loadRememberedManualPayments,
 } from '../utils/manualPayment';
 
 // ============================================================================
-// NAMATLS Manual Bank Transfer panel.
-// Used by BOTH the public /purchase-form page and the admin dashboard:
-//   - student picks "Bank transfer" instead of the Flutterwave card popup
-//   - sees the association's published bank account
+// NAMATLS Manual Bank Transfer panel — the second payment method on the public
+// /purchase-form page, next to the Flutterwave card / USSD checkout.
+//   - the candidate fills the SAME details form as for a card payment
+//   - picks "Bank transfer" instead of the Flutterwave popup
+//   - sees the association's published bank account and the form price
+//     (the price set in Form Purchase — there is no separate bank-transfer price)
 //   - pays with their own bank app, then submits date / amount / names / screenshot
-//   - gets a reference like MT-20261109-X8KQ2P
+//   - gets a reference like MT-20261109-X8KQ2PZ7
 //   - comes back later and sees Pending review / Approved / Rejected + reason
 // No money is ever added here: api/admin.js approveManualPayment() does that.
+//
+// statusOnly={true} shows just the "check a previous payment" part, so a student
+// can still see the result after Form Purchase has closed.
 // ============================================================================
 
 const STATUS_UI = {
@@ -30,11 +36,9 @@ const STATUS_UI = {
   rejected: { bg: '#fee2e2', border: '#fecaca', color: '#b91c1c', icon: '⛔', label: 'Rejected' },
 };
 
+// Only what is printed on the bank alert. The candidate's own details
+// (name, department, level, email) come from the purchase form above.
 const emptyForm = {
-  fullName: '',
-  department: '',
-  level: '',
-  email: '',
   amount: '',
   paymentDate: '',
   senderBank: '',
@@ -44,19 +48,23 @@ const emptyForm = {
   transferReference: '',
 };
 
+const text = (v) => String(v || '').trim();
+
 export default function ManualBankPayment({
   position = '',
-  expectedAmount = 0,
-  candidateData = {},
+  expectedAmount = 0,       // the Form Purchase price of the position
+  candidateData = {},       // live values of the purchase form (fullName, department, level, email)
+  settings: presetSettings = null, // bank details already loaded by the page (optional)
+  statusOnly = false,       // show only the status checker
   onApproved,       // called with the submission once admin-approved (string status polled by parent)
-  onDone,           // closes the panel / returns to position list
+  onDone,           // closes the panel / returns to the payment choice
   compact = false,
 }) {
-  const [settings, setSettings] = useState(null);
-  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [settings, setSettings] = useState(presetSettings);
+  const [loadingSettings, setLoadingSettings] = useState(!presetSettings && !statusOnly);
   const [settingsError, setSettingsError] = useState('');
 
-  const [form, setForm] = useState({ ...emptyForm, ...candidateData, receiverName: '' });
+  const [form, setForm] = useState({ ...emptyForm, receiverName: presetSettings?.bank?.accountName || '' });
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
@@ -75,29 +83,38 @@ export default function ManualBankPayment({
 
   const pollTimer = useRef(null);
 
-  // ---------- load published bank account + official price ----------
+  // ---------- load the published bank account (unless the page already has it) ----------
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const res = await fetchManualSettings();
-        if (!alive) return;
-        const s = res;
-        setSettings(s);
-        if (s.bank?.accountName) setForm(f => ({ ...f, receiverName: f.receiverName || s.bank.accountName }));
-      } catch (e) {
-        if (alive) setSettingsError(e.message || 'Could not load the bank account. Check your connection.');
-      } finally {
-        if (alive) setLoadingSettings(false);
-      }
-    })();
+    if (!presetSettings && !statusOnly) {
+      (async () => {
+        try {
+          const res = await fetchManualSettings();
+          if (!alive) return;
+          const s = res;
+          setSettings(s);
+          if (s.bank?.accountName) setForm(f => ({ ...f, receiverName: f.receiverName || s.bank.accountName }));
+        } catch (e) {
+          if (alive) setSettingsError(e.message || 'Could not load the bank account. Check your connection.');
+        } finally {
+          if (alive) setLoadingSettings(false);
+        }
+      })();
+    }
     setRemembered(loadRememberedManualPayments());
     return () => { alive = false; if (pollTimer.current) clearInterval(pollTimer.current); };
   }, []);
 
   const bank = settings?.bank || {};
-  const requiredAmount = Number(expectedAmount) || Number(settings?.manualFormAmount) || 0;
+  // One price: whatever the Commission set for this position in Form Purchase.
+  const requiredAmount = Number(expectedAmount) || 0;
   const officialReceiver = bank.accountName || '';
+  const candidate = {
+    fullName: text(candidateData.fullName),
+    department: text(candidateData.department),
+    level: text(candidateData.level),
+    email: text(candidateData.email),
+  };
 
   // Prefill the amount once, but never fight the student if they edit it.
   useEffect(() => {
@@ -113,7 +130,9 @@ export default function ManualBankPayment({
   const checks = useMemo(() => preflightChecks({
     amount: form.amount,
     paymentDate: form.paymentDate,
-    senderAccount: form.senderHidden ? '0000000000' : form.senderAccount,
+    senderAccount: form.senderAccount,
+    senderHidden: form.senderHidden,
+    transferReference: form.transferReference,
     receiverName: form.receiverName,
     receiptUrl,
   }, {
@@ -153,18 +172,25 @@ export default function ManualBankPayment({
   // ---------- submit ----------
   const handleSubmit = async () => {
     setError('');
-    if (!form.fullName.trim() || !form.department.trim() || !form.level.trim()) {
-      setError('Fill in your full name, department and level.');
+    if (!candidate.fullName || !candidate.department || !candidate.level) {
+      setError('Fill in your full name, department and level in the form above.');
       return;
     }
     if (!position) {
       setError('Choose the position you are contesting for first.');
       return;
     }
+    if (!(Number(form.amount) > 0)) { setError('Enter the amount you transferred.'); return; }
     if (uploading) { setError('Wait for your screenshot to finish uploading.'); return; }
     if (!receiptUrl) { setError('Attach the screenshot of your bank alert.'); return; }
     if (!parsePaymentDate(form.paymentDate)) {
       setError('Enter the payment date as shown on your alert, e.g. 09/11/2026.');
+      return;
+    }
+    if (!isTransferIdentifiable(form)) {
+      setError(form.senderHidden
+        ? 'Your bank hid your account number, so enter the bank reference / session ID printed on your receipt.'
+        : 'Enter the 10-digit account you paid from, or the bank reference / session ID printed on your receipt.');
       return;
     }
 
@@ -173,10 +199,10 @@ export default function ManualBankPayment({
       const res = await submitManualPayment({
         purpose: 'form',
         position,
-        fullName: form.fullName.trim(),
-        department: form.department.trim(),
-        level: form.level.trim(),
-        email: form.email.trim(),
+        fullName: candidate.fullName,
+        department: candidate.department,
+        level: candidate.level,
+        email: candidate.email,
         amount: Number(form.amount) || 0,
         paymentDate: form.paymentDate,
         senderBank: form.senderBank.trim(),
@@ -270,6 +296,71 @@ export default function ManualBankPayment({
     );
   };
 
+  // ---------- reusable pieces: the status checker and one looked-up payment ----------
+  const trackerCard = (
+    <div style={{ ...card, marginTop: statusOnly ? 0 : '14px' }}>
+      <div style={{ fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '10px' }}>📄 Check a previous payment</div>
+
+      {remembered.length > 0 && (
+        <div style={{ marginBottom: '12px' }}>
+          {remembered.map(r => (
+            <button
+              key={r.reference}
+              type="button"
+              onClick={() => { setTrackRef(r.reference); setTrackAmount(String(r.amount)); doLookup(r.reference, r.amount); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '9px 12px', marginBottom: '6px', cursor: 'pointer', fontSize: '13px' }}
+            >
+              <strong style={{ fontFamily: 'monospace' }}>{r.reference}</strong>
+              <span style={{ color: '#64748b' }}> — ₦{Number(r.amount).toLocaleString()} {r.position ? '· ' + r.position : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleTrack}>
+        <input placeholder="Reference (MT-…)" value={trackRef} onChange={e => setTrackRef(e.target.value)} style={{ ...input, fontFamily: 'monospace' }} />
+        <input type="number" inputMode="numeric" placeholder="Exact amount you paid" value={trackAmount} onChange={e => setTrackAmount(e.target.value)} style={input} />
+        <button type="submit" disabled={tracking} style={{ ...ghostBtn, width: '100%', padding: '11px' }}>{tracking ? '⏳ Checking…' : '🔎 Check status'}</button>
+      </form>
+      {trackError && <p style={{ fontSize: '13px', color: '#b91c1c', margin: '10px 0 0 0' }}>{trackError}</p>}
+    </div>
+  );
+
+  const trackedCard = tracked ? (
+    <div style={card}>
+      <h3 style={{ margin: '0 0 12px 0', fontSize: '17px' }}>📄 {tracked.reference}</h3>
+      {statusChip(tracked.status, tracked.status === 'approved'
+        ? 'Approved — your payment has been confirmed.'
+        : tracked.status === 'rejected'
+          ? (tracked.reviewNote || 'Rejected.')
+          : 'Still waiting for the Electoral Commission to review your proof.')}
+      <div style={{ ...row, borderBottom: 'none' }}><span>Name</span><strong>{tracked.fullName}</strong></div>
+      <div style={{ ...row, borderBottom: 'none' }}><span>Amount</span><strong>₦{Number(tracked.amount).toLocaleString()}</strong></div>
+      {tracked.position && <div style={{ ...row, borderBottom: 'none' }}><span>Position</span><strong>{tracked.position}</strong></div>}
+      <div style={{ ...row, borderBottom: 'none' }}><span>Submitted</span><strong>{tracked.submittedAt ? new Date(tracked.submittedAt).toLocaleString() : '—'}</strong></div>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+        <button onClick={() => doLookup(tracked.reference, tracked.amount)} style={ghostBtn} disabled={tracking}>{tracking ? '⏳ Checking…' : '🔎 Refresh'}</button>
+        <button onClick={() => setTracked(null)} style={ghostBtn}>← Back</button>
+      </div>
+    </div>
+  ) : null;
+
+  // =========================== STATUS ONLY ===========================
+  // Used at the foot of the purchase page so a student can check a payment
+  // even after Form Purchase has closed.
+  if (statusOnly) {
+    return (
+      <div style={{ textAlign: 'left' }}>
+        {trackedCard || trackerCard}
+        {typeof onDone === 'function' && (
+          <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+            <button onClick={onDone} style={ghostBtn}>✕ Close</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (loadingSettings) {
     return <div style={{ ...card, textAlign: 'center', color: '#64748b', fontSize: '14px' }}>⏳ Loading bank details…</div>;
   }
@@ -344,27 +435,8 @@ export default function ManualBankPayment({
     );
   }
 
-  // =========================== TRACKED — someone else's reference ===========================
-  if (tracked) {
-    return (
-      <div style={card}>
-        <h3 style={{ margin: '0 0 12px 0', fontSize: '17px' }}>📄 {tracked.reference}</h3>
-        {statusChip(tracked.status, tracked.status === 'approved'
-          ? 'Approved — your payment has been confirmed.'
-          : tracked.status === 'rejected'
-            ? (tracked.reviewNote || 'Rejected.')
-            : 'Still waiting for the Electoral Commission to review your proof.')}
-        <div style={{ ...row, borderBottom: 'none' }}><span>Name</span><strong>{tracked.fullName}</strong></div>
-        <div style={{ ...row, borderBottom: 'none' }}><span>Amount</span><strong>₦{Number(tracked.amount).toLocaleString()}</strong></div>
-        {tracked.position && <div style={{ ...row, borderBottom: 'none' }}><span>Position</span><strong>{tracked.position}</strong></div>}
-        <div style={{ ...row, borderBottom: 'none' }}><span>Submitted</span><strong>{tracked.submittedAt ? new Date(tracked.submittedAt).toLocaleString() : '—'}</strong></div>
-        <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
-          <button onClick={() => doLookup(tracked.reference, tracked.amount)} style={ghostBtn} disabled={tracking}>{tracking ? '⏳ Checking…' : '🔎 Refresh'}</button>
-          <button onClick={() => setTracked(null)} style={ghostBtn}>← Back</button>
-        </div>
-      </div>
-    );
-  }
+  // =========================== TRACKED — a payment looked up by reference ===========================
+  if (tracked) return trackedCard;
 
   // =========================== FORM ===========================
   return (
@@ -376,7 +448,7 @@ export default function ManualBankPayment({
         </div>
         {settings?.enabled === false ? (
           <div style={{ color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 12px', fontSize: '13px' }}>
-            ⚠️ Bank transfer has not been switched on yet. Use the card/USSD option instead.
+            ⚠️ Bank transfer is not available right now. Use the card/USSD option instead.
           </div>
         ) : (
           <>
@@ -387,9 +459,14 @@ export default function ManualBankPayment({
             </div>
             <div style={{ ...row, borderBottom: 'none' }}><span>Account name</span><strong style={{ textAlign: 'right' }}>{bank.accountName || '—'}</strong></div>
             {requiredAmount > 0 && (
-              <div style={{ ...row, borderBottom: 'none' }}>
-                <span>Exact amount</span><strong>₦{requiredAmount.toLocaleString()}</strong>
-              </div>
+              <>
+                <div style={{ ...row, borderBottom: 'none' }}>
+                  <span>Exact amount</span><strong>₦{requiredAmount.toLocaleString()}</strong>
+                </div>
+                <p style={{ fontSize: '12px', color: '#0f766e', margin: '2px 0 0 0', lineHeight: 1.5 }}>
+                  This is the form price. The VAT and service charge shown above are for card / USSD payments only.
+                </p>
+              </>
             )}
             {bank.extraNote && (
               <p style={{ fontSize: '12px', color: '#0f766e', margin: '10px 0 0 0', lineHeight: 1.5 }}>{bank.extraNote}</p>
@@ -406,14 +483,14 @@ export default function ManualBankPayment({
 
       {/* ---- details ---- */}
       <div style={card}>
-        <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '10px' }}>✍️ Your details</div>
-
-        <input placeholder="Full name" value={form.fullName} onChange={set('fullName')} style={input} disabled={submitting} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-          <input placeholder="Department" value={form.department} onChange={set('department')} style={input} disabled={submitting} />
-          <input placeholder="Level" value={form.level} onChange={set('level')} style={input} disabled={submitting} />
+        {/* The candidate's own details are the ones typed in the purchase form above — no second copy to fill. */}
+        <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '8px' }}>✍️ Paying for</div>
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
+          <strong>{candidate.fullName || 'Full name not filled yet'}</strong>
+          {' · '}{candidate.department || 'Department not filled yet'}
+          {' · '}{candidate.level || 'Level not filled yet'}
+          <div style={{ color: '#64748b', fontSize: '12px' }}>{position ? position + ' form. ' : ''}To change these, edit the form above.</div>
         </div>
-        <input placeholder="Email (optional)" value={form.email} onChange={set('email')} style={input} disabled={submitting} />
 
         <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.6px', margin: '6px 0 10px 0' }}>🧾 Details from your alert</div>
 
@@ -442,7 +519,7 @@ export default function ManualBankPayment({
         <label style={label}>Receiver name on the alert</label>
         <input placeholder={officialReceiver || 'Name shown as the receiver'} value={form.receiverName} onChange={set('receiverName')} style={input} disabled={submitting} />
 
-        <label style={label}>Bank reference / session ID (optional but helps)</label>
+        <label style={label}>Bank reference / session ID {form.senderHidden ? '(required — your account number is hidden)' : '(on your receipt — helps us find your payment)'}</label>
         <input placeholder="e.g. 0001234567890" value={form.transferReference} onChange={set('transferReference')} style={input} disabled={submitting} />
 
         <label style={label}>Screenshot of the bank alert *</label>
@@ -488,32 +565,7 @@ export default function ManualBankPayment({
       )}
 
       {/* ---- existing submissions ---- */}
-      <div style={{ ...card, marginTop: '14px' }}>
-        <div style={{ fontSize: '12px', fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '10px' }}>📄 Check a previous payment</div>
-
-        {remembered.length > 0 && (
-          <div style={{ marginBottom: '12px' }}>
-            {remembered.map(r => (
-              <button
-                key={r.reference}
-                type="button"
-                onClick={() => { setTrackRef(r.reference); setTrackAmount(String(r.amount)); doLookup(r.reference, r.amount); }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '9px 12px', marginBottom: '6px', cursor: 'pointer', fontSize: '13px' }}
-              >
-                <strong style={{ fontFamily: 'monospace' }}>{r.reference}</strong>
-                <span style={{ color: '#64748b' }}> — ₦{Number(r.amount).toLocaleString()} {r.position ? '· ' + r.position : ''}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <form onSubmit={handleTrack}>
-          <input placeholder="Reference (MT-…)" value={trackRef} onChange={e => setTrackRef(e.target.value)} style={{ ...input, fontFamily: 'monospace' }} />
-          <input type="number" inputMode="numeric" placeholder="Exact amount you paid" value={trackAmount} onChange={e => setTrackAmount(e.target.value)} style={input} />
-          <button type="submit" disabled={tracking} style={{ ...ghostBtn, width: '100%', padding: '11px' }}>{tracking ? '⏳ Checking…' : '🔎 Check status'}</button>
-        </form>
-        {trackError && <p style={{ fontSize: '13px', color: '#b91c1c', margin: '10px 0 0 0' }}>{trackError}</p>}
-      </div>
+      {trackerCard}
 
       <p style={{ textAlign: 'center', fontSize: '12px', color: '#94a3b8', margin: '8px 0 0 0' }}>
         Bank transfers are checked by a human. <Link to="/support" style={{ color: '#0f766e' }}>Contact support</Link> if approval takes long.

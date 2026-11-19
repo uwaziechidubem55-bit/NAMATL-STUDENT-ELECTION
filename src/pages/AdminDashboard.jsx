@@ -230,10 +230,23 @@ export default function AdminDashboard() {
   const [manualMsg, setManualMsg] = useState({ type: '', text: '' });
   const [manualRejectNote, setManualRejectNote] = useState('');
   const [manualSavingSettings, setManualSavingSettings] = useState(false);
+  // No price and no on/off switch here: the price is the Form Purchase price, and
+  // bank transfer shows by itself whenever Form Purchase is live.
   const [manualForm, setManualForm] = useState({
-    isEnabled: false, bankName: '', accountName: '', accountNumber: '',
-    extraNote: '', instructions: '', manualFormAmount: '',
+    isPaused: false, bankName: '', accountName: '', accountNumber: '',
+    extraNote: '', instructions: '',
   });
+  const [manualAdminPassword, setManualAdminPassword] = useState('');
+  const [manualAskPassword, setManualAskPassword] = useState(false);
+  // What the admin must confirm before a bank transfer becomes money.
+  const [manualConfirmAmount, setManualConfirmAmount] = useState('');
+  const [manualBankSeen, setManualBankSeen] = useState(false);
+  const [manualOverride, setManualOverride] = useState(false);
+  // The dashboard re-syncs in the background every few seconds. These refs let
+  // that sync read the tab that is open NOW and know when the bank form has
+  // unsaved typing, so it never flips the tab back or wipes what is being typed.
+  const manualFilterRef = useRef('pending');
+  const manualFormDirtyRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -723,27 +736,27 @@ export default function AdminDashboard() {
   // above calls it; a const here would be in the temporal dead zone at runtime.
   // ==========================================================================
   async function loadManualPayments(filterOverride) {
-    const status = filterOverride ?? manualFilter;
+    const status = filterOverride ?? manualFilterRef.current;
     try {
       const [settingsRes, queueRes] = await Promise.all([
         adminApi('getManualPaymentSettings'),
         adminApi('listManualPayments', status === 'all' ? {} : { status }),
       ]);
-      setManualSettings(settingsRes.settings || null);
-      if (!manualSettings) {
-        // Seed the settings form once (later edits stay local until Save).
-        const s = settingsRes.settings || {};
+      const s = settingsRes.settings || null;
+      setManualSettings(s);
+      if (s && !manualFormDirtyRef.current) {
+        // Show what is saved — but never overwrite what the admin is typing.
         setManualForm({
-          isEnabled: !!s.enabled,
+          isPaused: !!s.paused,
           bankName: s.bank?.bankName || '',
           accountName: s.bank?.accountName || '',
           accountNumber: s.bank?.accountNumber || '',
           extraNote: s.bank?.extraNote || '',
           instructions: s.instructions || '',
-          manualFormAmount: s.manualFormAmount || '',
         });
       }
-      setManualQueue(queueRes.items || []);
+      // A late answer for a tab the admin has already left is ignored.
+      if (status === manualFilterRef.current) setManualQueue(queueRes.items || []);
       setManualCounts(queueRes.counts || { total: 0, pending: 0, approved: 0, rejected: 0 });
     } catch (e) {
       setManualMsg({ type: 'error', text: 'Could not load bank transfers: ' + e.message });
@@ -752,24 +765,42 @@ export default function AdminDashboard() {
 
   const manualPendingCount = manualCounts.pending || 0;
 
+  // Any typing in the bank form marks it "unsaved" so the background sync leaves it alone.
+  const editManualForm = (patch) => {
+    manualFormDirtyRef.current = true;
+    setManualForm(prev => ({ ...prev, ...patch }));
+  };
+
+  // Adding or changing the bank name / account number / account name asks for the admin password again.
+  const manualSavedBank = manualSettings?.bank || {};
+  const manualBankChanged =
+    manualForm.bankName.trim() !== (manualSavedBank.bankName || '') ||
+    manualForm.accountName.trim() !== (manualSavedBank.accountName || '') ||
+    manualForm.accountNumber.replace(/\D/g, '') !== (manualSavedBank.accountNumber || '');
+
   const handleManualSaveSettings = async () => {
     setManualSavingSettings(true);
     setManualMsg({ type: '', text: '' });
     try {
       const res = await adminApi('saveManualPaymentSettings', {
         data: {
-          isEnabled: manualForm.isEnabled,
+          isPaused: manualForm.isPaused,
           bankName: manualForm.bankName,
           accountName: manualForm.accountName,
           accountNumber: manualForm.accountNumber,
           extraNote: manualForm.extraNote,
           instructions: manualForm.instructions,
-          manualFormAmount: manualForm.manualFormAmount,
         },
+        adminPassword: manualAdminPassword,
       });
+      manualFormDirtyRef.current = false;
+      setManualAdminPassword('');
+      setManualAskPassword(false);
       setManualMsg({ type: 'success', text: res.message || 'Saved.' });
       await loadManualPayments();
     } catch (e) {
+      if (/admin password/i.test(e.message || '')) setManualAskPassword(true);
+      if (/wrong admin password/i.test(e.message || '')) setManualAdminPassword(''); // retype it cleanly
       setManualMsg({ type: 'error', text: e.message });
     }
     setManualSavingSettings(false);
@@ -779,6 +810,9 @@ export default function AdminDashboard() {
     setManualOpenId(id);
     setManualDetail(null);
     setManualRejectNote('');
+    setManualConfirmAmount('');
+    setManualBankSeen(false);
+    setManualOverride(false);
     setManualMsg({ type: '', text: '' });
     try {
       const res = await adminApi('getManualPayment', { id });
@@ -790,11 +824,26 @@ export default function AdminDashboard() {
 
   const handleManualApprove = async () => {
     if (!manualOpenId) return;
-    if (!window.confirm('Approve this payment and ADD the money to the balance?\n\nThis cannot be undone.')) return;
+    // Two things the server also insists on: the admin looked at the bank app,
+    // and typed the amount seen there (that amount is what gets added).
+    if (!manualBankSeen) {
+      setManualMsg({ type: 'error', text: 'Tick the box to confirm you opened your bank app and saw this money arrive.' });
+      return;
+    }
+    if (!(Number(manualConfirmAmount) > 0)) {
+      setManualMsg({ type: 'error', text: 'Type the amount you saw in your bank app.' });
+      return;
+    }
+    if (!window.confirm(`Approve this payment and ADD ₦${Number(manualConfirmAmount).toLocaleString()} to the balance?\n\nThis cannot be undone.`)) return;
     setManualBusy(true);
     setManualMsg({ type: '', text: '' });
     try {
-      const res = await adminApi('approveManualPayment', { id: manualOpenId });
+      const res = await adminApi('approveManualPayment', {
+        id: manualOpenId,
+        bankConfirmed: true,
+        confirmedAmount: Number(manualConfirmAmount),
+        overrideFailedChecks: manualOverride,
+      });
       setManualMsg({ type: 'success', text: res.message || 'Approved.' });
       setManualDetail(null);
       setManualOpenId('');
@@ -2057,35 +2106,70 @@ export default function AdminDashboard() {
                 Nothing reaches your balance until you approve it below.
               </p>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px', fontSize: '14px', fontWeight: 'bold', color: '#003366', cursor: 'pointer' }}>
-                <input type="checkbox" checked={manualForm.isEnabled} onChange={e => setManualForm({ ...manualForm, isEnabled: e.target.checked })} style={{ width: '18px', height: '18px' }} />
-                Show bank transfer on the student purchase page
-              </label>
+              {/* ---- where things stand right now ---- */}
+              {(() => {
+                const st = manualSettings;
+                const tone = !st || !st.configured
+                  ? ['#f1f5f9', '#475569', '⚪ NOT SET UP YET — fill in the bank name, account number and account name, then save. That is all you need to do.']
+                  : st.paused
+                    ? ['#fef3c7', '#92400e', '⏸ PAUSED — students cannot see bank transfer. Untick "Pause bank transfer" below and save to bring it back.']
+                    : st.formPurchase?.live
+                      ? ['#dcfce7', '#166534', '🟢 LIVE — students see Bank transfer next to Card / USSD on the Form Purchase page right now.']
+                      : ['#dbeafe', '#1e40af', `🔵 SAVED AND READY — it will appear next to Card / USSD by itself as soon as Form Purchase is live. (${st.formPurchase?.reason || 'Form Purchase is not live.'})`];
+                return (
+                  <div style={{ background: tone[0], color: tone[1], padding: '12px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', marginBottom: '14px', lineHeight: 1.5 }}>
+                    {tone[2]}
+                  </div>
+                );
+              })()}
+
+              <p style={{ color: '#475569', fontSize: '13px', margin: '0 0 18px 0', lineHeight: 1.6 }}>
+                💰 <strong>No price to set here.</strong> Bank transfer uses the price you set for each position in <strong>Form Purchase</strong> —
+                the same price the card checkout is built from. Students paying by bank transfer send that form price exactly.
+              </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={labelStyle}>Bank name</label>
-                  <input value={manualForm.bankName} onChange={e => setManualForm({ ...manualForm, bankName: e.target.value })} placeholder="Opay / Moniepoint / GTBank" style={inputStyle} />
+                  <input value={manualForm.bankName} onChange={e => editManualForm({ bankName: e.target.value })} placeholder="Opay / Moniepoint / GTBank" style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Account number (10 digits)</label>
-                  <input inputMode="numeric" value={manualForm.accountNumber} onChange={e => setManualForm({ ...manualForm, accountNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="0123456789" style={inputStyle} />
+                  <input inputMode="numeric" value={manualForm.accountNumber} onChange={e => editManualForm({ accountNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="0123456789" style={inputStyle} />
                 </div>
-                <div>
+                <div style={{ gridColumn: '1 / -1' }}>
                   <label style={labelStyle}>Account name</label>
-                  <input value={manualForm.accountName} onChange={e => setManualForm({ ...manualForm, accountName: e.target.value })} placeholder="NAMATL FUPRE ELECTORAL COMMISSION" style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Manual transfer price ₦ (optional)</label>
-                  <input type="number" value={manualForm.manualFormAmount} onChange={e => setManualForm({ ...manualForm, manualFormAmount: e.target.value })} placeholder="Leave blank to use each position's price" style={inputStyle} />
+                  <input value={manualForm.accountName} onChange={e => editManualForm({ accountName: e.target.value })} placeholder="NAMATL FUPRE ELECTORAL COMMISSION" style={inputStyle} />
                 </div>
               </div>
 
               <label style={labelStyle}>Note shown under the account (optional)</label>
-              <input value={manualForm.extraNote} onChange={e => setManualForm({ ...manualForm, extraNote: e.target.value })} placeholder="e.g. Use your full name as the transfer narration" style={inputStyle} />
+              <input value={manualForm.extraNote} onChange={e => editManualForm({ extraNote: e.target.value })} placeholder="e.g. Use your full name as the transfer narration" style={inputStyle} />
 
               <label style={labelStyle}>Extra instructions (optional)</label>
-              <textarea value={manualForm.instructions} onChange={e => setManualForm({ ...manualForm, instructions: e.target.value })} placeholder="Anything else students should know before paying." style={{ ...inputStyle, minHeight: '70px' }} />
+              <textarea value={manualForm.instructions} onChange={e => editManualForm({ instructions: e.target.value })} placeholder="Anything else students should know before paying." style={{ ...inputStyle, minHeight: '70px' }} />
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '2px 0 16px 0', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
+                <input type="checkbox" checked={manualForm.isPaused} onChange={e => editManualForm({ isPaused: e.target.checked })} style={{ width: '16px', height: '16px' }} />
+                Pause bank transfer (hide it from students for now — leave unticked for normal use)
+              </label>
+
+              {(manualBankChanged || manualAskPassword) && (
+                <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
+                  <label style={labelStyle}>🔒 Your admin password</label>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={manualAdminPassword}
+                    onChange={e => setManualAdminPassword(e.target.value)}
+                    placeholder="Needed because the bank account is being added or changed"
+                    style={{ ...inputStyle, marginBottom: '6px' }}
+                  />
+                  <div style={{ fontSize: '12px', color: '#9a3412', lineHeight: 1.5 }}>
+                    This account is where students send their money, so adding or changing it asks for your password again.
+                  </div>
+                </div>
+              )}
 
               <button onClick={handleManualSaveSettings} disabled={manualSavingSettings} style={{ ...btnPrimary, background: '#0f766e', opacity: manualSavingSettings ? 0.6 : 1, cursor: manualSavingSettings ? 'not-allowed' : 'pointer' }}>
                 {manualSavingSettings ? '⏳ Saving...' : '💾 Save bank details'}
@@ -2111,7 +2195,7 @@ export default function AdminDashboard() {
                   ].map(f => (
                     <button
                       key={f.key}
-                      onClick={() => { setManualFilter(f.key); loadManualPayments(f.key); }}
+                      onClick={() => { manualFilterRef.current = f.key; setManualFilter(f.key); loadManualPayments(f.key); }}
                       style={{
                         padding: '7px 14px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold',
                         border: manualFilter === f.key ? '1px solid #003366' : '1px solid #cbd5e1',
@@ -2159,7 +2243,7 @@ export default function AdminDashboard() {
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           {fails > 0 && <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>{fails} ✕</span>}
                           {warns > 0 && <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>{warns} ⚠</span>}
-                          <span style={{ background: stColor[0], color: stColor[1], padding: '3px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize' }}>{st}</span>
+                          <span style={{ background: stColor[0], color: stColor[1], padding: '3px 12px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold', textTransform: 'capitalize' }}>{st === 'approving' ? 'unfinished approval' : st}</span>
                         </div>
                       </div>
                     );
@@ -2213,7 +2297,11 @@ export default function AdminDashboard() {
 
                       <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
                         <div style={{ ...labelStyle, color: '#0f766e' }}>Proof of payment</div>
-                        {manualDetail.item.receiptUrl ? (
+                        {manualDetail.item.receiptUrl && manualDetail.proofTrusted === false ? (
+                          <p style={{ color: '#b91c1c', fontSize: '13px', fontWeight: 'bold', lineHeight: 1.5 }}>
+                            ⛔ This proof was not uploaded through the portal, so it is not shown here. Do not open any link from it — reject this submission.
+                          </p>
+                        ) : manualDetail.item.receiptUrl ? (
                           <a href={manualDetail.item.receiptUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
                             <img src={manualDetail.item.receiptUrl} alt="Proof of payment" style={{ width: '100%', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
                             <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '6px' }}>🔍 Open full size</div>
@@ -2262,9 +2350,43 @@ export default function AdminDashboard() {
                     </div>
 
                     {/* actions */}
-                    {manualDetail.item.status === 'pending' ? (
+                    {(manualDetail.item.status === 'pending' || manualDetail.item.status === 'approving') ? (
                       <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
                         <div style={{ ...labelStyle, color: '#0f766e' }}>Decision</div>
+
+                        {manualDetail.item.status === 'approving' && (
+                          <div style={{ background: '#fef3c7', color: '#92400e', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '12px', lineHeight: 1.5 }}>
+                            ⚠️ An earlier approval of this payment did not finish. Approve it again to finish it — the money is never added twice.
+                          </div>
+                        )}
+
+                        {/* ---- to approve: confirm it in the bank app first ---- */}
+                        <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: '8px', padding: '12px 14px', marginBottom: '12px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f766e', marginBottom: '8px' }}>To approve, check your bank app first</div>
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', color: '#334155', cursor: 'pointer', marginBottom: '10px', lineHeight: 1.5 }}>
+                            <input type="checkbox" checked={manualBankSeen} onChange={e => setManualBankSeen(e.target.checked)} style={{ width: '16px', height: '16px', marginTop: '2px' }} />
+                            <span>I have opened my bank app and seen this money arrive in the account.</span>
+                          </label>
+                          <label style={labelStyle}>Amount you saw in your bank app (₦)</label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={manualConfirmAmount}
+                            onChange={e => setManualConfirmAmount(e.target.value)}
+                            placeholder="Type it from your bank app — do not copy it from this page"
+                            style={{ ...inputStyle, marginBottom: '6px' }}
+                          />
+                          <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
+                            This is the amount that will be added to the balance. It must match what the student entered and cover the form price.
+                          </div>
+                          {manualDetail.audit.verdict === 'blocked' && (
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', color: '#b91c1c', cursor: 'pointer', marginTop: '10px', lineHeight: 1.5, fontWeight: 'bold' }}>
+                              <input type="checkbox" checked={manualOverride} onChange={e => setManualOverride(e.target.checked)} style={{ width: '16px', height: '16px', marginTop: '2px' }} />
+                              <span>{manualDetail.audit.failures.length} check(s) failed. I have verified this payment myself and still want to approve it.</span>
+                            </label>
+                          )}
+                        </div>
+
                         <textarea
                           value={manualRejectNote}
                           onChange={e => setManualRejectNote(e.target.value)}

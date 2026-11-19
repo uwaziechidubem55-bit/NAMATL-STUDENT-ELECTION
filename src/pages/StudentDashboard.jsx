@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
@@ -140,6 +140,97 @@ export default function StudentDashboard() {
     loadData();
   }, []);
 
+  // ── Election clock: the PORTAL decides, never this phone's clock ──
+  // The server tells us its own time and whether the election is coming, live
+  // or ended. We keep counting from that answer with a timer that does not
+  // follow the phone's date/time setting, so changing the phone clock changes
+  // nothing. (The server also refuses votes outside the election.)
+  const [portal, setPortal] = useState(null);            // last answer from the portal
+  const [portalNow, setPortalNow] = useState(0);         // the portal's time, kept ticking here
+  const [portalChecked, setPortalChecked] = useState(false);
+  const portalSyncRef = useRef({ serverNow: 0, perfAt: 0, lastTry: -Infinity });
+
+  const syncPortalClock = useCallback(async () => {
+    portalSyncRef.current.lastTry = performance.now();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const giveUp = controller ? setTimeout(() => controller.abort(), 8000) : null;
+    try {
+      const res = await fetch('/api/student?action=electionStatus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: controller ? controller.signal : undefined,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.success || typeof data.serverNow !== 'number') return false;
+      // Count from the moment the answer ARRIVED: we are never ahead of the portal.
+      portalSyncRef.current.serverNow = data.serverNow;
+      portalSyncRef.current.perfAt = performance.now();
+      setPortal(data);
+      setPortalNow(data.serverNow);
+      return true;
+    } catch (e) {
+      return false; // offline: the page keeps its last answer
+    } finally {
+      if (giveUp) clearTimeout(giveUp);
+    }
+  }, []);
+
+  // First check when the page opens, then every minute, and whenever the
+  // student comes back to the page or the network returns.
+  useEffect(() => {
+    let alive = true;
+    syncPortalClock().finally(() => { if (alive) setPortalChecked(true); });
+    const whenVisible = () => { if (document.visibilityState === 'visible') syncPortalClock(); };
+    const every = setInterval(whenVisible, 60000);
+    document.addEventListener('visibilitychange', whenVisible);
+    window.addEventListener('online', whenVisible);
+    return () => {
+      alive = false;
+      clearInterval(every);
+      document.removeEventListener('visibilitychange', whenVisible);
+      window.removeEventListener('online', whenVisible);
+    };
+  }, [syncPortalClock]);
+
+  // Keep the portal's time moving between checks (every second while counting down).
+  useEffect(() => {
+    if (!portal) return undefined;
+    const portalTime = () => portalSyncRef.current.serverNow + (performance.now() - portalSyncRef.current.perfAt);
+    const tick = () => setPortalNow(portalTime());
+    tick();
+    const id = setInterval(tick, portal.phase === 'upcoming' ? 1000 : 5000);
+    // Also wake up exactly at the next change (start, end, end of the 24-hour notice),
+    // so the screen changes at that moment and not a few seconds later.
+    const next = [portal.startAt, portal.endAt, portal.endedUntil]
+      .filter((t) => typeof t === 'number' && t > portalTime())
+      .sort((a, b) => a - b)[0];
+    const wait = next ? next - portalTime() : null;
+    const once = wait !== null && wait < 2000000000 ? setTimeout(tick, wait + 30) : null;
+    return () => { clearInterval(id); if (once) clearTimeout(once); };
+  }, [portal]);
+
+  // What to show right now, from the portal's last answer and the portal's time.
+  // The steps follow one another, so a phone that lost its network before the
+  // start still moves on to "live" and then to "ended" at the right moments.
+  let portalPhase = portal ? portal.phase : null;
+  if (portal) {
+    if (portalPhase === 'upcoming' && portal.startAt && portalNow >= portal.startAt) portalPhase = portal.active ? 'live' : 'idle';
+    if (portalPhase === 'live' && portal.endAt && portalNow >= portal.endAt) portalPhase = 'ended';
+    if (portalPhase === 'ended') {
+      const until = portal.endedUntil || (portal.endAt ? portal.endAt + 24 * 60 * 60 * 1000 : null);
+      if (until && portalNow >= until) portalPhase = 'idle';
+    }
+  }
+
+  // The moment a start / end time is reached here, confirm it with the portal.
+  useEffect(() => {
+    if (!portal || portalPhase === portal.phase) return undefined;
+    const sinceLastTry = performance.now() - portalSyncRef.current.lastTry;
+    const id = setTimeout(syncPortalClock, Math.max(700, 2500 - sinceLastTry));
+    return () => clearTimeout(id);
+  }, [portal, portalPhase, syncPortalClock]);
+
   const handleLogout = () => {
     localStorage.removeItem('studentSession');
     sessionStorage.removeItem('studentKey'); // ← clears the voting key
@@ -164,7 +255,16 @@ export default function StudentDashboard() {
   const now = new Date();
   const isElectionStarted = startDateTime ? (now >= startDateTime) : true;
   const isElectionEnded = endDateTime ? (now >= endDateTime) : false;
-  const isVotingOpen = isModeActive && isElectionStarted && !isElectionEnded;
+  // The portal's answer wins. The phone-clock rule above is only a fallback for
+  // when the portal clock could not be reached at all (the server still refuses
+  // any vote outside the election).
+  const isVotingOpen = portal ? portalPhase === 'live' : (isModeActive && isElectionStarted && !isElectionEnded);
+  const showElectionEnded = portal ? portalPhase === 'ended' : false;
+  const countdownMs = portal && portalPhase === 'upcoming' && portal.startAt ? Math.max(0, portal.startAt - portalNow) : null;
+  const scheduleDate = portal ? portal.startDate : settings.startDate;
+  const scheduleTime = portal ? portal.startTime : settings.startTime;
+  // The "Scheduled" line is only for a start that is still ahead (never an old, past date).
+  const showSchedule = portal ? portalPhase === 'upcoming' : !showElectionEnded;
 
   // ✅ 1. Locked Selection: Once voted in this position, choice is locked and cannot be changed
   const handleSelectCandidate = (positionName, candidateId) => {
@@ -221,6 +321,14 @@ export default function StudentDashboard() {
         return;
       }
 
+      // The portal says the election is not live (not started / ended): show its
+      // message and bring this screen in line with the portal.
+      if (res.status === 403 && data.code === 'ELECTION_NOT_LIVE') {
+        alert(data.message || 'Voting is not open right now.');
+        syncPortalClock();
+        return;
+      }
+
       if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
 
       // Permanent update after server confirms
@@ -242,6 +350,7 @@ export default function StudentDashboard() {
   };
 
   const getStatusBadge = () => {
+    if (portal && isVotingOpen) return { text: 'LIVE', color: '#16a34a' };
     if (!isModeActive) return { text: 'NOT CONFIGURED', color: '#6b7280' };
     if (!isElectionStarted) return { text: 'COMING SOON', color: '#f59e0b' };
     if (isElectionEnded) return { text: 'ENDED', color: '#dc2626' };
@@ -429,8 +538,8 @@ export default function StudentDashboard() {
     );
   }
 
-  // ── Loading State ──
-  if (loading) {
+  // ── Loading State ── (also waits for the portal clock's first answer)
+  if (loading || !portalChecked) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', fontFamily: "'Segoe UI', Tahoma, sans-serif", paddingBottom: '80px' }}>
 
@@ -492,12 +601,35 @@ export default function StudentDashboard() {
         </div>
         <hr style={{ borderColor: '#334155' }} />
         <div style={{ textAlign: 'center', padding: '80px 20px' }}>
-          <h1 style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', marginBottom: '16px' }}>ELECTION IS COMING SOON</h1>
+          <h1 style={{ fontSize: '32px', fontWeight: '800', color: '#fbbf24', marginBottom: '16px' }}>{showElectionEnded ? 'ELECTION HAS ENDED' : 'ELECTION IS COMING SOON'}</h1>
+          {/* ⏳ Countdown to the start time — runs on the portal's clock, not the phone's */}
+          {countdownMs !== null && (() => {
+            const totalSeconds = Math.floor(countdownMs / 1000);
+            const parts = [
+              ['Days', Math.floor(totalSeconds / 86400)],
+              ['Hours', Math.floor((totalSeconds % 86400) / 3600)],
+              ['Minutes', Math.floor((totalSeconds % 3600) / 60)],
+              ['Seconds', totalSeconds % 60],
+            ];
+            return (
+              <div data-testid="election-countdown" style={{ margin: '4px auto 8px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '13px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '12px' }}>Starts in</p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                  {parts.map(([label, value]) => (
+                    <div key={label} style={{ minWidth: '64px', padding: '12px 6px', background: '#1e293b', border: '1px solid #334155', borderRadius: '10px' }}>
+                      <div style={{ fontSize: '28px', fontWeight: '800', color: '#fbbf24', lineHeight: '1.1', fontVariantNumeric: 'tabular-nums' }}>{String(value).padStart(2, '0')}</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <hr style={{ width: '80px', borderColor: '#fbbf24', margin: '20px auto' }} />
           <p style={{ fontSize: '18px', color: '#e2e8f0' }}>Welcome, {student.name}</p>
           <p style={{ color: '#94a3b8', marginTop: '8px' }}>{student.matric}</p>
-          {settings.startDate && (
-            <p style={{ color: '#64748b', marginTop: '16px' }}>Scheduled: {settings.startDate} at {settings.startTime || 'TBA'}</p>
+          {showSchedule && scheduleDate && (
+            <p style={{ color: '#64748b', marginTop: '16px' }}>Scheduled: {scheduleDate} at {scheduleTime || 'TBA'}</p>
           )}
         </div>
       </div>
@@ -530,7 +662,7 @@ export default function StudentDashboard() {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', padding: '8px 16px 24px', color: '#94a3b8', fontSize: '14px', flexWrap: 'wrap' }}>
         <span>Year: <strong style={{ color: '#e2e8f0' }}>{settings.year || 'N/A'}</strong></span>
         <span style={{ padding: '4px 14px', borderRadius: '20px', background: badge.color, color: 'white', fontWeight: '700', fontSize: '12px', letterSpacing: '1px' }}>{badge.text}</span>
-        <span>Closes: {settings.endDate || 'N/A'} {settings.endTime || ''}</span>
+        <span>Closes: {(portal ? portal.endDate : settings.endDate) || 'N/A'} {(portal ? portal.endTime : settings.endTime) || ''}</span>
       </div>
 
       {/* Content */}

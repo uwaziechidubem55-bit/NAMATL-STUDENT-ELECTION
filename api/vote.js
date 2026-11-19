@@ -2,6 +2,7 @@
 import { getAdminDb } from './_admin.js';
 import { writeAudit } from './_audit.js';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getElectionStatus } from './_election.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -24,6 +25,20 @@ export default async function handler(req, res) {
   }
 
   const db = getAdminDb();
+
+  // The PORTAL's clock decides — not the phone's. No vote is accepted unless
+  // the election is live right now on the server (see api/_election.js), so
+  // changing a phone's time cannot open voting early or keep it open late.
+  const election = await getElectionStatus(db);
+  if (election.phase !== 'live') {
+    const message = election.phase === 'ended'
+      ? 'The election has ended. Voting is closed.'
+      : election.phase === 'upcoming'
+        ? 'Voting has not started yet.'
+        : 'Voting is not open right now.';
+    return res.status(403).json({ success: false, code: 'ELECTION_NOT_LIVE', phase: election.phase, message });
+  }
+
   const docId = matric.trim().toUpperCase().replace(/\s+/g, '').replace(/\//g, '_');
   const sRef = db.doc(`students/${docId}`);
 
@@ -65,6 +80,7 @@ export default async function handler(req, res) {
     throw e;
   }
 
-  await writeAudit({ db, actor: docId, action: 'VOTE_CAST', details: { positions: voteIds.length } });
+  const voter = studentSnap.data() || {};
+  await writeAudit({ db, actor: docId, action: 'VOTE_CAST', details: { positions: voteIds.length, name: voter.name || '', level: voter.level || '' } });
   return res.status(200).json({ success: true, message: 'Votes recorded successfully!' });
 }

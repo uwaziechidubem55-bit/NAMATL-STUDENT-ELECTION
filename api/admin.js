@@ -10,6 +10,7 @@ import {
   cleanText,
   isPortalProofUrl,
 } from './_manualpayment.js';
+import { electionEndStampFor, getElectionStatus } from './_election.js';
 
 let getAdminDb, verifyToken, signToken;
 
@@ -42,6 +43,9 @@ function isAdmin(req) {
     return false;
   }
 }
+
+// students/{id}: the matric number in capitals, no spaces, "/" written as "_".
+const studentDocId = (matric) => String(matric || '').trim().toUpperCase().replace(/\s+/g, '').replace(/\//g, '_');
 
 const serializeTs = (ts) => {
   if (!ts) return null;
@@ -173,8 +177,31 @@ export default async function handler(req, res) {
         const snap = await db.doc('settings/main').get();
         return res.json({ success: true, data: snap.exists ? snap.data() : null });
       }
+      // The election as the PORTAL sees it right now (fresh read, portal clock).
+      // The dashboard's auto-stop asks this, so a wrong clock or time zone on
+      // the admin's own device can never end the election early.
+      case 'getElectionStatus': {
+        return res.json({ success: true, status: await getElectionStatus(db) });
+      }
       case 'saveMainSettings': {
-        await db.doc('settings/main').set(payload.data, { merge: true });
+        const patch = { ...(payload.data || {}) };
+        // If this save switches the election OFF, stamp the moment it ended
+        // (portal clock) so students see "ELECTION HAS ENDED" for 24 hours.
+        // If it switches the election ON, forget the previous ending.
+        try {
+          const [mainSnap, electionSnap] = await Promise.all([
+            db.doc('settings/main').get(),
+            db.doc('settings/election').get(),
+          ]);
+          Object.assign(patch, electionEndStampFor(
+            mainSnap.exists ? mainSnap.data() : {},
+            electionSnap.exists ? electionSnap.data() : {},
+            patch,
+          ));
+        } catch (stampError) {
+          console.error('election end stamp skipped (the save still goes through):', stampError.message);
+        }
+        await db.doc('settings/main').set(patch, { merge: true });
         return res.json({ success: true });
       }
       case 'getFormPurchaseSettings': {
@@ -387,11 +414,27 @@ export default async function handler(req, res) {
         const byPage = {};
         const online = [];
         const staleRefs = [];
+
+        // Who is who: lets the online list and the diary show the PERSON (name,
+        // matric number, level) instead of only a code. Never includes the unique key.
+        const studentsById = new Map();
+        studentsSnap.docs.forEach(d => studentsById.set(d.id, d.data() || {}));
+        const personOf = (matricOrId) => {
+          const st = studentsById.get(studentDocId(matricOrId));
+          return st
+            ? { name: st.name || '', matric: st.matric || String(matricOrId), level: st.level || '', registeredAt: st.createdAt || '', hasVoted: !!st.hasVoted }
+            : null;
+        };
+
         presenceSnap.docs.forEach(d => {
           const p = d.data();
           if (p.lastSeen && p.lastSeen >= twoMinAgo) {
             byPage[p.page || 'unknown'] = (byPage[p.page || 'unknown'] || 0) + 1;
-            online.push({ id: d.id, page: p.page || 'unknown', role: p.role || 'visitor', lastSeen: p.lastSeen });
+            const person = p.role === 'student' && p.matric ? personOf(p.matric) : null;
+            online.push({
+              id: d.id, page: p.page || 'unknown', role: p.role || 'visitor', lastSeen: p.lastSeen,
+              ...(person || (p.role === 'student' && p.matric ? { matric: String(p.matric) } : {})),
+            });
           } else if (!p.lastSeen || now - Date.parse(p.lastSeen || 0) > 60 * 60 * 1000) {
             staleRefs.push(d.ref);
           }
@@ -438,7 +481,12 @@ export default async function handler(req, res) {
         const unreadSupport = supportMessages.filter(m => m.status === 'unread').length;
 
         // ---- diary ----
-        const audit = auditSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const STUDENT_ACTIONS = ['STUDENT_LOGIN', 'STUDENT_REGISTER', 'VOTE_CAST'];
+        const audit = auditSnap.docs.map(d => {
+          const row = { id: d.id, ...d.data() };
+          const person = STUDENT_ACTIONS.includes(row.action) ? personOf(row.actor) : null;
+          return person ? { ...row, person } : row;
+        });
         const todayAudit = audit.filter(a => (a.at || '') >= dayStartIso);
         const loginsToday = todayAudit.filter(a => String(a.action).endsWith('LOGIN')).length;
         const failedLogins = todayAudit.filter(a => a.action === 'LOGIN_FAILED' || a.action === 'SUPER_LOGIN_FAILED').length;
@@ -463,6 +511,47 @@ export default async function handler(req, res) {
         const limit = Math.min(Number(payload.limit) || 200, 500);
         const snap = await db.collection('auditLogs').orderBy('at', 'desc').limit(limit).get();
         return res.json({ success: true, items: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      }
+
+      // People who entered the portal (logged in or registered), each with
+      // everything they registered with. Read on demand by the Super Admin
+      // "Logins" screen. Never returns the unique key.
+      case 'superLogins': {
+        if (!isSuper(req)) return res.status(403).json({ success: false, message: 'Super admin session required' });
+        const limit = Math.min(Math.max(Number(payload.limit) || 400, 50), 1000);
+        let query = db.collection('auditLogs');
+        if (payload.before) query = query.where('at', '<', String(payload.before));
+        const snap = await query.orderBy('at', 'desc').limit(limit).get();
+        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const entries = rows.filter(r => r.action === 'STUDENT_LOGIN' || r.action === 'STUDENT_REGISTER');
+
+        const ids = [...new Set(entries.map(r => studentDocId(r.actor)).filter(Boolean))];
+        const found = await Promise.all(ids.map(id => db.doc(`students/${id}`).get()));
+        const people = new Map();
+        found.forEach((s, i) => { if (s.exists) people.set(ids[i], s.data() || {}); });
+
+        const items = entries.map(r => {
+          const st = people.get(studentDocId(r.actor));
+          const details = r.details || {};
+          return {
+            id: r.id,
+            at: r.at || '',
+            type: r.action === 'STUDENT_REGISTER' ? 'register' : 'login',
+            matric: (st && st.matric) || String(r.actor || ''),
+            name: (st && st.name) || details.name || '',
+            level: (st && st.level) || details.level || '',
+            registeredAt: (st && st.createdAt) || '',
+            hasVoted: !!(st && st.hasVoted),
+            votedAt: (st && st.votedAt) || '',
+            known: !!st, // false = the student record was removed after this entry
+          };
+        });
+        return res.json({
+          success: true,
+          items,
+          scanned: rows.length,
+          nextBefore: rows.length === limit ? (rows[rows.length - 1].at || null) : null,
+        });
       }
 
       // ================================================================

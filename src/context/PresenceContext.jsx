@@ -29,12 +29,24 @@ function getAnonId() {
   }
 }
 
+// A logged-in student also says who they are (matric number only), so the
+// Super Admin's online list can show the person instead of a random code.
+function studentMatric() {
+  try {
+    const session = JSON.parse(localStorage.getItem('studentSession') || 'null');
+    return session && session.matric ? String(session.matric) : '';
+  } catch (e) {
+    return '';
+  }
+}
+
 async function ping(page, anonId) {
   try {
+    const role = detectRole();
     await fetch('/api/student?action=presence', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anonId, page, role: detectRole() }),
+      body: JSON.stringify({ anonId, page, role, matric: role === 'student' ? studentMatric() : '' }),
     });
   } catch (e) { /* offline — ignore. Monitoring must NEVER break the site */ }
 }

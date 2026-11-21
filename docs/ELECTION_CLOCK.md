@@ -28,7 +28,7 @@ If the status cannot be reached at all, the student page falls back to the old p
 
 ## 2. Result sheet
 
-*Print Results → Generate Results* now shows the logo in a circle and a **Winners** table between the results table and the date line. One row per position: the candidate with the most votes; equal top votes show as `TIE — name / name`; a position with no votes shows `No votes`. The winners are worked out from the rows already on the sheet; nothing else on the sheet changed.
+*Print Results → Generate Results* now shows the logo in a circle and a **Winners** table between the results table and the date line. One row per position: the candidate with the most votes; equal top votes show as `TIE — name / name`; a position with no votes shows `No votes`. The winners are worked out from the rows already on the sheet; nothing else on the sheet changed. The same position typed in two ways for two candidates counts as one position — see `docs/ONE_VOTE_PER_POSITION.md`.
 
 ## 3. Super Admin — who entered
 
@@ -43,4 +43,5 @@ The unique key is never sent to these screens.
 ```
 node --import ./tests/helpers/register.mjs --test tests/election.test.mjs
 node --import ./tests/helpers/register.mjs --test tests/manual-payment.test.mjs
+node --import ./tests/helpers/register.mjs --test tests/one-vote-per-position.test.mjs
 ```

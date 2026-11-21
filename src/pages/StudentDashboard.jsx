@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { SkeletonBox, BallotSkeleton } from '../components/Skeleton';
+import { groupByPosition } from '../utils/positions';
 
 export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
@@ -329,6 +330,16 @@ export default function StudentDashboard() {
         return;
       }
 
+      // The portal refused the ballot itself — two choices for one position, or a
+      // candidate who is no longer on the ballot. Nothing was recorded. Choices are
+      // locked on this screen, so show why and reload: the voter picks again from
+      // the ballot as it is now.
+      if (res.status === 400 && (data.code === 'ONE_VOTE_PER_POSITION' || data.code === 'CANDIDATE_NOT_FOUND')) {
+        alert(data.message || 'Your ballot was not accepted. Please choose again.');
+        window.location.reload();
+        return;
+      }
+
       if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
 
       // Permanent update after server confirms
@@ -358,11 +369,10 @@ export default function StudentDashboard() {
   };
 
   const badge = getStatusBadge();
-  const grouped = {};
-  candidates.forEach(c => {
-    if (!grouped[c.position]) grouped[c.position] = [];
-    grouped[c.position].push(c);
-  });
+  // One section per position. The same position typed differently for two
+  // candidates ("Asst. X " / "ASST. X") is ONE section, so a voter can pick only
+  // one of them (src/utils/positions.js). The portal enforces the same rule.
+  const ballotSections = groupByPosition(candidates);
 
   // ✅ 3. Hierarchy of Power Ranking (President first, VP second, Sec Gen third, etc.)
   const getPositionRank = (pos) => {
@@ -381,11 +391,11 @@ export default function StudentDashboard() {
     return 100; // All other positions after
   };
 
-  const positions = Object.keys(grouped).sort((a, b) => {
-    const rankA = getPositionRank(a);
-    const rankB = getPositionRank(b);
+  const positions = ballotSections.sort((a, b) => {
+    const rankA = getPositionRank(a.label);
+    const rankB = getPositionRank(b.label);
     if (rankA !== rankB) return rankA - rankB;
-    return a.localeCompare(b);
+    return a.label.localeCompare(b.label);
   });
 
   // ✅ Per-position percentage map: candidateId -> formatted percent string
@@ -678,8 +688,9 @@ export default function StudentDashboard() {
           </div>
         ) : (
           <>
-            {positions.map(pos => {
-              const posCandidates = grouped[pos];
+            {positions.map(section => {
+              const pos = section.key;
+              const posCandidates = section.candidates;
               const isUnopposed = posCandidates.length === 1;
               const posPctMap = buildPositionPercentages(posCandidates);
               const posTotalVotes = posCandidates.reduce((s, c) => s + (c.votes || 0), 0);
@@ -689,7 +700,7 @@ export default function StudentDashboard() {
 
                 {/* Position Heading — Bold, Gold, On Top */}
                 <h2 style={positionHeadingStyle}>
-                  {pos}
+                  {section.label}
                 </h2>
 
                 {/* Unopposed — single candidate is automatically the winner */}
@@ -723,8 +734,8 @@ export default function StudentDashboard() {
                   justifyContent: 'center',
                 }}>
                   {posCandidates.map(c => {
-                    const isSelected = selectedCandidates[c.position] === c.id;
-                    const isPositionAlreadyChosen = Boolean(selectedCandidates[c.position]);
+                    const isSelected = selectedCandidates[pos] === c.id;
+                    const isPositionAlreadyChosen = Boolean(selectedCandidates[pos]);
 
                     // ✅ Shows +1 preview vote for this user locally; other users only see real submitted votes
                     const displayedVotes = (c.votes || 0) + (isSelected ? 1 : 0);
@@ -824,7 +835,7 @@ export default function StudentDashboard() {
 
                         {/* Vote Button — locked if chosen or if another candidate in this position is chosen */}
                         <button
-                          onClick={() => handleSelectCandidate(c.position, c.id)}
+                          onClick={() => handleSelectCandidate(pos, c.id)}
                           disabled={voting || isPositionAlreadyChosen}
                           style={{
                             ...voteBtnStyle,

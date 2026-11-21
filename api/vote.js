@@ -1,8 +1,16 @@
-// NAMATLS Vote — server-side: key check + one-vote enforcement + multi-position atomic increment.
+// NAMATLS Vote — server-side: key check + one-vote enforcement + one choice per position + multi-position atomic increment.
 import { getAdminDb } from './_admin.js';
 import { writeAudit } from './_audit.js';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getElectionStatus } from './_election.js';
+import { positionKey, positionLabel } from './_positions.js';
+
+// Far more choices than any real ballot has positions; stops one request from
+// asking the database for thousands of candidates.
+const MAX_BALLOT_CHOICES = 100;
+const isCandidateId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 200
+  && !id.includes('/') && id !== '.' && id !== '..' && !/^__.*__$/.test(id);
+const refuseBallot = (res, code, message) => res.status(400).json({ success: false, code, message });
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -51,6 +59,35 @@ export default async function handler(req, res) {
   }
   if (studentSnap.data().hasVoted) {
     return res.status(409).json({ success: false, message: 'You have already voted.' });
+  }
+
+  // ONE VOTE PER POSITION — decided here on the portal, not on the phone.
+  // A ballot may hold each candidate once and only one candidate per position
+  // (see api/_positions.js for what counts as the same position). The voting
+  // page already works this way; this makes it the rule for every request,
+  // whatever sent it. A refused ballot records nothing, so the voter can still
+  // vote properly afterwards.
+  const again = ' Please refresh the page and choose again.';
+  if (voteIds.length > MAX_BALLOT_CHOICES || !voteIds.every(isCandidateId)) {
+    return refuseBallot(res, 'INVALID_BALLOT', 'Your ballot could not be read.' + again);
+  }
+  if (new Set(voteIds).size !== voteIds.length) {
+    return refuseBallot(res, 'ONE_VOTE_PER_POSITION', 'You can vote for a candidate only once.' + again);
+  }
+  const chosen = await Promise.all(voteIds.map((cid) => db.doc(`candidates/${cid}`).get()));
+  if (chosen.some((snap) => !snap.exists)) {
+    return refuseBallot(res, 'CANDIDATE_NOT_FOUND', 'One of the candidates you chose is no longer on the ballot.' + again);
+  }
+  const positionsTaken = new Set();
+  for (const snap of chosen) {
+    const position = (snap.data() || {}).position;
+    const key = positionKey(position);
+    if (positionsTaken.has(key)) {
+      const label = positionLabel(position);
+      return refuseBallot(res, 'ONE_VOTE_PER_POSITION',
+        `You can vote for only one candidate ${label ? 'for ' + label : 'in each position'}.` + again);
+    }
+    positionsTaken.add(key);
   }
 
   try {

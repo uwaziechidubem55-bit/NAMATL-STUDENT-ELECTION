@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDataCharge } from '../context/DataChargeContext';
 import { adminApi } from '../utils/adminApi';
+import { winnersByPosition } from '../utils/positions';
 import UniqueKeyFinder from '../components/UniqueKeyFinder';
 import { SkeletonBox, StatsGridSkeleton } from '../components/Skeleton';
 
@@ -2008,22 +2009,11 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
 
-                    {/* Winners — one line per position, worked out from the table above */}
+                    {/* Winners — one line per position, worked out from the table above.
+                        The same position typed differently ("Asst. X " / "ASST. X") is ONE
+                        position, so only the real winner is listed (src/utils/positions.js). */}
                     {(() => {
-                      const groups = [];
-                      const seen = {};
-                      electionResults.forEach((r) => {
-                        const key = r.position || 'Unassigned';
-                        if (seen[key] === undefined) { seen[key] = groups.length; groups.push({ position: key, rows: [] }); }
-                        groups[seen[key]].rows.push(r);
-                      });
-                      const winners = groups.map((g) => {
-                        const top = Math.max(...g.rows.map((r) => Number(r.votes) || 0));
-                        const leaders = g.rows.filter((r) => (Number(r.votes) || 0) === top);
-                        if (top <= 0) return { position: g.position, winner: 'No votes', votes: 0 };
-                        if (leaders.length > 1) return { position: g.position, winner: 'TIE — ' + leaders.map((r) => r.name).join(' / '), votes: top };
-                        return { position: g.position, winner: leaders[0].name, votes: top };
-                      });
+                      const winners = winnersByPosition(electionResults);
                       const th = { padding: '10px 8px', border: '1px solid #003366', fontWeight: 'bold' };
                       const td = { padding: '8px', border: '1px solid #dee2e6' };
                       return (
@@ -2042,7 +2032,7 @@ export default function AdminDashboard() {
                             </thead>
                             <tbody>
                               {winners.map((w, idx) => (
-                                <tr key={w.position} style={{ background: idx % 2 === 0 ? '#f8f9fa' : 'white', borderBottom: '1px solid #dee2e6' }}>
+                                <tr key={w.key} style={{ background: idx % 2 === 0 ? '#f8f9fa' : 'white', borderBottom: '1px solid #dee2e6' }}>
                                   <td style={{ ...td, textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
                                   <td style={{ ...td, color: '#555' }}>{w.position}</td>
                                   <td style={{ ...td, fontWeight: 'bold', color: '#003366' }}>{w.winner}</td>
